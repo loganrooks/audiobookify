@@ -14,6 +14,12 @@ Forked from [epub2tts-edge](https://github.com/aedocw/epub2tts-edge) with enhanc
 - **Cover Art** - Automatically embeds cover images
 - **Fast** - Parallel sentence processing for quick conversion
 
+### New in v2.1.0
+- **Voice Preview** - Listen to voices before converting (`--preview-voice`)
+- **Speed/Volume Control** - Adjust speech rate and volume (`--rate`, `--volume`)
+- **Chapter Selection** - Convert only specific chapters (`--chapters "1-5"`)
+- **Pause/Resume** - Continue interrupted conversions (`--resume`)
+
 > **Note:** EPUB files must be DRM-free
 
 ## Quick Start
@@ -85,7 +91,52 @@ abfy-tui
 | `r` | Refresh files |
 | `a` | Select all |
 | `d` | Deselect all |
+| `p` | Preview voice |
 | `q` | Quit |
+
+### Voice Preview & Adjustment (v2.1.0)
+
+```bash
+# List available voices
+audiobookify --list-voices
+
+# Preview a voice before converting
+audiobookify --preview-voice                           # Preview default voice
+audiobookify --preview-voice --speaker en-US-JennyNeural  # Preview specific voice
+
+# Adjust speech rate
+audiobookify mybook.txt --rate "+20%"   # 20% faster
+audiobookify mybook.txt --rate "-10%"   # 10% slower
+
+# Adjust volume
+audiobookify mybook.txt --volume "+50%"  # Louder
+audiobookify mybook.txt --volume "-25%"  # Quieter
+
+# Combine adjustments
+audiobookify mybook.txt --rate "+20%" --volume "-10%"
+```
+
+### Chapter Selection (v2.1.0)
+
+```bash
+# Convert specific chapters only
+audiobookify mybook.txt --chapters "1-5"       # Chapters 1 through 5
+audiobookify mybook.txt --chapters "1,3,7"     # Chapters 1, 3, and 7
+audiobookify mybook.txt --chapters "5-"        # Chapter 5 to end
+audiobookify mybook.txt --chapters "1,3,5-7"   # Mix of single and ranges
+```
+
+### Pause/Resume (v2.1.0)
+
+```bash
+# Resume an interrupted conversion
+audiobookify mybook.txt --resume
+
+# Start fresh (ignore saved progress)
+audiobookify mybook.txt --no-resume
+```
+
+Conversions automatically save progress and can be resumed after Ctrl+C interruption.
 
 ### Chapter Detection Options
 
@@ -128,8 +179,16 @@ audiobookify mybook.epub --max-depth 2
 | `--tui` | Launch terminal UI |
 | `--paragraphpause MS` | Pause between paragraphs (default: 1200) |
 | `--sentencepause MS` | Pause between sentences (default: 1200) |
+| **v2.1.0 Options** | |
+| `--list-voices` | List available voices |
+| `--preview-voice` | Preview the selected voice |
+| `--rate RATE` | Speech rate (e.g., "+20%", "-10%") |
+| `--volume VOL` | Volume adjustment (e.g., "+50%", "-25%") |
+| `--chapters RANGE` | Select chapters (e.g., "1-5", "1,3,7") |
+| `--resume` | Resume interrupted conversion |
+| `--no-resume` | Start fresh, ignore saved progress |
 
-List available voices: `edge-tts --list-voices`
+List available voices: `audiobookify --list-voices` or `edge-tts --list-voices`
 
 ## Installation
 

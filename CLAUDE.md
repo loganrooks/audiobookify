@@ -14,11 +14,18 @@ epub2tts_edge/
 ├── epub2tts_edge.py      # Main CLI and audio generation logic
 ├── chapter_detector.py   # Enhanced chapter detection (TOC + headings)
 ├── batch_processor.py    # Batch processing for multiple EPUBs
-└── tui.py               # Terminal UI (Textual-based)
+├── tui.py               # Terminal UI (Textual-based)
+├── voice_preview.py     # Voice preview functionality (v2.1.0)
+├── chapter_selector.py  # Chapter selection (v2.1.0)
+└── pause_resume.py      # Pause/resume state management (v2.1.0)
 
 tests/
 ├── test_chapter_detector.py
-└── test_batch_processor.py
+├── test_batch_processor.py
+├── test_voice_preview.py    # 18 tests
+├── test_tts_params.py       # 10 tests
+├── test_chapter_selector.py # 24 tests
+└── test_pause_resume.py     # 14 tests
 ```
 
 ## Key Components
@@ -61,6 +68,23 @@ Built with [Textual](https://textual.textualize.io/):
 - FLAC intermediate format
 - FFmpeg for M4B creation with chapter markers
 
+### 5. Voice Preview (`voice_preview.py`) - v2.1.0
+- **VoicePreview**: Generate voice samples before conversion
+- **VoicePreviewConfig**: Configuration with rate/volume
+- **AVAILABLE_VOICES**: List of preset voices with metadata
+- Supports rate (e.g., "+20%") and volume (e.g., "-10%") adjustments
+
+### 6. Chapter Selection (`chapter_selector.py`) - v2.1.0
+- **ChapterSelector**: Select specific chapters to convert
+- **ChapterRange**: Represents chapter ranges
+- Supports: single chapters ("3"), ranges ("2-5"), open-ended ("5-"), multiple ("1,3,5-7")
+
+### 7. Pause/Resume (`pause_resume.py`) - v2.1.0
+- **ConversionState**: Tracks conversion progress
+- **StateManager**: Save/load state for resume
+- Saves state after interruption (Ctrl+C)
+- Resume with `--resume` flag
+
 ## CLI Commands
 
 ```bash
@@ -84,6 +108,13 @@ abfy-tui [folder]                      # Short alias
 | `--export-only` | Only export to TXT, skip audio |
 | `--tui` | Launch terminal UI |
 | `--preview` | Preview chapters without exporting |
+| `--list-voices` | List available voices (v2.1.0) |
+| `--preview-voice` | Generate voice sample (v2.1.0) |
+| `--rate` | Speech rate adjustment, e.g., "+20%" (v2.1.0) |
+| `--volume` | Volume adjustment, e.g., "-10%" (v2.1.0) |
+| `--chapters` | Select chapters, e.g., "1-5", "1,3,7" (v2.1.0) |
+| `--resume` | Resume interrupted conversion (v2.1.0) |
+| `--no-resume` | Start fresh, ignore saved progress (v2.1.0) |
 
 ## Development
 

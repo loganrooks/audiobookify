@@ -21,9 +21,15 @@ from .batch_processor import (
     batch_process
 )
 
+# TUI entry point
+from .tui import main as tui_main, AudiobookifyApp
+
 __all__ = [
     # Main entry point
     'main',
+    # TUI
+    'tui_main',
+    'AudiobookifyApp',
     # Chapter detection
     'ChapterDetector',
     'ChapterNode',

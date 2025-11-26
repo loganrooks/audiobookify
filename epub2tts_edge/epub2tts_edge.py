@@ -651,8 +651,20 @@ Hierarchy Styles:
         action="store_true",
         help="Stop batch processing if any book fails"
     )
+    parser.add_argument(
+        "--tui",
+        action="store_true",
+        help="Launch the interactive Terminal UI"
+    )
 
     args = parser.parse_args()
+
+    # Launch TUI if requested
+    if args.tui:
+        from .tui import main as tui_main
+        tui_main(args.sourcefile)
+        return
+
     print(args)
 
     ensure_punkt()

@@ -1,6 +1,6 @@
 # Audiobookify Roadmap
 
-## Current Version: 2.1.0
+## Current Version: 2.2.0
 
 ### Completed Features
 
@@ -39,28 +39,27 @@
 - [x] **Pause/resume** - Resume interrupted conversions (`--resume`, `--no-resume`)
 - [x] **TUI integration** - All v2.1.0 features available in Terminal UI
 
+#### Phase 5: Enhanced Audio Quality (v2.2.0)
+- [x] **Audio normalization** - Consistent volume across chapters (`--normalize`)
+- [x] **Silence detection** - Trim excessive pauses (`--trim-silence`)
+- [x] **Custom pronunciation** - Dictionary for proper nouns, technical terms (`--pronunciation`)
+- [x] **Multiple voice support** - Different voices for different characters (`--voice-mapping`, `--narrator-voice`)
+- [x] **TUI integration** - All v2.2.0 features available in Terminal UI
+
 ---
 
 ## Planned Features
 
-### v2.2.0 - Enhanced Audio & Format Support
-
-#### Audio Quality
-- [ ] **Multiple voice support** - Different voices for different characters/sections
-- [ ] **Custom pronunciation** - Dictionary for proper nouns, technical terms
-- [ ] **Audio normalization** - Consistent volume across chapters
-- [ ] **Silence detection** - Trim excessive pauses
+### v2.3.0 - Format Support & Advanced Features
 
 #### Format Support
-
 - [ ] **PDF support** - Extract text from PDF files
 - [ ] **MOBI/AZW support** - Amazon Kindle formats
 - [ ] **HTML/Markdown** - Direct conversion from web content
 - [ ] **Output formats** - MP3, OPUS, AAC options (not just M4B)
 - [ ] **Chapter images** - Embed chapter artwork if available
 
-### v2.3.0 - Advanced Features
-
+#### Advanced Features
 - [ ] **Local TTS engines** - Offline conversion (Piper, Coqui)
 - [ ] **GPU acceleration** - Faster processing with CUDA
 - [ ] **Streaming mode** - Start playback while converting
@@ -110,6 +109,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to contribute.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 2.2.0 | 2024 | Audio normalization, silence trimming, custom pronunciation, multi-voice |
 | 2.1.0 | 2024 | Voice preview, rate/volume control, chapter selection, pause/resume |
 | 2.0.0 | 2024 | Enhanced chapter detection, batch processing, TUI |
 | 1.2.7 | 2024 | Original epub2tts-edge features |

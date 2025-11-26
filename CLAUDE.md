@@ -10,22 +10,30 @@ This file provides context for Claude Code when working on this project.
 
 ```
 epub2tts_edge/
-├── __init__.py           # Package exports
-├── epub2tts_edge.py      # Main CLI and audio generation logic
-├── chapter_detector.py   # Enhanced chapter detection (TOC + headings)
-├── batch_processor.py    # Batch processing for multiple EPUBs
-├── tui.py               # Terminal UI (Textual-based)
-├── voice_preview.py     # Voice preview functionality (v2.1.0)
-├── chapter_selector.py  # Chapter selection (v2.1.0)
-└── pause_resume.py      # Pause/resume state management (v2.1.0)
+├── __init__.py             # Package exports
+├── epub2tts_edge.py        # Main CLI and audio generation logic
+├── chapter_detector.py     # Enhanced chapter detection (TOC + headings)
+├── batch_processor.py      # Batch processing for multiple EPUBs
+├── tui.py                  # Terminal UI (Textual-based)
+├── voice_preview.py        # Voice preview functionality (v2.1.0)
+├── chapter_selector.py     # Chapter selection (v2.1.0)
+├── pause_resume.py         # Pause/resume state management (v2.1.0)
+├── audio_normalization.py  # Audio level normalization (v2.2.0)
+├── silence_detection.py    # Silence trimming (v2.2.0)
+├── pronunciation.py        # Custom pronunciation dictionary (v2.2.0)
+└── multi_voice.py          # Multiple voice support (v2.2.0)
 
 tests/
 ├── test_chapter_detector.py
 ├── test_batch_processor.py
-├── test_voice_preview.py    # 18 tests
-├── test_tts_params.py       # 10 tests
-├── test_chapter_selector.py # 24 tests
-└── test_pause_resume.py     # 14 tests
+├── test_voice_preview.py        # 18 tests
+├── test_tts_params.py           # 10 tests
+├── test_chapter_selector.py     # 24 tests
+├── test_pause_resume.py         # 14 tests
+├── test_audio_normalization.py  # 17 tests (v2.2.0)
+├── test_silence_detection.py    # 18 tests (v2.2.0)
+├── test_pronunciation.py        # 23 tests (v2.2.0)
+└── test_multi_voice.py          # 28 tests (v2.2.0)
 ```
 
 ## Key Components
@@ -85,6 +93,32 @@ Built with [Textual](https://textual.textualize.io/):
 - Saves state after interruption (Ctrl+C)
 - Resume with `--resume` flag
 
+### 8. Audio Normalization (`audio_normalization.py`) - v2.2.0
+- **AudioNormalizer**: Normalizes audio levels across chapters
+- **NormalizationConfig**: Configuration (target dBFS, method)
+- **AudioStats**: Analyzes peak/RMS levels
+- Methods: `peak` (default) or `rms` normalization
+- Unified gain across chapters for consistent listening
+
+### 9. Silence Detection (`silence_detection.py`) - v2.2.0
+- **SilenceDetector**: Detects and trims excessive silence
+- **SilenceConfig**: Configuration (threshold, max duration)
+- **SilenceSegment**: Represents detected silence regions
+- Trims pauses longer than max_silence_len (default 2s)
+
+### 10. Custom Pronunciation (`pronunciation.py`) - v2.2.0
+- **PronunciationProcessor**: Applies word substitutions
+- **PronunciationConfig**: Configuration (dictionary, case sensitivity)
+- Supports JSON and text format dictionaries
+- Word-boundary aware replacements
+
+### 11. Multiple Voice Support (`multi_voice.py`) - v2.2.0
+- **MultiVoiceProcessor**: Different voices for dialogue/narration
+- **VoiceMapping**: Maps characters to voices
+- **DialogueSegment**: Parsed text with speaker attribution
+- Automatic dialogue detection and speaker attribution
+- Support for narrator voice separate from dialogue
+
 ## CLI Commands
 
 ```bash
@@ -115,6 +149,15 @@ abfy-tui [folder]                      # Short alias
 | `--chapters` | Select chapters, e.g., "1-5", "1,3,7" (v2.1.0) |
 | `--resume` | Resume interrupted conversion (v2.1.0) |
 | `--no-resume` | Start fresh, ignore saved progress (v2.1.0) |
+| `--normalize` | Normalize audio volume across chapters (v2.2.0) |
+| `--normalize-target` | Target loudness in dBFS, default -16.0 (v2.2.0) |
+| `--normalize-method` | Normalization method: peak or rms (v2.2.0) |
+| `--trim-silence` | Trim excessive silence from audio (v2.2.0) |
+| `--silence-thresh` | Silence threshold in dBFS, default -40 (v2.2.0) |
+| `--max-silence` | Max silence before trimming, default 2000ms (v2.2.0) |
+| `--pronunciation` | Path to pronunciation dictionary file (v2.2.0) |
+| `--voice-mapping` | Path to voice mapping JSON file (v2.2.0) |
+| `--narrator-voice` | Voice for narration (non-dialogue) (v2.2.0) |
 
 ## Development
 

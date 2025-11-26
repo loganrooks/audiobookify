@@ -314,11 +314,43 @@ class SettingsPanel(Vertical):
             yield Label("Recursive:")
             yield Switch(id="recursive-switch")
 
+        yield Rule()
+
+        # v2.2.0: Audio Quality options
+        yield Label("Audio Quality", classes="section-title")
+
+        with Horizontal(classes="setting-row"):
+            yield Label("Normalize:")
+            yield Switch(id="normalize-switch")
+
+        with Horizontal(classes="setting-row"):
+            yield Label("Trim Silence:")
+            yield Switch(id="trim-silence-switch")
+
+        # v2.2.0: Advanced options
+        yield Label("Advanced", classes="section-title")
+
+        with Horizontal(classes="setting-row"):
+            yield Label("Pronuncia.:")
+            yield Input(
+                placeholder="Path to dictionary file",
+                id="pronunciation-input"
+            )
+
+        with Horizontal(classes="setting-row"):
+            yield Label("Voice Map:")
+            yield Input(
+                placeholder="Path to voice mapping",
+                id="voice-mapping-input"
+            )
+
     def get_config(self) -> dict:
         """Get current settings as a dictionary."""
         rate_val = self.query_one("#rate-select", Select).value
         volume_val = self.query_one("#volume-select", Select).value
         chapters_val = self.query_one("#chapters-input", Input).value.strip()
+        pronunciation_val = self.query_one("#pronunciation-input", Input).value.strip()
+        voice_mapping_val = self.query_one("#voice-mapping-input", Input).value.strip()
 
         return {
             "speaker": self.query_one("#voice-select", Select).value,
@@ -331,6 +363,11 @@ class SettingsPanel(Vertical):
             "tts_rate": rate_val if rate_val else None,
             "tts_volume": volume_val if volume_val else None,
             "chapters": chapters_val if chapters_val else None,
+            # v2.2.0 options
+            "normalize": self.query_one("#normalize-switch", Switch).value,
+            "trim_silence": self.query_one("#trim-silence-switch", Switch).value,
+            "pronunciation": pronunciation_val if pronunciation_val else None,
+            "voice_mapping": voice_mapping_val if voice_mapping_val else None,
         }
 
 
@@ -859,6 +896,12 @@ class AudiobookifyApp(App):
         self.log_message("  - Rate/Volume: Adjust TTS speed and volume")
         self.log_message("  - Chapters: Select specific chapters (e.g., 1-5)")
         self.log_message("  - Voice Preview: Listen before converting")
+        self.log_message("")
+        self.log_message("v2.2.0 Features:")
+        self.log_message("  - Normalize: Consistent volume across chapters")
+        self.log_message("  - Trim Silence: Remove excessive pauses")
+        self.log_message("  - Pronunciation: Custom word pronunciations")
+        self.log_message("  - Voice Mapping: Different voices for characters")
         self.log_message("─" * 40)
 
 

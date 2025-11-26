@@ -98,6 +98,13 @@ class BatchConfig:
     sentence_pause: int = 1200
     paragraph_pause: int = 1200
 
+    # TTS parameters
+    tts_rate: Optional[str] = None  # Speech rate (e.g., "+20%", "-10%")
+    tts_volume: Optional[str] = None  # Volume adjustment (e.g., "+50%", "-25%")
+
+    # Chapter selection
+    chapters: Optional[str] = None  # Chapter selection (e.g., "1-5", "1,3,7")
+
     # Batch options
     skip_existing: bool = True  # Skip if M4B already exists
     export_only: bool = False  # Only export to TXT, don't convert to audio
@@ -484,11 +491,23 @@ class BatchProcessor:
 
             try:
                 book_contents, book_title, book_author, chapter_titles = get_book(txt_path)
+
+                # Apply chapter selection if specified
+                if self.config.chapters:
+                    from .chapter_selector import ChapterSelector
+                    selector = ChapterSelector(self.config.chapters)
+                    selected_indices = selector.get_selected_indices(len(book_contents))
+                    book_contents = [book_contents[i] for i in selected_indices]
+                    chapter_titles = [chapter_titles[i] for i in selected_indices]
+                    print(f"  {selector.get_summary()} ({len(book_contents)} chapters)")
+
                 files = read_book(
                     book_contents,
                     self.config.speaker,
                     self.config.paragraph_pause,
-                    self.config.sentence_pause
+                    self.config.sentence_pause,
+                    rate=self.config.tts_rate,
+                    volume=self.config.tts_volume
                 )
                 generate_metadata(files, book_author, book_title, chapter_titles)
                 m4b_filename = make_m4b(files, txt_path, self.config.speaker)

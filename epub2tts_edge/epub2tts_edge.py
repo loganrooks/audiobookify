@@ -336,7 +336,20 @@ def append_silence(tempfile, duration=1200):
     # Save the combined audio back to file
     combined.export(tempfile, format="flac")
 
-def read_book(book_contents, speaker, paragraphpause, sentencepause):
+def read_book(book_contents, speaker, paragraphpause, sentencepause, rate=None, volume=None):
+    """Generate audio for all chapters in a book.
+
+    Args:
+        book_contents: List of chapter dicts with 'title' and 'paragraphs'
+        speaker: Voice ID (e.g., "en-US-AndrewNeural")
+        paragraphpause: Pause duration after paragraphs in milliseconds
+        sentencepause: Pause duration after sentences in milliseconds
+        rate: Speech rate adjustment (e.g., "+20%", "-10%")
+        volume: Volume adjustment (e.g., "+50%", "-25%")
+
+    Returns:
+        List of generated FLAC segment filenames
+    """
     segments = []
     # Do not read these into the audio file:
     title_names_to_skip_reading = ['Title', 'blank']
@@ -359,7 +372,7 @@ def read_book(book_contents, speaker, paragraphpause, sentencepause):
                 chapter["title"] = "blank"
             if chapter["title"] not in title_names_to_skip_reading:
                 asyncio.run(
-                    parallel_edgespeak([chapter["title"]], [speaker], ["sntnc0.mp3"])
+                    parallel_edgespeak([chapter["title"]], [speaker], ["sntnc0.mp3"], rate, volume)
                 )
                 append_silence("sntnc0.mp3", 1200)
 
@@ -375,7 +388,7 @@ def read_book(book_contents, speaker, paragraphpause, sentencepause):
                         "sntnc" + str(z + 1) + ".mp3" for z in range(len(sentences))
                     ]
                     speakers = [speaker] * len(sentences)
-                    asyncio.run(parallel_edgespeak(sentences, speakers, filenames))
+                    asyncio.run(parallel_edgespeak(sentences, speakers, filenames, rate, volume))
                     append_silence(filenames[-1], paragraphpause)
                     # combine sentences in paragraph
                     sorted_files = sorted(filenames, key=sort_key)
@@ -481,13 +494,29 @@ def add_cover(cover_img, filename):
     except:
         print(f"Cover image {cover_img} not found")
 
-def run_edgespeak(sentence, speaker, filename):
+def run_edgespeak(sentence, speaker, filename, rate=None, volume=None):
+    """Generate speech for a sentence using edge-tts.
+
+    Args:
+        sentence: Text to speak
+        speaker: Voice ID (e.g., "en-US-AndrewNeural")
+        filename: Output MP3 filename
+        rate: Speech rate adjustment (e.g., "+20%", "-10%")
+        volume: Volume adjustment (e.g., "+50%", "-25%")
+    """
     for speakattempt in range(3):
         try:
-            communicate = edge_tts.Communicate(sentence, speaker)
+            # Build kwargs for edge_tts
+            kwargs = {}
+            if rate:
+                kwargs["rate"] = rate
+            if volume:
+                kwargs["volume"] = volume
+
+            communicate = edge_tts.Communicate(sentence, speaker, **kwargs)
             run_save(communicate, filename)
             if os.path.getsize(filename) == 0:
-                raise Exception("Failed to save file from edge_tts") from e
+                raise Exception("Failed to save file from edge_tts")
             break
         except Exception as e:
             print(f"Attempt {speakattempt+1}/3 failed with '{sentence}' in run_edgespeak with error: {e}")
@@ -500,7 +529,16 @@ def run_edgespeak(sentence, speaker, filename):
 def run_save(communicate, filename):
     asyncio.run(communicate.save(filename))
 
-async def parallel_edgespeak(sentences, speakers, filenames):
+async def parallel_edgespeak(sentences, speakers, filenames, rate=None, volume=None):
+    """Generate speech for multiple sentences in parallel.
+
+    Args:
+        sentences: List of texts to speak
+        speakers: List of voice IDs
+        filenames: List of output filenames
+        rate: Speech rate adjustment (e.g., "+20%", "-10%")
+        volume: Volume adjustment (e.g., "+50%", "-25%")
+    """
     semaphore = asyncio.Semaphore(10)  # Limit the number of concurrent tasks
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -510,7 +548,9 @@ async def parallel_edgespeak(sentences, speakers, filenames):
                 loop = asyncio.get_running_loop()
                 sentence = re.sub(r'[!]+', '!', sentence)
                 sentence = re.sub(r'[?]+', '?', sentence)
-                task = loop.run_in_executor(executor, run_edgespeak, sentence, speaker, filename)
+                task = loop.run_in_executor(
+                    executor, run_edgespeak, sentence, speaker, filename, rate, volume
+                )
                 tasks.append(task)
         await asyncio.gather(*tasks)
 
@@ -549,6 +589,20 @@ Examples:
   # Launch interactive TUI
   audiobookify /path/to/books --tui
 
+  # Preview a voice before converting
+  audiobookify --list-voices
+  audiobookify --preview-voice --speaker en-US-JennyNeural
+
+  # Adjust speech rate and volume
+  audiobookify mybook.txt --rate "+20%" --volume "-10%"
+
+  # Convert only specific chapters
+  audiobookify mybook.txt --chapters "1-5"
+  audiobookify mybook.txt --chapters "1,3,7,10-"
+
+  # Resume an interrupted conversion
+  audiobookify mybook.txt --resume
+
 Note: 'abfy' is available as a short alias for 'audiobookify'
 
 Detection Methods:
@@ -565,7 +619,8 @@ Hierarchy Styles:
   breadcrumb - Part 1 / Chapter 1 / Section 1
         """
     )
-    parser.add_argument("sourcefile", type=str, help="EPUB file, text file, or directory to process")
+    parser.add_argument("sourcefile", type=str, nargs='?', default=None,
+                        help="EPUB file, text file, or directory to process")
     parser.add_argument(
         "--speaker",
         type=str,
@@ -662,13 +717,122 @@ Hierarchy Styles:
         help="Launch the interactive Terminal UI"
     )
 
+    # Voice preview options
+    parser.add_argument(
+        "--preview-voice",
+        action="store_true",
+        help="Generate a voice preview sample for the selected speaker"
+    )
+    parser.add_argument(
+        "--list-voices",
+        action="store_true",
+        help="List available voice options with details"
+    )
+    parser.add_argument(
+        "--rate",
+        type=str,
+        default=None,
+        help="Speech rate adjustment (e.g., '+20%%', '-10%%')"
+    )
+    parser.add_argument(
+        "--volume",
+        type=str,
+        default=None,
+        help="Volume adjustment (e.g., '+50%%', '-25%%')"
+    )
+    parser.add_argument(
+        "--chapters",
+        type=str,
+        default=None,
+        help="Select specific chapters to convert (e.g., '1-5', '1,3,7', '5-')"
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from previous incomplete conversion"
+    )
+    parser.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="Start fresh, ignore any saved progress"
+    )
+
     args = parser.parse_args()
+
+    # Handle voice listing
+    if args.list_voices:
+        from .voice_preview import AVAILABLE_VOICES
+        print("\nAvailable Voices:")
+        print("-" * 60)
+        for voice in AVAILABLE_VOICES:
+            print(f"  {voice['id']:<25} {voice['description']}")
+        print("-" * 60)
+        print("\nTip: Use --preview-voice --speaker <voice-id> to hear a sample")
+        print("     Or use 'edge-tts --list-voices' for all available voices")
+        return
+
+    # Handle voice preview
+    if args.preview_voice:
+        from .voice_preview import VoicePreview, VoicePreviewConfig
+        import subprocess
+        import shutil
+
+        config = VoicePreviewConfig(speaker=args.speaker)
+        if args.rate:
+            config.rate = args.rate
+        if args.volume:
+            config.volume = args.volume
+
+        preview = VoicePreview(config)
+        print(f"\nGenerating voice preview for: {args.speaker}")
+        if args.rate:
+            print(f"  Rate: {args.rate}")
+        if args.volume:
+            print(f"  Volume: {args.volume}")
+
+        try:
+            output_path = preview.generate_preview_temp()
+            print(f"\nPreview saved to: {output_path}")
+
+            # Try to play the audio if a player is available
+            players = ['ffplay', 'mpv', 'vlc', 'afplay', 'aplay']
+            player_found = False
+            for player in players:
+                if shutil.which(player):
+                    print(f"Playing with {player}...")
+                    try:
+                        if player == 'ffplay':
+                            subprocess.run([player, '-nodisp', '-autoexit', output_path],
+                                         capture_output=True, timeout=30)
+                        else:
+                            subprocess.run([player, output_path],
+                                         capture_output=True, timeout=30)
+                        player_found = True
+                        break
+                    except subprocess.TimeoutExpired:
+                        pass
+                    except Exception:
+                        continue
+
+            if not player_found:
+                print("\nNo audio player found. You can play the file manually:")
+                print(f"  {output_path}")
+
+        except Exception as e:
+            print(f"\nError generating preview: {e}")
+            return
+
+        return
 
     # Launch TUI if requested
     if args.tui:
         from .tui import main as tui_main
-        tui_main(args.sourcefile)
+        tui_main(args.sourcefile or ".")
         return
+
+    # Validate sourcefile is provided for remaining operations
+    if not args.sourcefile:
+        parser.error("sourcefile is required (use --list-voices or --preview-voice for voice options without a file)")
 
     print(args)
 
@@ -691,6 +855,9 @@ Hierarchy Styles:
             max_depth=args.max_depth,
             sentence_pause=args.sentencepause,
             paragraph_pause=args.paragraphpause,
+            tts_rate=args.rate,
+            tts_volume=args.volume,
+            chapters=args.chapters,
             skip_existing=not args.no_skip,
             export_only=args.export_only,
             continue_on_error=not args.stop_on_error,
@@ -751,26 +918,87 @@ Hierarchy Styles:
 
     # Process text file to audiobook
     book_contents, book_title, book_author, chapter_titles = get_book(args.sourcefile)
-    files = read_book(book_contents, args.speaker, args.paragraphpause, args.sentencepause)
-    generate_metadata(files, book_author, book_title, chapter_titles)
-    m4bfilename = make_m4b(files, args.sourcefile, args.speaker)
 
-    # Handle cover image
-    cover_path = args.cover
-    if not cover_path:
-        # Try to find cover with same name as source file
-        base_name = args.sourcefile.replace(".txt", "")
-        for ext in ['.png', '.jpg', '.jpeg']:
-            potential_cover = base_name + ext
-            if os.path.isfile(potential_cover):
-                cover_path = potential_cover
-                print(f"Found cover image: {cover_path}")
-                break
+    # Apply chapter selection if specified
+    if args.chapters:
+        from .chapter_selector import ChapterSelector
+        selector = ChapterSelector(args.chapters)
+        print(f"\n{selector.get_summary()}")
 
-    if cover_path:
-        add_cover(cover_path, m4bfilename)
+        # Filter book_contents and chapter_titles together
+        selected_indices = selector.get_selected_indices(len(book_contents))
+        book_contents = [book_contents[i] for i in selected_indices]
+        chapter_titles = [chapter_titles[i] for i in selected_indices]
 
-    print(f"\nAudiobook created: {m4bfilename}")
+        if not book_contents:
+            print("Error: No chapters match the selection")
+            return
+        print(f"Processing {len(book_contents)} selected chapters\n")
+
+    # State management for pause/resume
+    from .pause_resume import StateManager, ConversionState
+    output_dir = os.path.dirname(os.path.abspath(args.sourcefile)) or "."
+    state_manager = StateManager(output_dir)
+
+    # Check for existing state
+    if not args.no_resume and state_manager.has_state():
+        state = state_manager.load_state()
+        if state and state_manager.state_matches(args.sourcefile):
+            if state.is_resumable:
+                # Check for existing intermediate files
+                existing_parts = [f for f in [f"part{i}.flac" for i in range(1, len(book_contents)+1)]
+                                if os.path.isfile(f)]
+                if existing_parts:
+                    print(f"\nResuming conversion: {len(existing_parts)}/{len(book_contents)} chapters completed")
+                    if not args.resume:
+                        print("  (use --no-resume to start fresh)")
+
+    # Save state before starting
+    state = ConversionState(
+        source_file=os.path.abspath(args.sourcefile),
+        total_chapters=len(book_contents),
+        completed_chapters=0,
+        speaker=args.speaker,
+        rate=args.rate,
+        volume=args.volume,
+        chapters_selection=args.chapters
+    )
+    state_manager.save_state(state)
+
+    try:
+        files = read_book(book_contents, args.speaker, args.paragraphpause, args.sentencepause,
+                          rate=args.rate, volume=args.volume)
+        generate_metadata(files, book_author, book_title, chapter_titles)
+        m4bfilename = make_m4b(files, args.sourcefile, args.speaker)
+
+        # Handle cover image
+        cover_path = args.cover
+        if not cover_path:
+            # Try to find cover with same name as source file
+            base_name = args.sourcefile.replace(".txt", "")
+            for ext in ['.png', '.jpg', '.jpeg']:
+                potential_cover = base_name + ext
+                if os.path.isfile(potential_cover):
+                    cover_path = potential_cover
+                    print(f"Found cover image: {cover_path}")
+                    break
+
+        if cover_path:
+            add_cover(cover_path, m4bfilename)
+
+        # Clear state on successful completion
+        state_manager.clear_state()
+
+        print(f"\nAudiobook created: {m4bfilename}")
+
+    except KeyboardInterrupt:
+        print("\n\nConversion paused. Run with --resume to continue.")
+        # State is already saved, intermediate files preserved
+        return
+    except Exception as e:
+        print(f"\nError during conversion: {e}")
+        print("Intermediate files preserved. Run with --resume to continue.")
+        raise
 
 
 if __name__ == "__main__":

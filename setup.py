@@ -18,9 +18,10 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'epub2tts-edge = epub2tts_edge:main',
             'audiobookify = epub2tts_edge:main',
+            'abfy = epub2tts_edge:main',
             'audiobookify-tui = epub2tts_edge:tui_main',
+            'abfy-tui = epub2tts_edge:tui_main',
         ]
     },
 )

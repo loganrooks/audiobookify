@@ -517,34 +517,39 @@ async def parallel_edgespeak(sentences, speakers, filenames):
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="epub2tts-edge",
+        prog="audiobookify",
         description="Convert EPUB or text files to audiobook format with enhanced chapter detection",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Export EPUB with automatic chapter detection
-  epub2tts-edge mybook.epub
+  audiobookify mybook.epub
 
   # Export with specific detection method
-  epub2tts-edge mybook.epub --detect toc
+  audiobookify mybook.epub --detect toc
 
   # Export with numbered chapter hierarchy
-  epub2tts-edge mybook.epub --hierarchy numbered
+  audiobookify mybook.epub --hierarchy numbered
 
   # Convert text to audiobook
-  epub2tts-edge mybook.txt --cover mybook.png
+  audiobookify mybook.txt --cover mybook.png
 
   # Limit chapter depth to 2 levels
-  epub2tts-edge mybook.epub --max-depth 2
+  audiobookify mybook.epub --max-depth 2
 
   # Batch process all EPUBs in a folder
-  epub2tts-edge /path/to/books --batch
+  audiobookify /path/to/books --batch
 
   # Batch process with recursive folder scan
-  epub2tts-edge /path/to/library --batch --recursive
+  audiobookify /path/to/library --batch --recursive
 
   # Export only (no audio conversion)
-  epub2tts-edge /path/to/books --batch --export-only
+  audiobookify /path/to/books --batch --export-only
+
+  # Launch interactive TUI
+  audiobookify /path/to/books --tui
+
+Note: 'abfy' is available as a short alias for 'audiobookify'
 
 Detection Methods:
   toc       - Use only Table of Contents

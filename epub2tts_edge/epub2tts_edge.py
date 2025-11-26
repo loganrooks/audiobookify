@@ -537,6 +537,15 @@ Examples:
   # Limit chapter depth to 2 levels
   epub2tts-edge mybook.epub --max-depth 2
 
+  # Batch process all EPUBs in a folder
+  epub2tts-edge /path/to/books --batch
+
+  # Batch process with recursive folder scan
+  epub2tts-edge /path/to/library --batch --recursive
+
+  # Export only (no audio conversion)
+  epub2tts-edge /path/to/books --batch --export-only
+
 Detection Methods:
   toc       - Use only Table of Contents
   headings  - Use only HTML headings (h1-h6)
@@ -551,7 +560,7 @@ Hierarchy Styles:
   breadcrumb - Part 1 / Chapter 1 / Section 1
         """
     )
-    parser.add_argument("sourcefile", type=str, help="The EPUB or text file to process")
+    parser.add_argument("sourcefile", type=str, help="EPUB file, text file, or directory to process")
     parser.add_argument(
         "--speaker",
         type=str,
@@ -610,10 +619,75 @@ Hierarchy Styles:
         help="Preview detected chapters without exporting (EPUB only)"
     )
 
+    # Batch processing options
+    parser.add_argument(
+        "--batch",
+        action="store_true",
+        help="Enable batch processing mode for directories"
+    )
+    parser.add_argument(
+        "--recursive", "-r",
+        action="store_true",
+        help="Recursively scan subdirectories for EPUBs (batch mode)"
+    )
+    parser.add_argument(
+        "--output-dir", "-o",
+        type=str,
+        default=None,
+        help="Output directory for processed files (batch mode)"
+    )
+    parser.add_argument(
+        "--export-only",
+        action="store_true",
+        help="Only export EPUBs to text, don't convert to audio (batch mode)"
+    )
+    parser.add_argument(
+        "--no-skip",
+        action="store_true",
+        help="Process all files, don't skip already processed (batch mode)"
+    )
+    parser.add_argument(
+        "--stop-on-error",
+        action="store_true",
+        help="Stop batch processing if any book fails"
+    )
+
     args = parser.parse_args()
     print(args)
 
     ensure_punkt()
+
+    # Check if batch mode or directory input
+    is_directory = os.path.isdir(args.sourcefile)
+
+    if args.batch or is_directory:
+        # Batch processing mode
+        from .batch_processor import BatchProcessor, BatchConfig
+
+        config = BatchConfig(
+            input_path=args.sourcefile,
+            output_dir=args.output_dir,
+            recursive=args.recursive,
+            speaker=args.speaker,
+            detection_method=args.detect,
+            hierarchy_style=args.hierarchy,
+            max_depth=args.max_depth,
+            sentence_pause=args.sentencepause,
+            paragraph_pause=args.paragraphpause,
+            skip_existing=not args.no_skip,
+            export_only=args.export_only,
+            continue_on_error=not args.stop_on_error,
+        )
+
+        processor = BatchProcessor(config)
+        result = processor.run()
+
+        # Save report
+        if result.completed_count > 0 or result.failed_count > 0:
+            report_path = result.save_report()
+            print(f"\nReport saved to: {report_path}")
+
+        return
 
     # If we get an epub, export that to txt file, then exit
     if args.sourcefile.endswith(".epub"):

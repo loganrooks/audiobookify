@@ -11,13 +11,32 @@ from .chapter_detector import (
     detect_chapters
 )
 
+# Expose batch processing classes for programmatic use
+from .batch_processor import (
+    BatchProcessor,
+    BatchConfig,
+    BatchResult,
+    BookTask,
+    ProcessingStatus,
+    batch_process
+)
+
 __all__ = [
+    # Main entry point
     'main',
+    # Chapter detection
     'ChapterDetector',
     'ChapterNode',
     'TOCParser',
     'HeadingDetector',
     'DetectionMethod',
     'HierarchyStyle',
-    'detect_chapters'
+    'detect_chapters',
+    # Batch processing
+    'BatchProcessor',
+    'BatchConfig',
+    'BatchResult',
+    'BookTask',
+    'ProcessingStatus',
+    'batch_process',
 ]

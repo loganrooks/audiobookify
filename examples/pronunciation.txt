@@ -1,0 +1,42 @@
+# Pronunciation dictionary for audiobookify (text format)
+# Usage: audiobookify mybook.txt --pronunciation pronunciation.txt
+# Format: original = replacement
+
+# Fantasy names
+Hermione = Her-my-oh-nee
+Voldemort = Vol-de-mor
+Dumbledore = Dumb-ul-door
+Sirius = Seer-ee-us
+Patronus = Puh-troh-nus
+
+# Tolkien
+Sauron = Sow-ron
+Aragorn = Air-uh-gorn
+Legolas = Leg-oh-las
+Galadriel = Guh-lad-ree-el
+
+# Irish names
+Saoirse = Seer-sha
+Caoimhe = Kee-va
+Niamh = Neev
+Aoife = Ee-fa
+
+# Technical terms
+API = A P I
+SQL = sequel
+GUI = gooey
+JSON = jay-son
+regex = rej-ex
+
+# Abbreviations
+etc = et cetera
+eg = for example
+ie = that is
+vs = versus
+
+# Titles
+Dr. = Doctor
+Mr. = Mister
+Mrs. = Missus
+Ms. = Mizz
+St. = Saint

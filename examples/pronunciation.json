@@ -1,0 +1,44 @@
+{
+  "_comment": "Pronunciation dictionary for audiobookify. Maps words to phonetic spellings.",
+  "_usage": "audiobookify mybook.txt --pronunciation pronunciation.json",
+
+  "Hermione": "Her-my-oh-nee",
+  "Voldemort": "Vol-de-mor",
+  "Dumbledore": "Dumb-ul-door",
+  "Sirius": "Seer-ee-us",
+  "Remus": "Ree-mus",
+  "Draco": "Dray-ko",
+  "Patronus": "Puh-troh-nus",
+
+  "Nguyen": "Win",
+  "Kamala": "Comma-la",
+  "Saoirse": "Seer-sha",
+  "Caoimhe": "Kee-va",
+  "Niamh": "Neev",
+  "Aoife": "Ee-fa",
+
+  "Tolkien": "Toll-keen",
+  "Sauron": "Sow-ron",
+  "Aragorn": "Air-uh-gorn",
+  "Legolas": "Leg-oh-las",
+  "Galadriel": "Guh-lad-ree-el",
+
+  "API": "A P I",
+  "SQL": "sequel",
+  "GUI": "gooey",
+  "CLI": "C L I",
+  "JSON": "jay-son",
+  "YAML": "yam-ul",
+  "regex": "rej-ex",
+
+  "etc": "et cetera",
+  "eg": "for example",
+  "ie": "that is",
+  "vs": "versus",
+
+  "Dr.": "Doctor",
+  "Mr.": "Mister",
+  "Mrs.": "Missus",
+  "Ms.": "Mizz",
+  "St.": "Saint"
+}

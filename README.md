@@ -223,6 +223,8 @@ audiobookify mybook.txt --narrator-voice en-US-GuyNeural
 
 The multi-voice processor automatically detects dialogue (quoted text) and attributes speakers.
 
+> **Tip:** See the `examples/` folder for sample pronunciation and voice mapping files you can use as templates.
+
 ### Chapter Detection Options
 
 ```bash

@@ -7,4 +7,5 @@ nltk
 pillow
 pydub
 setuptools
+textual>=0.40.0
 tqdm

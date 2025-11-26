@@ -4,18 +4,23 @@ with open("requirements.txt") as f:
     requirements = f.read().splitlines()
 
 setup(
-    name="epub2tts-edge",
-    description="Tool to read an epub to audiobook using MS Edge TTS",
+    name="audiobookify",
+    description="Convert EPUB files to audiobooks with enhanced chapter detection",
     author="Christopher Aedo aedo.dev",
     author_email="c@aedo.dev",
-    url="https://github.com/aedocw/epub2tts-edge",
+    url="https://github.com/loganrooks/audiobookify",
     license="GPL 3.0",
-    version="1.2.7",
+    version="2.0.0",
     packages=find_packages(),
     install_requires=requirements,
+    extras_require={
+        'tui': ['textual>=0.40.0'],
+    },
     entry_points={
         'console_scripts': [
-            'epub2tts-edge = epub2tts_edge:main'
+            'epub2tts-edge = epub2tts_edge:main',
+            'audiobookify = epub2tts_edge:main',
+            'audiobookify-tui = epub2tts_edge:tui_main',
         ]
     },
 )

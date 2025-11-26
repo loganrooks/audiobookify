@@ -22,6 +22,13 @@ from PIL import Image
 from pydub import AudioSegment
 import zipfile
 
+from .chapter_detector import (
+    ChapterDetector,
+    DetectionMethod,
+    HierarchyStyle,
+    detect_chapters
+)
+
 
 namespaces = {
    "calibre":"http://calibre.kovidgoyal.net/2009/metadata",
@@ -109,7 +116,68 @@ def get_epub_cover(epub_path):
     except FileNotFoundError:
         print(f"Could not get cover image of {epub_path}")
 
-def export(book, sourcefile):
+def export(book, sourcefile, detection_method="combined", max_depth=None, hierarchy_style="flat"):
+    """
+    Export EPUB to text file with enhanced chapter detection.
+
+    Args:
+        book: The ebooklib epub object
+        sourcefile: Path to the source EPUB file
+        detection_method: Chapter detection method ('toc', 'headings', 'combined', 'auto')
+        max_depth: Maximum chapter depth to include (None for all)
+        hierarchy_style: How to format chapter titles ('flat', 'numbered', 'indented', 'arrow', 'breadcrumb')
+    """
+    # Extract cover image
+    cover_image = get_epub_cover(sourcefile)
+    image_path = None
+
+    if cover_image is not None:
+        image = Image.open(cover_image)
+        image_filename = sourcefile.replace(".epub", ".png")
+        image_path = os.path.join(image_filename)
+        image.save(image_path)
+        print(f"Cover image saved to {image_path}")
+
+    outfile = sourcefile.replace(".epub", ".txt")
+    check_for_file(outfile)
+    print(f"Exporting {sourcefile} to {outfile}")
+
+    # Use enhanced chapter detection
+    try:
+        method_enum = DetectionMethod(detection_method)
+        style_enum = HierarchyStyle(hierarchy_style)
+    except ValueError:
+        print(f"Invalid detection method or style, using defaults")
+        method_enum = DetectionMethod.COMBINED
+        style_enum = HierarchyStyle.FLAT
+
+    detector = ChapterDetector(
+        sourcefile,
+        method=method_enum,
+        max_depth=max_depth,
+        hierarchy_style=style_enum
+    )
+
+    # Detect and export
+    detector.detect()
+
+    # Print detected structure for user review
+    print("\nDetected chapter structure:")
+    detector.print_structure()
+    print()
+
+    # Export to text file
+    detector.export_to_text(outfile, include_metadata=True, level_markers=True)
+
+    print(f"\nExported to {outfile}")
+    return outfile
+
+
+def export_legacy(book, sourcefile):
+    """
+    Legacy export function (original implementation).
+    Kept for backward compatibility.
+    """
     book_contents = []
     cover_image = get_epub_cover(sourcefile)
     image_path = None
@@ -159,22 +227,39 @@ def export(book, sourcefile):
                     file.write(f"# {chapter['title']}\n\n")
                 for paragraph in chapter["paragraphs"]:
                     clean = re.sub(r'[\s\n]+', ' ', paragraph)
-                    clean = re.sub(r'[“”]', '"', clean)  # Curly double quotes to standard double quotes
-                    clean = re.sub(r'[‘’]', "'", clean)  # Curly single quotes to standard single quotes
+                    clean = re.sub(r'[""]', '"', clean)  # Curly double quotes to standard double quotes
+                    clean = re.sub(r'['']', "'", clean)  # Curly single quotes to standard single quotes
                     file.write(f"{clean}\n\n")
 
-def get_book(sourcefile):
+def get_book(sourcefile, flatten_chapters=True):
+    """
+    Parse a text file into book contents with chapter structure.
+
+    Supports multi-level headers:
+    - # Level 1 (Part/Book)
+    - ## Level 2 (Chapter)
+    - ### Level 3 (Section)
+    - etc.
+
+    Args:
+        sourcefile: Path to the text file
+        flatten_chapters: If True, flatten hierarchy; if False, maintain structure
+
+    Returns:
+        Tuple of (book_contents, book_title, book_author, chapter_titles)
+    """
     book_contents = []
     book_title = sourcefile
     book_author = "Unknown"
     chapter_titles = []
 
     with open(sourcefile, "r", encoding="utf-8") as file:
-        current_chapter = {"title": "blank", "paragraphs": []}
+        current_chapter = {"title": "blank", "level": 1, "paragraphs": []}
         initialized_first_chapter = False
         lines_skipped = 0
-        for line in file:
 
+        for line in file:
+            # Handle metadata lines at the start
             if lines_skipped < 2 and (line.startswith("Title") or line.startswith("Author")):
                 lines_skipped += 1
                 if line.startswith('Title: '):
@@ -184,19 +269,34 @@ def get_book(sourcefile):
                 continue
 
             line = line.strip()
+
+            # Check for header lines (# ## ### etc.)
             if line.startswith("#"):
+                # Count the header level
+                header_level = 0
+                for char in line:
+                    if char == '#':
+                        header_level += 1
+                    else:
+                        break
+
+                # Save previous chapter if it has content
                 if current_chapter["paragraphs"] or not initialized_first_chapter:
                     if initialized_first_chapter:
                         book_contents.append(current_chapter)
-                    current_chapter = {"title": None, "paragraphs": []}
+                    current_chapter = {"title": None, "level": header_level, "paragraphs": []}
                     initialized_first_chapter = True
-                chapter_title = line[1:].strip()
+
+                # Extract chapter title (strip all leading # and spaces)
+                chapter_title = line.lstrip('#').strip()
+
                 if any(c.isalnum() for c in chapter_title):
                     current_chapter["title"] = chapter_title
                     chapter_titles.append(current_chapter["title"])
                 else:
                     current_chapter["title"] = "blank"
                     chapter_titles.append("blank")
+
             elif line:
                 if not initialized_first_chapter:
                     chapter_titles.append("blank")
@@ -418,52 +518,254 @@ async def parallel_edgespeak(sentences, speakers, filenames):
 def main():
     parser = argparse.ArgumentParser(
         prog="epub2tts-edge",
-        description="Read a text file to audiobook format",
+        description="Convert EPUB or text files to audiobook format with enhanced chapter detection",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Export EPUB with automatic chapter detection
+  epub2tts-edge mybook.epub
+
+  # Export with specific detection method
+  epub2tts-edge mybook.epub --detect toc
+
+  # Export with numbered chapter hierarchy
+  epub2tts-edge mybook.epub --hierarchy numbered
+
+  # Convert text to audiobook
+  epub2tts-edge mybook.txt --cover mybook.png
+
+  # Limit chapter depth to 2 levels
+  epub2tts-edge mybook.epub --max-depth 2
+
+  # Batch process all EPUBs in a folder
+  epub2tts-edge /path/to/books --batch
+
+  # Batch process with recursive folder scan
+  epub2tts-edge /path/to/library --batch --recursive
+
+  # Export only (no audio conversion)
+  epub2tts-edge /path/to/books --batch --export-only
+
+Detection Methods:
+  toc       - Use only Table of Contents
+  headings  - Use only HTML headings (h1-h6)
+  combined  - Combine TOC with headings (default)
+  auto      - Automatically choose best method
+
+Hierarchy Styles:
+  flat       - No hierarchy indication (default)
+  numbered   - 1.1, 1.2, 1.2.1 format
+  indented   - Visual indentation
+  arrow      - Part 1 > Chapter 1 > Section 1
+  breadcrumb - Part 1 / Chapter 1 / Section 1
+        """
     )
-    parser.add_argument("sourcefile", type=str, help="The epub or text file to process")
+    parser.add_argument("sourcefile", type=str, help="EPUB file, text file, or directory to process")
     parser.add_argument(
         "--speaker",
         type=str,
         nargs="?",
         const="en-US-AndrewNeural",
         default="en-US-AndrewNeural",
-        help="Speaker to use (ex en-US-MichelleNeural)",
+        help="Speaker voice to use (default: en-US-AndrewNeural). Use 'edge-tts --list-voices' to see options.",
     )
     parser.add_argument(
         "--cover",
         type=str,
-        help="jpg image to use for cover",
+        help="JPG/PNG image to use for cover art",
     )
     parser.add_argument(
         "--sentencepause",
         type=int,
         default=1200,
-        help="duration of pause after sentence, in milliseconds (default: 1200)"
+        help="Duration of pause after sentence, in milliseconds (default: 1200)"
     )
     parser.add_argument(
         "--paragraphpause",
         type=int,
         default=1200,
-        help="duration of pause after paragraph, in milliseconds (default: 1200)"
+        help="Duration of pause after paragraph, in milliseconds (default: 1200)"
     )
 
+    # Enhanced chapter detection options
+    parser.add_argument(
+        "--detect",
+        type=str,
+        choices=["toc", "headings", "combined", "auto"],
+        default="combined",
+        help="Chapter detection method (default: combined)"
+    )
+    parser.add_argument(
+        "--max-depth",
+        type=int,
+        default=None,
+        help="Maximum chapter depth to include (default: all levels)"
+    )
+    parser.add_argument(
+        "--hierarchy",
+        type=str,
+        choices=["flat", "numbered", "indented", "arrow", "breadcrumb"],
+        default="flat",
+        help="How to display chapter hierarchy in output (default: flat)"
+    )
+    parser.add_argument(
+        "--legacy",
+        action="store_true",
+        help="Use legacy chapter detection (original algorithm)"
+    )
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="Preview detected chapters without exporting (EPUB only)"
+    )
+
+    # Batch processing options
+    parser.add_argument(
+        "--batch",
+        action="store_true",
+        help="Enable batch processing mode for directories"
+    )
+    parser.add_argument(
+        "--recursive", "-r",
+        action="store_true",
+        help="Recursively scan subdirectories for EPUBs (batch mode)"
+    )
+    parser.add_argument(
+        "--output-dir", "-o",
+        type=str,
+        default=None,
+        help="Output directory for processed files (batch mode)"
+    )
+    parser.add_argument(
+        "--export-only",
+        action="store_true",
+        help="Only export EPUBs to text, don't convert to audio (batch mode)"
+    )
+    parser.add_argument(
+        "--no-skip",
+        action="store_true",
+        help="Process all files, don't skip already processed (batch mode)"
+    )
+    parser.add_argument(
+        "--stop-on-error",
+        action="store_true",
+        help="Stop batch processing if any book fails"
+    )
+    parser.add_argument(
+        "--tui",
+        action="store_true",
+        help="Launch the interactive Terminal UI"
+    )
 
     args = parser.parse_args()
+
+    # Launch TUI if requested
+    if args.tui:
+        from .tui import main as tui_main
+        tui_main(args.sourcefile)
+        return
+
     print(args)
 
     ensure_punkt()
 
-    #If we get an epub, export that to txt file, then exit
+    # Check if batch mode or directory input
+    is_directory = os.path.isdir(args.sourcefile)
+
+    if args.batch or is_directory:
+        # Batch processing mode
+        from .batch_processor import BatchProcessor, BatchConfig
+
+        config = BatchConfig(
+            input_path=args.sourcefile,
+            output_dir=args.output_dir,
+            recursive=args.recursive,
+            speaker=args.speaker,
+            detection_method=args.detect,
+            hierarchy_style=args.hierarchy,
+            max_depth=args.max_depth,
+            sentence_pause=args.sentencepause,
+            paragraph_pause=args.paragraphpause,
+            skip_existing=not args.no_skip,
+            export_only=args.export_only,
+            continue_on_error=not args.stop_on_error,
+        )
+
+        processor = BatchProcessor(config)
+        result = processor.run()
+
+        # Save report
+        if result.completed_count > 0 or result.failed_count > 0:
+            report_path = result.save_report()
+            print(f"\nReport saved to: {report_path}")
+
+        return
+
+    # If we get an epub, export that to txt file, then exit
     if args.sourcefile.endswith(".epub"):
         book = epub.read_epub(args.sourcefile)
-        export(book, args.sourcefile)
+
+        # Preview mode - just show detected structure
+        if args.preview:
+            print("\nPreviewing chapter detection...\n")
+            try:
+                method_enum = DetectionMethod(args.detect)
+                style_enum = HierarchyStyle(args.hierarchy)
+            except ValueError:
+                method_enum = DetectionMethod.COMBINED
+                style_enum = HierarchyStyle.FLAT
+
+            detector = ChapterDetector(
+                args.sourcefile,
+                method=method_enum,
+                max_depth=args.max_depth,
+                hierarchy_style=style_enum
+            )
+            detector.detect()
+            print("Detected chapter structure:")
+            detector.print_structure()
+
+            # Show summary
+            chapters = detector.get_flat_chapters()
+            total_paragraphs = sum(len(c['paragraphs']) for c in chapters)
+            print(f"\nSummary: {len(chapters)} chapters, {total_paragraphs} paragraphs")
+            exit()
+
+        # Use legacy or enhanced export
+        if args.legacy:
+            export_legacy(book, args.sourcefile)
+        else:
+            export(
+                book,
+                args.sourcefile,
+                detection_method=args.detect,
+                max_depth=args.max_depth,
+                hierarchy_style=args.hierarchy
+            )
         exit()
 
+    # Process text file to audiobook
     book_contents, book_title, book_author, chapter_titles = get_book(args.sourcefile)
     files = read_book(book_contents, args.speaker, args.paragraphpause, args.sentencepause)
     generate_metadata(files, book_author, book_title, chapter_titles)
     m4bfilename = make_m4b(files, args.sourcefile, args.speaker)
-    add_cover(args.cover, m4bfilename)
+
+    # Handle cover image
+    cover_path = args.cover
+    if not cover_path:
+        # Try to find cover with same name as source file
+        base_name = args.sourcefile.replace(".txt", "")
+        for ext in ['.png', '.jpg', '.jpeg']:
+            potential_cover = base_name + ext
+            if os.path.isfile(potential_cover):
+                cover_path = potential_cover
+                print(f"Found cover image: {cover_path}")
+                break
+
+    if cover_path:
+        add_cover(cover_path, m4bfilename)
+
+    print(f"\nAudiobook created: {m4bfilename}")
 
 
 if __name__ == "__main__":

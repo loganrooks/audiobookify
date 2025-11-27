@@ -17,6 +17,8 @@ Forked from [epub2tts-edge](https://github.com/aedocw/epub2tts-edge) with enhanc
 
 ### New in v2.3.0
 - **MOBI/AZW Support** - Parse Kindle format ebooks (MOBI, AZW, AZW3)
+- **Docker Support** - Containerized deployment with docker-compose
+- **Calibre Plugin** - Convert books directly from Calibre library
 
 ### New in v2.2.0
 - **Audio Normalization** - Consistent volume across chapters (`--normalize`)
@@ -75,6 +77,23 @@ docker run -v $(pwd)/books:/books audiobookify /books --batch
 docker-compose build
 docker-compose run audiobookify /books/mybook.epub
 ```
+
+### Calibre Plugin
+
+Convert books directly from your Calibre library:
+
+```bash
+# Build the plugin
+cd calibre_plugin
+./build_plugin.sh
+
+# Install in Calibre:
+# 1. Preferences → Plugins → Load plugin from file
+# 2. Select audiobookify-calibre.zip
+# 3. Restart Calibre
+```
+
+See [calibre_plugin/README.md](calibre_plugin/README.md) for detailed instructions.
 
 ## Usage
 

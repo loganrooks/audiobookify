@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Dockerfile` for building the image
   - `docker-compose.yml` for easy usage
   - `.dockerignore` for optimized builds
+- **Calibre plugin** - Integration with Calibre library
+  - Convert books directly from Calibre
+  - Preview chapters before conversion
+  - Configurable voice, rate, and volume settings
+  - Audio normalization and silence trimming options
 
 ### Dependencies
 - Added `mobi` library for Kindle format parsing

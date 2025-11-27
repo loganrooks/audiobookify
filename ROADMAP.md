@@ -46,12 +46,13 @@
 - [x] **Multiple voice support** - Different voices for different characters (`--voice-mapping`, `--narrator-voice`)
 - [x] **TUI integration** - All v2.2.0 features available in Terminal UI
 
-#### Phase 6: Format Support & Docker (v2.3.0)
+#### Phase 6: Format Support & Platform Integration (v2.3.0)
 - [x] **MOBI/AZW support** - Amazon Kindle formats (MOBI, AZW, AZW3)
 - [x] **Chapter detection for MOBI** - Extract chapters from Kindle books
 - [x] **Cover extraction** - Extract cover images from MOBI files
 - [x] **Metadata parsing** - Extract title, author from MOBI metadata
 - [x] **Docker support** - Dockerfile and docker-compose.yml for containerized usage
+- [x] **Calibre plugin** - Integration with Calibre library management
 
 ---
 
@@ -77,7 +78,6 @@
 - [ ] **Web UI** - Browser-based interface (optional)
 - [ ] **REST API** - Programmatic access
 - [ ] **Mobile companion app** - Control from phone
-- [ ] **Calibre plugin** - Integration with Calibre library
 
 ---
 
@@ -114,7 +114,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to contribute.
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| 2.3.0 | 2025-11 | MOBI/AZW format support, Docker image |
+| 2.3.0 | 2025-11 | MOBI/AZW format support, Docker image, Calibre plugin |
 | 2.2.0 | 2025-11 | Audio normalization, silence trimming, custom pronunciation, multi-voice |
 | 2.1.0 | 2025-11 | Voice preview, rate/volume control, chapter selection, pause/resume |
 | 2.0.0 | 2025-11 | Enhanced chapter detection, batch processing, TUI |

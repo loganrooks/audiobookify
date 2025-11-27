@@ -109,7 +109,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to contribute.
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| 2.2.0 | 2024 | Audio normalization, silence trimming, custom pronunciation, multi-voice |
-| 2.1.0 | 2024 | Voice preview, rate/volume control, chapter selection, pause/resume |
-| 2.0.0 | 2024 | Enhanced chapter detection, batch processing, TUI |
-| 1.2.7 | 2024 | Original epub2tts-edge features |
+| 2.2.0 | 2025-11 | Audio normalization, silence trimming, custom pronunciation, multi-voice |
+| 2.1.0 | 2025-11 | Voice preview, rate/volume control, chapter selection, pause/resume |
+| 2.0.0 | 2025-11 | Enhanced chapter detection, batch processing, TUI |
+| 1.2.7 | 2024 | Original epub2tts-edge features (forked) |

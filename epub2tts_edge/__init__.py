@@ -50,6 +50,35 @@ from .pause_resume import (
     STATE_FILE_NAME,
 )
 
+# Audio normalization
+from .audio_normalization import (
+    AudioNormalizer,
+    NormalizationConfig,
+    AudioStats,
+    validate_method,
+)
+
+# Silence detection
+from .silence_detection import (
+    SilenceDetector,
+    SilenceConfig,
+    SilenceSegment,
+)
+
+# Pronunciation
+from .pronunciation import (
+    PronunciationProcessor,
+    PronunciationConfig,
+    PronunciationEntry,
+)
+
+# Multi-voice support
+from .multi_voice import (
+    MultiVoiceProcessor,
+    VoiceMapping,
+    DialogueSegment,
+)
+
 __all__ = [
     # Main entry point
     'main',
@@ -88,4 +117,21 @@ __all__ = [
     'ConversionState',
     'StateManager',
     'STATE_FILE_NAME',
+    # Audio normalization
+    'AudioNormalizer',
+    'NormalizationConfig',
+    'AudioStats',
+    'validate_method',
+    # Silence detection
+    'SilenceDetector',
+    'SilenceConfig',
+    'SilenceSegment',
+    # Pronunciation
+    'PronunciationProcessor',
+    'PronunciationConfig',
+    'PronunciationEntry',
+    # Multi-voice support
+    'MultiVoiceProcessor',
+    'VoiceMapping',
+    'DialogueSegment',
 ]

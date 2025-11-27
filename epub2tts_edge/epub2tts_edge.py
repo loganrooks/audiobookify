@@ -336,7 +336,7 @@ def append_silence(tempfile, duration=1200):
     # Save the combined audio back to file
     combined.export(tempfile, format="flac")
 
-def read_book(book_contents, speaker, paragraphpause, sentencepause, rate=None, volume=None):
+def read_book(book_contents, speaker, paragraphpause, sentencepause, rate=None, volume=None, pronunciation_processor=None, multi_voice_processor=None):
     """Generate audio for all chapters in a book.
 
     Args:
@@ -346,6 +346,8 @@ def read_book(book_contents, speaker, paragraphpause, sentencepause, rate=None, 
         sentencepause: Pause duration after sentences in milliseconds
         rate: Speech rate adjustment (e.g., "+20%", "-10%")
         volume: Volume adjustment (e.g., "+50%", "-25%")
+        pronunciation_processor: Optional PronunciationProcessor for custom pronunciations
+        multi_voice_processor: Optional MultiVoiceProcessor for different character voices
 
     Returns:
         List of generated FLAC segment filenames
@@ -371,8 +373,12 @@ def read_book(book_contents, speaker, paragraphpause, sentencepause, rate=None, 
             if chapter["title"] == "":
                 chapter["title"] = "blank"
             if chapter["title"] not in title_names_to_skip_reading:
+                # Apply pronunciation to chapter title
+                title_text = chapter["title"]
+                if pronunciation_processor:
+                    title_text = pronunciation_processor.process_text(title_text)
                 asyncio.run(
-                    parallel_edgespeak([chapter["title"]], [speaker], ["sntnc0.mp3"], rate, volume)
+                    parallel_edgespeak([title_text], [speaker], ["sntnc0.mp3"], rate, volume)
                 )
                 append_silence("sntnc0.mp3", 1200)
 
@@ -383,11 +389,24 @@ def read_book(book_contents, speaker, paragraphpause, sentencepause, rate=None, 
                 if os.path.isfile(ptemp):
                     print(f"{ptemp} exists, skipping to next paragraph")
                 else:
-                    sentences = sent_tokenize(paragraph)
+                    # Apply pronunciation processing if available
+                    processed_paragraph = paragraph
+                    if pronunciation_processor:
+                        processed_paragraph = pronunciation_processor.process_text(paragraph)
+
+                    # Handle multi-voice processing
+                    if multi_voice_processor:
+                        # Get voice-text pairs for multi-voice
+                        voice_text_pairs = multi_voice_processor.process_paragraph(processed_paragraph)
+                        sentences = [text for _, text in voice_text_pairs]
+                        speakers = [voice for voice, _ in voice_text_pairs]
+                    else:
+                        sentences = sent_tokenize(processed_paragraph)
+                        speakers = [speaker] * len(sentences)
+
                     filenames = [
                         "sntnc" + str(z + 1) + ".mp3" for z in range(len(sentences))
                     ]
-                    speakers = [speaker] * len(sentences)
                     asyncio.run(parallel_edgespeak(sentences, speakers, filenames, rate, volume))
                     append_silence(filenames[-1], paragraphpause)
                     # combine sentences in paragraph
@@ -436,13 +455,47 @@ def get_duration(file_path):
     duration_milliseconds = len(audio)
     return duration_milliseconds
 
-def make_m4b(files, sourcefile, speaker):
+def make_m4b(files, sourcefile, speaker, normalizer=None, silence_detector=None):
+    """Create M4B audiobook from chapter files.
+
+    Args:
+        files: List of FLAC chapter files
+        sourcefile: Source text file path
+        speaker: Speaker voice ID
+        normalizer: Optional AudioNormalizer instance for volume normalization
+        silence_detector: Optional SilenceDetector instance for trimming silence
+    """
+    import tempfile
+    import shutil
+
+    files_to_use = files
+    cleanup_dirs = []
+
+    # Apply silence trimming if enabled
+    if silence_detector and silence_detector.config.enabled:
+        print("\nTrimming excessive silence...")
+        silence_temp_dir = tempfile.mkdtemp(prefix="audiobookify_silence_")
+        cleanup_dirs.append(silence_temp_dir)
+
+        trimmed_files = silence_detector.trim_files(files_to_use, silence_temp_dir)
+        files_to_use = trimmed_files
+
+    # Apply normalization if enabled
+    if normalizer and normalizer.config.enabled:
+        print("\nNormalizing audio levels...")
+        norm_temp_dir = tempfile.mkdtemp(prefix="audiobookify_norm_")
+        cleanup_dirs.append(norm_temp_dir)
+
+        # Normalize files with unified gain for consistent volume
+        normalized_files = normalizer.normalize_files(files_to_use, norm_temp_dir, unified=True)
+        files_to_use = normalized_files
+
     filelist = "filelist.txt"
     basefile = sourcefile.replace(".txt", "")
     outputm4a = f"{basefile} ({speaker}).m4a"
     outputm4b = f"{basefile} ({speaker}).m4b"
     with open(filelist, "w") as f:
-        for filename in files:
+        for filename in files_to_use:
             filename = filename.replace("'", "'\\''")
             f.write(f"file '{filename}'\n")
     ffmpeg_command = [
@@ -480,6 +533,11 @@ def make_m4b(files, sourcefile, speaker):
     os.remove(outputm4a)
     for f in files:
         os.remove(f)
+
+    # Clean up temp directories from silence/normalization processing
+    for temp_dir in cleanup_dirs:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
     return outputm4b
 
 def add_cover(cover_img, filename):
@@ -757,6 +815,72 @@ Hierarchy Styles:
         help="Start fresh, ignore any saved progress"
     )
 
+    # Audio normalization options
+    parser.add_argument(
+        "--normalize",
+        action="store_true",
+        help="Normalize audio for consistent volume across chapters"
+    )
+    parser.add_argument(
+        "--normalize-target",
+        type=float,
+        default=-16.0,
+        help="Target loudness in dBFS for normalization (default: -16.0)"
+    )
+    parser.add_argument(
+        "--normalize-method",
+        type=str,
+        choices=["peak", "rms"],
+        default="peak",
+        help="Normalization method: 'peak' or 'rms' (default: peak)"
+    )
+
+    # Silence detection options
+    parser.add_argument(
+        "--trim-silence",
+        action="store_true",
+        help="Trim excessive silence from audio"
+    )
+    parser.add_argument(
+        "--silence-thresh",
+        type=int,
+        default=-40,
+        help="Silence threshold in dBFS (default: -40)"
+    )
+    parser.add_argument(
+        "--max-silence",
+        type=int,
+        default=2000,
+        help="Maximum silence duration in ms before trimming (default: 2000)"
+    )
+
+    # Pronunciation dictionary options
+    parser.add_argument(
+        "--pronunciation",
+        type=str,
+        default=None,
+        help="Path to pronunciation dictionary file (JSON or text format)"
+    )
+    parser.add_argument(
+        "--pronunciation-case-sensitive",
+        action="store_true",
+        help="Make pronunciation replacements case-sensitive"
+    )
+
+    # Multi-voice options
+    parser.add_argument(
+        "--voice-mapping",
+        type=str,
+        default=None,
+        help="Path to voice mapping file (JSON) for multi-voice support"
+    )
+    parser.add_argument(
+        "--narrator-voice",
+        type=str,
+        default=None,
+        help="Voice to use for narration (non-dialogue text)"
+    )
+
     args = parser.parse_args()
 
     # Handle voice listing
@@ -965,11 +1089,75 @@ Hierarchy Styles:
     )
     state_manager.save_state(state)
 
+    # Set up audio normalizer if requested
+    normalizer = None
+    if args.normalize:
+        from .audio_normalization import AudioNormalizer, NormalizationConfig
+        normalizer = AudioNormalizer(NormalizationConfig(
+            target_dbfs=args.normalize_target,
+            method=args.normalize_method,
+            enabled=True
+        ))
+        print(f"\nAudio normalization enabled: {args.normalize_method} method, target {args.normalize_target} dBFS")
+
+    # Set up silence detector if requested
+    silence_detector = None
+    if args.trim_silence:
+        from .silence_detection import SilenceDetector, SilenceConfig
+        silence_detector = SilenceDetector(SilenceConfig(
+            silence_thresh=args.silence_thresh,
+            max_silence_len=args.max_silence,
+            enabled=True
+        ))
+        print(f"\nSilence trimming enabled: threshold {args.silence_thresh} dBFS, max {args.max_silence}ms")
+
+    # Set up pronunciation processor if dictionary provided
+    pronunciation_processor = None
+    if args.pronunciation:
+        from .pronunciation import PronunciationProcessor, PronunciationConfig
+        pronunciation_processor = PronunciationProcessor(PronunciationConfig(
+            case_sensitive=args.pronunciation_case_sensitive
+        ))
+        try:
+            pronunciation_processor.load_dictionary(args.pronunciation)
+            print(f"\nPronunciation dictionary loaded: {pronunciation_processor.entry_count} entries")
+        except FileNotFoundError:
+            print(f"\nWarning: Pronunciation dictionary not found: {args.pronunciation}")
+            pronunciation_processor = None
+        except Exception as e:
+            print(f"\nWarning: Error loading pronunciation dictionary: {e}")
+            pronunciation_processor = None
+
+    # Set up multi-voice processor if voice mapping provided
+    multi_voice_processor = None
+    if args.voice_mapping or args.narrator_voice:
+        from .multi_voice import MultiVoiceProcessor, VoiceMapping
+        mapping = VoiceMapping(default_voice=args.speaker)
+        if args.narrator_voice:
+            mapping.narrator_voice = args.narrator_voice
+        multi_voice_processor = MultiVoiceProcessor(mapping)
+
+        if args.voice_mapping:
+            try:
+                multi_voice_processor.load_mapping(args.voice_mapping)
+                print(f"\nMulti-voice enabled: {multi_voice_processor.character_count} character voices loaded")
+            except FileNotFoundError:
+                print(f"\nWarning: Voice mapping file not found: {args.voice_mapping}")
+                multi_voice_processor = None
+            except Exception as e:
+                print(f"\nWarning: Error loading voice mapping: {e}")
+                multi_voice_processor = None
+        elif args.narrator_voice:
+            print(f"\nMulti-voice enabled: narrator voice set to {args.narrator_voice}")
+
     try:
         files = read_book(book_contents, args.speaker, args.paragraphpause, args.sentencepause,
-                          rate=args.rate, volume=args.volume)
+                          rate=args.rate, volume=args.volume,
+                          pronunciation_processor=pronunciation_processor,
+                          multi_voice_processor=multi_voice_processor)
         generate_metadata(files, book_author, book_title, chapter_titles)
-        m4bfilename = make_m4b(files, args.sourcefile, args.speaker)
+        m4bfilename = make_m4b(files, args.sourcefile, args.speaker,
+                               normalizer=normalizer, silence_detector=silence_detector)
 
         # Handle cover image
         cover_path = args.cover

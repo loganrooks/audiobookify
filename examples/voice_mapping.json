@@ -1,0 +1,19 @@
+{
+  "_comment": "Voice mapping for multi-voice audiobook narration",
+  "_usage": "audiobookify mybook.txt --voice-mapping voice_mapping.json",
+  "_voices": "Run 'audiobookify --list-voices' to see all available voices",
+
+  "default_voice": "en-US-AndrewNeural",
+  "narrator_voice": "en-US-GuyNeural",
+
+  "character_voices": {
+    "Harry": "en-GB-RyanNeural",
+    "Hermione": "en-GB-SoniaNeural",
+    "Ron": "en-GB-ThomasNeural",
+    "Dumbledore": "en-GB-ThomasNeural",
+    "Hagrid": "en-GB-RyanNeural",
+    "Snape": "en-GB-RyanNeural",
+    "McGonagall": "en-GB-LibbyNeural",
+    "Voldemort": "en-GB-RyanNeural"
+  }
+}

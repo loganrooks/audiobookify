@@ -1,10 +1,10 @@
 # Audiobookify Roadmap
 
-## Current Version: 2.0.0
+## Current Version: 2.2.0
 
 ### Completed Features
 
-#### Phase 1: Enhanced Chapter Detection
+#### Phase 1: Enhanced Chapter Detection (v2.0.0)
 - [x] EPUB2 NCX Table of Contents parsing
 - [x] EPUB3 NAV document parsing
 - [x] Multi-level heading detection (h1-h6)
@@ -14,7 +14,7 @@
 - [x] Chapter preview mode (`--preview`)
 - [x] Legacy mode for backward compatibility (`--legacy`)
 
-#### Phase 2: Batch Processing
+#### Phase 2: Batch Processing (v2.0.0)
 - [x] Folder scanning for EPUB files
 - [x] Recursive subfolder scanning (`--recursive`)
 - [x] Skip already-processed files
@@ -24,7 +24,7 @@
 - [x] Custom output directory (`--output-dir`)
 - [x] Export-only mode (`--export-only`)
 
-#### Phase 3: Terminal UI
+#### Phase 3: Terminal UI (v2.0.0)
 - [x] File browser panel
 - [x] Settings panel (voice, detection, hierarchy)
 - [x] Real-time progress display
@@ -32,34 +32,34 @@
 - [x] Log panel
 - [x] Keyboard shortcuts
 
+#### Phase 4: Quality of Life (v2.1.0)
+- [x] **Voice preview** - Listen to voice samples before converting (`--preview-voice`, `--list-voices`)
+- [x] **Speed/volume control** - Adjust TTS rate and volume (`--rate`, `--volume`)
+- [x] **Chapter selection** - Convert only specific chapters (`--chapters "1-5"`)
+- [x] **Pause/resume** - Resume interrupted conversions (`--resume`, `--no-resume`)
+- [x] **TUI integration** - All v2.1.0 features available in Terminal UI
+
+#### Phase 5: Enhanced Audio Quality (v2.2.0)
+- [x] **Audio normalization** - Consistent volume across chapters (`--normalize`)
+- [x] **Silence detection** - Trim excessive pauses (`--trim-silence`)
+- [x] **Custom pronunciation** - Dictionary for proper nouns, technical terms (`--pronunciation`)
+- [x] **Multiple voice support** - Different voices for different characters (`--voice-mapping`, `--narrator-voice`)
+- [x] **TUI integration** - All v2.2.0 features available in Terminal UI
+
 ---
 
 ## Planned Features
 
-### v2.1.0 - Quality of Life
+### v2.3.0 - Format Support & Advanced Features
 
-#### High Priority
-- [ ] **Voice preview** - Listen to voice samples before converting
-- [ ] **Speed/pitch control** - Adjust TTS voice parameters
-- [ ] **Chapter selection** - Convert only specific chapters
-- [ ] **Pause/resume** - Pause mid-conversion and resume later
-
-#### Medium Priority
-- [ ] **Multiple voice support** - Different voices for different characters/sections
-- [ ] **Custom pronunciation** - Dictionary for proper nouns, technical terms
-- [ ] **Audio normalization** - Consistent volume across chapters
-- [ ] **Silence detection** - Trim excessive pauses
-
-### v2.2.0 - Format Support
-
+#### Format Support
 - [ ] **PDF support** - Extract text from PDF files
 - [ ] **MOBI/AZW support** - Amazon Kindle formats
 - [ ] **HTML/Markdown** - Direct conversion from web content
 - [ ] **Output formats** - MP3, OPUS, AAC options (not just M4B)
 - [ ] **Chapter images** - Embed chapter artwork if available
 
-### v2.3.0 - Advanced Features
-
+#### Advanced Features
 - [ ] **Local TTS engines** - Offline conversion (Piper, Coqui)
 - [ ] **GPU acceleration** - Faster processing with CUDA
 - [ ] **Streaming mode** - Start playback while converting
@@ -109,5 +109,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to contribute.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 2.2.0 | 2024 | Audio normalization, silence trimming, custom pronunciation, multi-voice |
+| 2.1.0 | 2024 | Voice preview, rate/volume control, chapter selection, pause/resume |
 | 2.0.0 | 2024 | Enhanced chapter detection, batch processing, TUI |
 | 1.2.7 | 2024 | Original epub2tts-edge features |

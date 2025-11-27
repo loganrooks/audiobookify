@@ -14,6 +14,18 @@ Forked from [epub2tts-edge](https://github.com/aedocw/epub2tts-edge) with enhanc
 - **Cover Art** - Automatically embeds cover images
 - **Fast** - Parallel sentence processing for quick conversion
 
+### New in v2.2.0
+- **Audio Normalization** - Consistent volume across chapters (`--normalize`)
+- **Silence Trimming** - Remove excessive pauses (`--trim-silence`)
+- **Custom Pronunciation** - Dictionary for proper nouns (`--pronunciation`)
+- **Multiple Voices** - Different voices for characters (`--voice-mapping`)
+
+### New in v2.1.0
+- **Voice Preview** - Listen to voices before converting (`--preview-voice`)
+- **Speed/Volume Control** - Adjust speech rate and volume (`--rate`, `--volume`)
+- **Chapter Selection** - Convert only specific chapters (`--chapters "1-5"`)
+- **Pause/Resume** - Continue interrupted conversions (`--resume`)
+
 > **Note:** EPUB files must be DRM-free
 
 ## Quick Start
@@ -85,7 +97,133 @@ abfy-tui
 | `r` | Refresh files |
 | `a` | Select all |
 | `d` | Deselect all |
+| `p` | Preview voice |
 | `q` | Quit |
+
+### Voice Preview & Adjustment (v2.1.0)
+
+```bash
+# List available voices
+audiobookify --list-voices
+
+# Preview a voice before converting
+audiobookify --preview-voice                           # Preview default voice
+audiobookify --preview-voice --speaker en-US-JennyNeural  # Preview specific voice
+
+# Adjust speech rate
+audiobookify mybook.txt --rate "+20%"   # 20% faster
+audiobookify mybook.txt --rate "-10%"   # 10% slower
+
+# Adjust volume
+audiobookify mybook.txt --volume "+50%"  # Louder
+audiobookify mybook.txt --volume "-25%"  # Quieter
+
+# Combine adjustments
+audiobookify mybook.txt --rate "+20%" --volume "-10%"
+```
+
+### Chapter Selection (v2.1.0)
+
+```bash
+# Convert specific chapters only
+audiobookify mybook.txt --chapters "1-5"       # Chapters 1 through 5
+audiobookify mybook.txt --chapters "1,3,7"     # Chapters 1, 3, and 7
+audiobookify mybook.txt --chapters "5-"        # Chapter 5 to end
+audiobookify mybook.txt --chapters "1,3,5-7"   # Mix of single and ranges
+```
+
+### Pause/Resume (v2.1.0)
+
+```bash
+# Resume an interrupted conversion
+audiobookify mybook.txt --resume
+
+# Start fresh (ignore saved progress)
+audiobookify mybook.txt --no-resume
+```
+
+Conversions automatically save progress and can be resumed after Ctrl+C interruption.
+
+### Audio Normalization (v2.2.0)
+
+```bash
+# Normalize volume across chapters
+audiobookify mybook.txt --normalize
+
+# Custom target loudness (default: -16 dBFS)
+audiobookify mybook.txt --normalize --normalize-target -14.0
+
+# Use RMS method instead of peak
+audiobookify mybook.txt --normalize --normalize-method rms
+```
+
+### Silence Trimming (v2.2.0)
+
+```bash
+# Trim excessive silence
+audiobookify mybook.txt --trim-silence
+
+# Custom silence threshold (default: -40 dBFS)
+audiobookify mybook.txt --trim-silence --silence-thresh -50
+
+# Maximum silence duration (default: 2000ms)
+audiobookify mybook.txt --trim-silence --max-silence 1500
+```
+
+### Custom Pronunciation (v2.2.0)
+
+Create a pronunciation dictionary file:
+
+**JSON format (`pronunciation.json`):**
+```json
+{
+  "Hermione": "Her-my-oh-nee",
+  "Voldemort": "Vol-de-mor",
+  "Nguyen": "Win"
+}
+```
+
+**Text format (`pronunciation.txt`):**
+```
+# Comments start with #
+Hermione = Her-my-oh-nee
+Voldemort = Vol-de-mor
+```
+
+```bash
+# Use pronunciation dictionary
+audiobookify mybook.txt --pronunciation pronunciation.json
+
+# Case-sensitive matching
+audiobookify mybook.txt --pronunciation pronunciation.txt --pronunciation-case-sensitive
+```
+
+### Multiple Voices (v2.2.0)
+
+Create a voice mapping file (`voices.json`):
+```json
+{
+  "default_voice": "en-US-AndrewNeural",
+  "narrator_voice": "en-US-GuyNeural",
+  "character_voices": {
+    "Harry": "en-GB-RyanNeural",
+    "Hermione": "en-GB-SoniaNeural",
+    "Dumbledore": "en-GB-ThomasNeural"
+  }
+}
+```
+
+```bash
+# Use voice mapping for multi-voice narration
+audiobookify mybook.txt --voice-mapping voices.json
+
+# Just set a different narrator voice (non-dialogue)
+audiobookify mybook.txt --narrator-voice en-US-GuyNeural
+```
+
+The multi-voice processor automatically detects dialogue (quoted text) and attributes speakers.
+
+> **Tip:** See the `examples/` folder for sample pronunciation and voice mapping files you can use as templates.
 
 ### Chapter Detection Options
 
@@ -128,8 +266,27 @@ audiobookify mybook.epub --max-depth 2
 | `--tui` | Launch terminal UI |
 | `--paragraphpause MS` | Pause between paragraphs (default: 1200) |
 | `--sentencepause MS` | Pause between sentences (default: 1200) |
+| **v2.1.0 Options** | |
+| `--list-voices` | List available voices |
+| `--preview-voice` | Preview the selected voice |
+| `--rate RATE` | Speech rate (e.g., "+20%", "-10%") |
+| `--volume VOL` | Volume adjustment (e.g., "+50%", "-25%") |
+| `--chapters RANGE` | Select chapters (e.g., "1-5", "1,3,7") |
+| `--resume` | Resume interrupted conversion |
+| `--no-resume` | Start fresh, ignore saved progress |
+| **v2.2.0 Options** | |
+| `--normalize` | Normalize audio volume across chapters |
+| `--normalize-target DBFS` | Target loudness (default: -16.0 dBFS) |
+| `--normalize-method METHOD` | Normalization method: peak or rms |
+| `--trim-silence` | Trim excessive silence from audio |
+| `--silence-thresh DBFS` | Silence threshold (default: -40 dBFS) |
+| `--max-silence MS` | Max silence duration before trimming (default: 2000) |
+| `--pronunciation FILE` | Path to pronunciation dictionary |
+| `--pronunciation-case-sensitive` | Case-sensitive pronunciation matching |
+| `--voice-mapping FILE` | Path to voice mapping JSON file |
+| `--narrator-voice VOICE` | Voice for narration (non-dialogue) |
 
-List available voices: `edge-tts --list-voices`
+List available voices: `audiobookify --list-voices` or `edge-tts --list-voices`
 
 ## Installation
 

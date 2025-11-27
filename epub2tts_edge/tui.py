@@ -35,6 +35,7 @@ from .batch_processor import (
     BookTask, ProcessingStatus
 )
 from .chapter_detector import DetectionMethod, HierarchyStyle
+from .voice_preview import VoicePreview, VoicePreviewConfig, AVAILABLE_VOICES
 
 
 class EPUBFileItem(ListItem):
@@ -160,6 +161,7 @@ class SettingsPanel(Vertical):
         height: 100%;
         border: solid $secondary;
         padding: 1;
+        overflow-y: auto;
     }
 
     SettingsPanel > Label.title {
@@ -179,18 +181,25 @@ class SettingsPanel(Vertical):
     SettingsPanel > .setting-row > Select {
         width: 1fr;
     }
+
+    SettingsPanel > .setting-row > Input {
+        width: 1fr;
+    }
+
+    SettingsPanel > #preview-voice-btn {
+        margin-top: 1;
+        margin-bottom: 1;
+    }
+
+    SettingsPanel > Label.section-title {
+        text-style: bold;
+        margin-top: 1;
+        color: $text-muted;
+    }
     """
 
-    # Common voices
-    VOICES = [
-        ("en-US-AndrewNeural", "Andrew (US)"),
-        ("en-US-JennyNeural", "Jenny (US)"),
-        ("en-US-GuyNeural", "Guy (US)"),
-        ("en-GB-SoniaNeural", "Sonia (UK)"),
-        ("en-GB-RyanNeural", "Ryan (UK)"),
-        ("en-AU-NatashaNeural", "Natasha (AU)"),
-        ("en-AU-WilliamNeural", "William (AU)"),
-    ]
+    # Common voices - use AVAILABLE_VOICES from voice_preview
+    VOICES = [(v["id"], f"{v['name']} ({v['locale'][-2:]})") for v in AVAILABLE_VOICES]
 
     DETECTION_METHODS = [
         ("combined", "Combined (TOC + Headings)"),
@@ -207,9 +216,31 @@ class SettingsPanel(Vertical):
         ("indented", "Indented"),
     ]
 
+    RATE_OPTIONS = [
+        ("", "Normal"),
+        ("+10%", "+10% Faster"),
+        ("+20%", "+20% Faster"),
+        ("+30%", "+30% Faster"),
+        ("+50%", "+50% Faster"),
+        ("-10%", "-10% Slower"),
+        ("-20%", "-20% Slower"),
+        ("-30%", "-30% Slower"),
+    ]
+
+    VOLUME_OPTIONS = [
+        ("", "Normal"),
+        ("+10%", "+10% Louder"),
+        ("+20%", "+20% Louder"),
+        ("+50%", "+50% Louder"),
+        ("-10%", "-10% Quieter"),
+        ("-20%", "-20% Quieter"),
+        ("-50%", "-50% Quieter"),
+    ]
+
     def compose(self) -> ComposeResult:
         yield Label("⚙️ Settings", classes="title")
 
+        # Voice settings
         with Horizontal(classes="setting-row"):
             yield Label("Voice:")
             yield Select(
@@ -218,6 +249,30 @@ class SettingsPanel(Vertical):
                 id="voice-select"
             )
 
+        yield Button("🔊 Preview Voice", id="preview-voice-btn", variant="default")
+
+        # v2.1.0: Rate and Volume controls
+        yield Label("Voice Adjustments", classes="section-title")
+
+        with Horizontal(classes="setting-row"):
+            yield Label("Rate:")
+            yield Select(
+                [(r[1], r[0]) for r in self.RATE_OPTIONS],
+                value="",
+                id="rate-select"
+            )
+
+        with Horizontal(classes="setting-row"):
+            yield Label("Volume:")
+            yield Select(
+                [(v[1], v[0]) for v in self.VOLUME_OPTIONS],
+                value="",
+                id="volume-select"
+            )
+
+        yield Rule()
+
+        # Detection settings
         with Horizontal(classes="setting-row"):
             yield Label("Detection:")
             yield Select(
@@ -234,8 +289,19 @@ class SettingsPanel(Vertical):
                 id="hierarchy-select"
             )
 
+        # v2.1.0: Chapter selection
+        yield Label("Chapter Selection", classes="section-title")
+
+        with Horizontal(classes="setting-row"):
+            yield Label("Chapters:")
+            yield Input(
+                placeholder="e.g., 1-5, 1,3,7",
+                id="chapters-input"
+            )
+
         yield Rule()
 
+        # Processing options
         with Horizontal(classes="setting-row"):
             yield Label("Export Only:")
             yield Switch(id="export-only-switch")
@@ -248,8 +314,44 @@ class SettingsPanel(Vertical):
             yield Label("Recursive:")
             yield Switch(id="recursive-switch")
 
+        yield Rule()
+
+        # v2.2.0: Audio Quality options
+        yield Label("Audio Quality", classes="section-title")
+
+        with Horizontal(classes="setting-row"):
+            yield Label("Normalize:")
+            yield Switch(id="normalize-switch")
+
+        with Horizontal(classes="setting-row"):
+            yield Label("Trim Silence:")
+            yield Switch(id="trim-silence-switch")
+
+        # v2.2.0: Advanced options
+        yield Label("Advanced", classes="section-title")
+
+        with Horizontal(classes="setting-row"):
+            yield Label("Pronuncia.:")
+            yield Input(
+                placeholder="Path to dictionary file",
+                id="pronunciation-input"
+            )
+
+        with Horizontal(classes="setting-row"):
+            yield Label("Voice Map:")
+            yield Input(
+                placeholder="Path to voice mapping",
+                id="voice-mapping-input"
+            )
+
     def get_config(self) -> dict:
         """Get current settings as a dictionary."""
+        rate_val = self.query_one("#rate-select", Select).value
+        volume_val = self.query_one("#volume-select", Select).value
+        chapters_val = self.query_one("#chapters-input", Input).value.strip()
+        pronunciation_val = self.query_one("#pronunciation-input", Input).value.strip()
+        voice_mapping_val = self.query_one("#voice-mapping-input", Input).value.strip()
+
         return {
             "speaker": self.query_one("#voice-select", Select).value,
             "detection_method": self.query_one("#detect-select", Select).value,
@@ -257,6 +359,15 @@ class SettingsPanel(Vertical):
             "export_only": self.query_one("#export-only-switch", Switch).value,
             "skip_existing": self.query_one("#skip-existing-switch", Switch).value,
             "recursive": self.query_one("#recursive-switch", Switch).value,
+            # v2.1.0 options
+            "tts_rate": rate_val if rate_val else None,
+            "tts_volume": volume_val if volume_val else None,
+            "chapters": chapters_val if chapters_val else None,
+            # v2.2.0 options
+            "normalize": self.query_one("#normalize-switch", Switch).value,
+            "trim_silence": self.query_one("#trim-silence-switch", Switch).value,
+            "pronunciation": pronunciation_val if pronunciation_val else None,
+            "voice_mapping": voice_mapping_val if voice_mapping_val else None,
         }
 
 
@@ -474,6 +585,7 @@ class AudiobookifyApp(App):
         Binding("r", "refresh", "Refresh"),
         Binding("a", "select_all", "Select All"),
         Binding("d", "deselect_all", "Deselect All"),
+        Binding("p", "preview_voice", "Preview Voice"),
         Binding("?", "help", "Help"),
     ]
 
@@ -521,6 +633,82 @@ class AudiobookifyApp(App):
             self.action_start()
         elif event.button.id == "stop-btn":
             self.action_stop()
+        elif event.button.id == "preview-voice-btn":
+            self.action_preview_voice()
+
+    def action_preview_voice(self) -> None:
+        """Preview the currently selected voice."""
+        settings_panel = self.query_one(SettingsPanel)
+        config = settings_panel.get_config()
+
+        speaker = config["speaker"]
+        rate = config["tts_rate"]
+        volume = config["tts_volume"]
+
+        self.log_message(f"🔊 Previewing voice: {speaker}")
+        if rate:
+            self.log_message(f"   Rate: {rate}")
+        if volume:
+            self.log_message(f"   Volume: {volume}")
+
+        # Generate preview in background
+        self.preview_voice_async(speaker, rate, volume)
+
+    @work(exclusive=False, thread=True)
+    def preview_voice_async(self, speaker: str, rate: Optional[str], volume: Optional[str]) -> None:
+        """Generate voice preview in background thread."""
+        import tempfile
+        import subprocess
+        import shutil
+
+        try:
+            preview_config = VoicePreviewConfig(speaker=speaker)
+            if rate:
+                preview_config.rate = rate
+            if volume:
+                preview_config.volume = volume
+
+            preview = VoicePreview(preview_config)
+            output_path = preview.generate_preview_temp()
+
+            self.call_from_thread(
+                self.log_message,
+                f"   Preview saved to: {output_path}"
+            )
+
+            # Try to play the audio
+            players = ['ffplay', 'mpv', 'vlc', 'afplay', 'aplay']
+            for player in players:
+                if shutil.which(player):
+                    self.call_from_thread(
+                        self.log_message,
+                        f"   Playing with {player}..."
+                    )
+                    try:
+                        if player == 'ffplay':
+                            subprocess.run(
+                                [player, '-nodisp', '-autoexit', output_path],
+                                capture_output=True, timeout=30
+                            )
+                        else:
+                            subprocess.run(
+                                [player, output_path],
+                                capture_output=True, timeout=30
+                            )
+                        break
+                    except Exception:
+                        continue
+            else:
+                self.call_from_thread(
+                    self.log_message,
+                    "   No audio player found. File saved for manual playback."
+                )
+
+        except Exception as e:
+            self.call_from_thread(
+                self.log_message,
+                f"   ❌ Preview failed: {e}"
+            )
 
     def action_start(self) -> None:
         """Start processing selected files."""
@@ -611,6 +799,10 @@ class AudiobookifyApp(App):
                     hierarchy_style=config_dict["hierarchy_style"],
                     skip_existing=config_dict["skip_existing"],
                     export_only=config_dict["export_only"],
+                    # v2.1.0 options
+                    tts_rate=config_dict.get("tts_rate"),
+                    tts_volume=config_dict.get("tts_volume"),
+                    chapters=config_dict.get("chapters"),
                 )
 
                 processor = BatchProcessor(config)
@@ -695,8 +887,21 @@ class AudiobookifyApp(App):
         self.log_message("  r     - Refresh file list")
         self.log_message("  a     - Select all files")
         self.log_message("  d     - Deselect all files")
+        self.log_message("  p     - Preview selected voice")
         self.log_message("  q     - Quit")
         self.log_message("  ?     - Show this help")
+        self.log_message("─" * 40)
+        self.log_message("")
+        self.log_message("v2.1.0 Features:")
+        self.log_message("  - Rate/Volume: Adjust TTS speed and volume")
+        self.log_message("  - Chapters: Select specific chapters (e.g., 1-5)")
+        self.log_message("  - Voice Preview: Listen before converting")
+        self.log_message("")
+        self.log_message("v2.2.0 Features:")
+        self.log_message("  - Normalize: Consistent volume across chapters")
+        self.log_message("  - Trim Silence: Remove excessive pauses")
+        self.log_message("  - Pronunciation: Custom word pronunciations")
+        self.log_message("  - Voice Mapping: Different voices for characters")
         self.log_message("─" * 40)
 
 

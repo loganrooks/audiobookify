@@ -56,6 +56,26 @@ audiobookify /path/to/books --batch
 audiobookify --tui
 ```
 
+### Docker
+
+```bash
+# Build the image
+docker build -t audiobookify .
+
+# Export EPUB to text
+docker run -v $(pwd)/books:/books audiobookify /books/mybook.epub
+
+# Convert to audiobook
+docker run -v $(pwd)/books:/books audiobookify /books/mybook.txt
+
+# Batch processing
+docker run -v $(pwd)/books:/books audiobookify /books --batch
+
+# Using docker-compose
+docker-compose build
+docker-compose run audiobookify /books/mybook.epub
+```
+
 ## Usage
 
 ### Single File Conversion

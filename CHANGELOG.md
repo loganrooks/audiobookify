@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `MobiParser` class for parsing Kindle files
   - `MobiBook` and `MobiChapter` dataclasses
   - `is_kindle_file()`, `is_mobi_file()`, `is_azw_file()` helper functions
+- **Docker support** - Containerized deployment
+  - `Dockerfile` for building the image
+  - `docker-compose.yml` for easy usage
+  - `.dockerignore` for optimized builds
 
 ### Dependencies
 - Added `mobi` library for Kindle format parsing

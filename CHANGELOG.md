@@ -5,6 +5,23 @@ All notable changes to Audiobookify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2025-11-27
+
+### Added
+- **MOBI/AZW format support** - Parse Amazon Kindle ebook formats
+  - MOBI, AZW, and AZW3 file support
+  - Chapter detection from HTML headings in Kindle books
+  - Metadata extraction (title, author, language, publisher)
+  - Cover image extraction
+  - `--preview` mode for MOBI/AZW files
+- **New module** - `epub2tts_edge/mobi_parser.py`
+  - `MobiParser` class for parsing Kindle files
+  - `MobiBook` and `MobiChapter` dataclasses
+  - `is_kindle_file()`, `is_mobi_file()`, `is_azw_file()` helper functions
+
+### Dependencies
+- Added `mobi` library for Kindle format parsing
+
 ## [2.2.0] - 2025-11-27
 
 ### Added

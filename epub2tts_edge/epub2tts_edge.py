@@ -33,6 +33,10 @@ from .mobi_parser import (
     MobiParseError,
     is_kindle_file,
 )
+from .logger import get_logger, setup_logging
+
+# Module logger
+logger = get_logger(__name__)
 
 
 namespaces = {
@@ -84,7 +88,7 @@ def chap2text_epub(chap):
 
     chapter_paragraphs = soup.find_all("p")
     if len(chapter_paragraphs) == 0:
-        print(f"Could not find any paragraph tags <p> in \"{chapter_title_text}\". Trying with <div>.")
+        logger.warning("Could not find any paragraph tags <p> in '%s'. Trying with <div>.", chapter_title_text)
         chapter_paragraphs = soup.find_all("div")
 
     for p in chapter_paragraphs:
@@ -104,14 +108,14 @@ def get_epub_cover(epub_path):
             cover_meta = t.xpath("//opf:metadata/opf:meta[@name='cover']",
                                         namespaces=namespaces)
             if not cover_meta:
-                print("No cover image found.")
+                logger.debug("No cover image found in EPUB metadata")
                 return None
             cover_id = cover_meta[0].get("content")
 
             cover_item = t.xpath("//opf:manifest/opf:item[@id='" + cover_id + "']",
                                             namespaces=namespaces)
             if not cover_item:
-                print("No cover image found.")
+                logger.debug("No cover image found in EPUB manifest")
                 return None
             cover_href = cover_item[0].get("href")
             cover_path = os.path.join(os.path.dirname(rootfile_path), cover_href)
@@ -119,7 +123,7 @@ def get_epub_cover(epub_path):
                 cover_path = cover_path.replace("\\", "/")
             return z.open(cover_path)
     except FileNotFoundError:
-        print(f"Could not get cover image of {epub_path}")
+        logger.warning("Could not get cover image of %s", epub_path)
 
 def export(book, sourcefile, detection_method="combined", max_depth=None, hierarchy_style="flat"):
     """
@@ -141,18 +145,18 @@ def export(book, sourcefile, detection_method="combined", max_depth=None, hierar
         image_filename = sourcefile.replace(".epub", ".png")
         image_path = os.path.join(image_filename)
         image.save(image_path)
-        print(f"Cover image saved to {image_path}")
+        logger.info("Cover image saved to %s", image_path)
 
     outfile = sourcefile.replace(".epub", ".txt")
     check_for_file(outfile)
-    print(f"Exporting {sourcefile} to {outfile}")
+    logger.info("Exporting %s to %s", sourcefile, outfile)
 
     # Use enhanced chapter detection
     try:
         method_enum = DetectionMethod(detection_method)
         style_enum = HierarchyStyle(hierarchy_style)
     except ValueError:
-        print(f"Invalid detection method or style, using defaults")
+        logger.warning("Invalid detection method or style, using defaults")
         method_enum = DetectionMethod.COMBINED
         style_enum = HierarchyStyle.FLAT
 
@@ -167,14 +171,13 @@ def export(book, sourcefile, detection_method="combined", max_depth=None, hierar
     detector.detect()
 
     # Print detected structure for user review
-    print("\nDetected chapter structure:")
+    logger.info("Detected chapter structure:")
     detector.print_structure()
-    print()
 
     # Export to text file
     detector.export_to_text(outfile, include_metadata=True, level_markers=True)
 
-    print(f"\nExported to {outfile}")
+    logger.info("Exported to %s", outfile)
     return outfile
 
 
@@ -192,7 +195,7 @@ def export_legacy(book, sourcefile):
         image_filename = sourcefile.replace(".epub", ".png")
         image_path = os.path.join(image_filename)
         image.save(image_path)
-        print(f"Cover image saved to {image_path}")
+        logger.info("Cover image saved to %s", image_path)
 
     spine_ids = []
     for spine_tuple in book.spine:
@@ -212,7 +215,7 @@ def export_legacy(book, sourcefile):
         book_contents.append({"title": chapter_title, "paragraphs": chapter_paragraphs})
     outfile = sourcefile.replace(".epub", ".txt")
     check_for_file(outfile)
-    print(f"Exporting {sourcefile} to {outfile}")
+    logger.info("Exporting %s to %s", sourcefile, outfile)
     author = book.get_metadata("DC", "creator")[0][0]
     booktitle = book.get_metadata("DC", "title")[0][0]
 
@@ -247,13 +250,13 @@ def export_mobi(sourcefile):
     Returns:
         Path to the exported text file
     """
-    print(f"Parsing MOBI/AZW file: {sourcefile}")
+    logger.info("Parsing MOBI/AZW file: %s", sourcefile)
 
     try:
         parser = MobiParser(sourcefile)
         book = parser.parse()
     except MobiParseError as e:
-        print(f"Error parsing MOBI file: {e}")
+        logger.error("Error parsing MOBI file: %s", e)
         raise
 
     # Save cover image if available
@@ -264,15 +267,15 @@ def export_mobi(sourcefile):
         try:
             with open(image_filename, 'wb') as f:
                 f.write(book.cover_image)
-            print(f"Cover image saved to {image_filename}")
-        except Exception as e:
-            print(f"Warning: Could not save cover image: {e}")
+            logger.info("Cover image saved to %s", image_filename)
+        except OSError as e:
+            logger.warning("Could not save cover image: %s", e)
 
     # Determine output filename
     ext = os.path.splitext(sourcefile)[1].lower()
     outfile = sourcefile.replace(ext, ".txt")
     check_for_file(outfile)
-    print(f"Exporting {sourcefile} to {outfile}")
+    logger.info("Exporting %s to %s", sourcefile, outfile)
 
     # Write to text file
     with open(outfile, "w", encoding='utf-8') as file:
@@ -298,10 +301,10 @@ def export_mobi(sourcefile):
                 clean = re.sub(r'['']', "'", clean)  # Curly single quotes to standard single quotes
                 file.write(f"{clean}\n\n")
 
-    print(f"\nExported to {outfile}")
-    print(f"  Title: {book.title}")
-    print(f"  Author: {book.author}")
-    print(f"  Chapters: {len(book.chapters)}")
+    logger.info("Exported to %s", outfile)
+    logger.info("  Title: %s", book.title)
+    logger.info("  Author: %s", book.author)
+    logger.info("  Chapters: %d", len(book.chapters))
 
     return outfile
 
@@ -394,10 +397,10 @@ def sort_key(s):
 
 def check_for_file(filename):
     if os.path.isfile(filename):
-        print(f"The file '{filename}' already exists.")
+        logger.warning("The file '%s' already exists.", filename)
         overwrite = input("Do you want to overwrite the file? (y/n): ")
         if overwrite.lower() != 'y':
-            print("Exiting without overwriting the file.")
+            logger.info("Exiting without overwriting the file.")
             sys.exit()
         else:
             os.remove(filename)
@@ -434,16 +437,15 @@ def read_book(book_contents, speaker, paragraphpause, sentencepause, rate=None, 
     for i, chapter in enumerate(book_contents, start=1):
         files = []
         partname = f"part{i}.flac"
-        print(f"\n\n")
 
         if os.path.isfile(partname):
-            print(f"{partname} exists, skipping to next chapter")
+            logger.info("%s exists, skipping to next chapter", partname)
             segments.append(partname)
         else:
             if chapter["title"] in title_names_to_skip_reading:
-                print(f"Chapter name: \"{chapter['title']}\"  -  Note: The word \"{chapter['title']}\" will not be read into audio file.")
+                logger.debug("Chapter name: '%s' - will not be read into audio file", chapter['title'])
             else:
-                print(f"Chapter name: \"{chapter['title']}\"")
+                logger.info("Processing chapter: '%s'", chapter['title'])
 
             if chapter["title"] == "":
                 chapter["title"] = "blank"
@@ -462,7 +464,7 @@ def read_book(book_contents, speaker, paragraphpause, sentencepause, rate=None, 
             ):
                 ptemp = f"pgraphs{pindex}.flac"
                 if os.path.isfile(ptemp):
-                    print(f"{ptemp} exists, skipping to next paragraph")
+                    logger.debug("%s exists, skipping to next paragraph", ptemp)
                 else:
                     # Apply pronunciation processing if available
                     processed_paragraph = paragraph
@@ -548,7 +550,7 @@ def make_m4b(files, sourcefile, speaker, normalizer=None, silence_detector=None)
 
     # Apply silence trimming if enabled
     if silence_detector and silence_detector.config.enabled:
-        print("\nTrimming excessive silence...")
+        logger.info("Trimming excessive silence...")
         silence_temp_dir = tempfile.mkdtemp(prefix="audiobookify_silence_")
         cleanup_dirs.append(silence_temp_dir)
 
@@ -557,7 +559,7 @@ def make_m4b(files, sourcefile, speaker, normalizer=None, silence_detector=None)
 
     # Apply normalization if enabled
     if normalizer and normalizer.config.enabled:
-        print("\nNormalizing audio levels...")
+        logger.info("Normalizing audio levels...")
         norm_temp_dir = tempfile.mkdtemp(prefix="audiobookify_norm_")
         cleanup_dirs.append(norm_temp_dir)
 
@@ -619,13 +621,17 @@ def add_cover(cover_img, filename):
     try:
         if os.path.isfile(cover_img):
             m4b = mp4.MP4(filename)
-            cover_image = open(cover_img, "rb").read()
+            with open(cover_img, "rb") as f:
+                cover_image = f.read()
             m4b["covr"] = [mp4.MP4Cover(cover_image)]
             m4b.save()
+            logger.info("Cover image added to %s", filename)
         else:
-            print(f"Cover image {cover_img} not found")
-    except:
-        print(f"Cover image {cover_img} not found")
+            logger.warning("Cover image not found: %s", cover_img)
+    except (OSError, IOError) as e:
+        logger.warning("Could not add cover image %s: %s", cover_img, e)
+    except Exception as e:
+        logger.error("Unexpected error adding cover image: %s", e)
 
 def run_edgespeak(sentence, speaker, filename, rate=None, volume=None):
     """Generate speech for a sentence using edge-tts.
@@ -652,12 +658,12 @@ def run_edgespeak(sentence, speaker, filename, rate=None, volume=None):
                 raise Exception("Failed to save file from edge_tts")
             break
         except Exception as e:
-            print(f"Attempt {speakattempt+1}/3 failed with '{sentence}' in run_edgespeak with error: {e}")
+            logger.warning("Attempt %d/3 failed with '%s': %s", speakattempt+1, sentence[:50], e)
             # wait a few seconds in case its a transient network issue
             time.sleep(3)
     else:
-        print(f"Giving up on sentence '{sentence}' after 3 attempts in run_edgespeak.")
-        exit()
+        logger.error("Giving up on sentence after 3 attempts: '%s'", sentence[:50])
+        sys.exit(1)
 
 def run_save(communicate, filename):
     asyncio.run(communicate.save(filename))
@@ -956,11 +962,33 @@ Hierarchy Styles:
         help="Voice to use for narration (non-dialogue text)"
     )
 
+    # Logging options
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable verbose (debug) logging"
+    )
+    parser.add_argument(
+        "--quiet", "-q",
+        action="store_true",
+        help="Quiet mode (only warnings and errors)"
+    )
+
     args = parser.parse_args()
+
+    # Set up logging based on verbosity
+    import logging
+    if args.verbose:
+        setup_logging(level=logging.DEBUG)
+    elif args.quiet:
+        setup_logging(level=logging.WARNING)
+    else:
+        setup_logging(level=logging.INFO)
 
     # Handle voice listing
     if args.list_voices:
         from .voice_preview import AVAILABLE_VOICES
+        # Use print for user-facing output that shouldn't go to logs
         print("\nAvailable Voices:")
         print("-" * 60)
         for voice in AVAILABLE_VOICES:
@@ -983,22 +1011,22 @@ Hierarchy Styles:
             config.volume = args.volume
 
         preview = VoicePreview(config)
-        print(f"\nGenerating voice preview for: {args.speaker}")
+        logger.info("Generating voice preview for: %s", args.speaker)
         if args.rate:
-            print(f"  Rate: {args.rate}")
+            logger.info("  Rate: %s", args.rate)
         if args.volume:
-            print(f"  Volume: {args.volume}")
+            logger.info("  Volume: %s", args.volume)
 
         try:
             output_path = preview.generate_preview_temp()
-            print(f"\nPreview saved to: {output_path}")
+            logger.info("Preview saved to: %s", output_path)
 
             # Try to play the audio if a player is available
             players = ['ffplay', 'mpv', 'vlc', 'afplay', 'aplay']
             player_found = False
             for player in players:
                 if shutil.which(player):
-                    print(f"Playing with {player}...")
+                    logger.info("Playing with %s...", player)
                     try:
                         if player == 'ffplay':
                             subprocess.run([player, '-nodisp', '-autoexit', output_path],
@@ -1014,11 +1042,10 @@ Hierarchy Styles:
                         continue
 
             if not player_found:
-                print("\nNo audio player found. You can play the file manually:")
-                print(f"  {output_path}")
+                logger.info("No audio player found. You can play the file manually: %s", output_path)
 
         except Exception as e:
-            print(f"\nError generating preview: {e}")
+            logger.error("Error generating preview: %s", e)
             return
 
         return
@@ -1033,7 +1060,7 @@ Hierarchy Styles:
     if not args.sourcefile:
         parser.error("sourcefile is required (use --list-voices or --preview-voice for voice options without a file)")
 
-    print(args)
+    logger.debug("Arguments: %s", args)
 
     ensure_punkt()
 
@@ -1068,7 +1095,7 @@ Hierarchy Styles:
         # Save report
         if result.completed_count > 0 or result.failed_count > 0:
             report_path = result.save_report()
-            print(f"\nReport saved to: {report_path}")
+            logger.info("Report saved to: %s", report_path)
 
         return
 
@@ -1078,7 +1105,7 @@ Hierarchy Styles:
 
         # Preview mode - just show detected structure
         if args.preview:
-            print("\nPreviewing chapter detection...\n")
+            logger.info("Previewing chapter detection...")
             try:
                 method_enum = DetectionMethod(args.detect)
                 style_enum = HierarchyStyle(args.hierarchy)
@@ -1093,14 +1120,14 @@ Hierarchy Styles:
                 hierarchy_style=style_enum
             )
             detector.detect()
-            print("Detected chapter structure:")
+            logger.info("Detected chapter structure:")
             detector.print_structure()
 
             # Show summary
             chapters = detector.get_flat_chapters()
             total_paragraphs = sum(len(c['paragraphs']) for c in chapters)
-            print(f"\nSummary: {len(chapters)} chapters, {total_paragraphs} paragraphs")
-            exit()
+            logger.info("Summary: %d chapters, %d paragraphs", len(chapters), total_paragraphs)
+            sys.exit(0)
 
         # Use legacy or enhanced export
         if args.legacy:
@@ -1113,31 +1140,31 @@ Hierarchy Styles:
                 max_depth=args.max_depth,
                 hierarchy_style=args.hierarchy
             )
-        exit()
+        sys.exit(0)
 
     # If we get a MOBI/AZW file, export that to txt file, then exit
     if is_kindle_file(args.sourcefile):
         # Preview mode for MOBI/AZW
         if args.preview:
-            print("\nPreviewing MOBI/AZW file structure...\n")
+            logger.info("Previewing MOBI/AZW file structure...")
             try:
                 parser = MobiParser(args.sourcefile)
                 book = parser.parse()
-                print(f"Title: {book.title}")
-                print(f"Author: {book.author}")
-                print(f"\nDetected chapters:")
+                logger.info("Title: %s", book.title)
+                logger.info("Author: %s", book.author)
+                logger.info("Detected chapters:")
                 for i, chapter in enumerate(book.chapters, start=1):
                     para_count = len(chapter.get_paragraphs())
-                    print(f"  {i}. {chapter.title} ({para_count} paragraphs)")
+                    logger.info("  %d. %s (%d paragraphs)", i, chapter.title, para_count)
                 total_paragraphs = sum(len(c.get_paragraphs()) for c in book.chapters)
-                print(f"\nSummary: {len(book.chapters)} chapters, {total_paragraphs} paragraphs")
+                logger.info("Summary: %d chapters, %d paragraphs", len(book.chapters), total_paragraphs)
             except MobiParseError as e:
-                print(f"Error: {e}")
-            exit()
+                logger.error("Error: %s", e)
+            sys.exit(0)
 
         # Export MOBI/AZW to text
         export_mobi(args.sourcefile)
-        exit()
+        sys.exit(0)
 
     # Process text file to audiobook
     book_contents, book_title, book_author, chapter_titles = get_book(args.sourcefile)
@@ -1146,7 +1173,7 @@ Hierarchy Styles:
     if args.chapters:
         from .chapter_selector import ChapterSelector
         selector = ChapterSelector(args.chapters)
-        print(f"\n{selector.get_summary()}")
+        logger.info(selector.get_summary())
 
         # Filter book_contents and chapter_titles together
         selected_indices = selector.get_selected_indices(len(book_contents))
@@ -1154,9 +1181,9 @@ Hierarchy Styles:
         chapter_titles = [chapter_titles[i] for i in selected_indices]
 
         if not book_contents:
-            print("Error: No chapters match the selection")
+            logger.error("No chapters match the selection")
             return
-        print(f"Processing {len(book_contents)} selected chapters\n")
+        logger.info("Processing %d selected chapters", len(book_contents))
 
     # State management for pause/resume
     from .pause_resume import StateManager, ConversionState
@@ -1172,9 +1199,9 @@ Hierarchy Styles:
                 existing_parts = [f for f in [f"part{i}.flac" for i in range(1, len(book_contents)+1)]
                                 if os.path.isfile(f)]
                 if existing_parts:
-                    print(f"\nResuming conversion: {len(existing_parts)}/{len(book_contents)} chapters completed")
+                    logger.info("Resuming conversion: %d/%d chapters completed", len(existing_parts), len(book_contents))
                     if not args.resume:
-                        print("  (use --no-resume to start fresh)")
+                        logger.info("  (use --no-resume to start fresh)")
 
     # Save state before starting
     state = ConversionState(
@@ -1197,7 +1224,7 @@ Hierarchy Styles:
             method=args.normalize_method,
             enabled=True
         ))
-        print(f"\nAudio normalization enabled: {args.normalize_method} method, target {args.normalize_target} dBFS")
+        logger.info("Audio normalization enabled: %s method, target %.1f dBFS", args.normalize_method, args.normalize_target)
 
     # Set up silence detector if requested
     silence_detector = None
@@ -1208,7 +1235,7 @@ Hierarchy Styles:
             max_silence_len=args.max_silence,
             enabled=True
         ))
-        print(f"\nSilence trimming enabled: threshold {args.silence_thresh} dBFS, max {args.max_silence}ms")
+        logger.info("Silence trimming enabled: threshold %d dBFS, max %dms", args.silence_thresh, args.max_silence)
 
     # Set up pronunciation processor if dictionary provided
     pronunciation_processor = None
@@ -1219,12 +1246,12 @@ Hierarchy Styles:
         ))
         try:
             pronunciation_processor.load_dictionary(args.pronunciation)
-            print(f"\nPronunciation dictionary loaded: {pronunciation_processor.entry_count} entries")
+            logger.info("Pronunciation dictionary loaded: %d entries", pronunciation_processor.entry_count)
         except FileNotFoundError:
-            print(f"\nWarning: Pronunciation dictionary not found: {args.pronunciation}")
+            logger.warning("Pronunciation dictionary not found: %s", args.pronunciation)
             pronunciation_processor = None
         except Exception as e:
-            print(f"\nWarning: Error loading pronunciation dictionary: {e}")
+            logger.warning("Error loading pronunciation dictionary: %s", e)
             pronunciation_processor = None
 
     # Set up multi-voice processor if voice mapping provided
@@ -1239,15 +1266,15 @@ Hierarchy Styles:
         if args.voice_mapping:
             try:
                 multi_voice_processor.load_mapping(args.voice_mapping)
-                print(f"\nMulti-voice enabled: {multi_voice_processor.character_count} character voices loaded")
+                logger.info("Multi-voice enabled: %d character voices loaded", multi_voice_processor.character_count)
             except FileNotFoundError:
-                print(f"\nWarning: Voice mapping file not found: {args.voice_mapping}")
+                logger.warning("Voice mapping file not found: %s", args.voice_mapping)
                 multi_voice_processor = None
             except Exception as e:
-                print(f"\nWarning: Error loading voice mapping: {e}")
+                logger.warning("Error loading voice mapping: %s", e)
                 multi_voice_processor = None
         elif args.narrator_voice:
-            print(f"\nMulti-voice enabled: narrator voice set to {args.narrator_voice}")
+            logger.info("Multi-voice enabled: narrator voice set to %s", args.narrator_voice)
 
     try:
         files = read_book(book_contents, args.speaker, args.paragraphpause, args.sentencepause,
@@ -1267,7 +1294,7 @@ Hierarchy Styles:
                 potential_cover = base_name + ext
                 if os.path.isfile(potential_cover):
                     cover_path = potential_cover
-                    print(f"Found cover image: {cover_path}")
+                    logger.info("Found cover image: %s", cover_path)
                     break
 
         if cover_path:
@@ -1276,15 +1303,15 @@ Hierarchy Styles:
         # Clear state on successful completion
         state_manager.clear_state()
 
-        print(f"\nAudiobook created: {m4bfilename}")
+        logger.info("Audiobook created: %s", m4bfilename)
 
     except KeyboardInterrupt:
-        print("\n\nConversion paused. Run with --resume to continue.")
+        logger.info("Conversion paused. Run with --resume to continue.")
         # State is already saved, intermediate files preserved
         return
     except Exception as e:
-        print(f"\nError during conversion: {e}")
-        print("Intermediate files preserved. Run with --resume to continue.")
+        logger.error("Error during conversion: %s", e)
+        logger.info("Intermediate files preserved. Run with --resume to continue.")
         raise
 
 

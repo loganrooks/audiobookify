@@ -90,6 +90,15 @@ from .mobi_parser import (
     is_kindle_file,
 )
 
+# Logging utilities
+from .logger import (
+    get_logger,
+    setup_logging,
+    set_level,
+    enable_debug,
+    enable_quiet,
+)
+
 __all__ = [
     # Main entry point
     'main',
@@ -153,4 +162,10 @@ __all__ = [
     'is_mobi_file',
     'is_azw_file',
     'is_kindle_file',
+    # Logging
+    'get_logger',
+    'setup_logging',
+    'set_level',
+    'enable_debug',
+    'enable_quiet',
 ]

@@ -79,6 +79,17 @@ from .multi_voice import (
     DialogueSegment,
 )
 
+# MOBI/AZW parser
+from .mobi_parser import (
+    MobiParser,
+    MobiBook,
+    MobiChapter,
+    MobiParseError,
+    is_mobi_file,
+    is_azw_file,
+    is_kindle_file,
+)
+
 __all__ = [
     # Main entry point
     'main',
@@ -134,4 +145,12 @@ __all__ = [
     'MultiVoiceProcessor',
     'VoiceMapping',
     'DialogueSegment',
+    # MOBI/AZW parser
+    'MobiParser',
+    'MobiBook',
+    'MobiChapter',
+    'MobiParseError',
+    'is_mobi_file',
+    'is_azw_file',
+    'is_kindle_file',
 ]

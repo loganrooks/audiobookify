@@ -1,0 +1,28 @@
+# Docker Compose for Audiobookify
+#
+# Usage:
+#   # Build the image
+#   docker-compose build
+#
+#   # Run with default help
+#   docker-compose run audiobookify
+#
+#   # Convert a book
+#   docker-compose run audiobookify /books/mybook.epub
+#   docker-compose run audiobookify /books/mybook.txt
+#
+#   # Batch processing
+#   docker-compose run audiobookify /books --batch
+
+version: '3.8'
+
+services:
+  audiobookify:
+    build: .
+    image: audiobookify:latest
+    volumes:
+      # Mount your books directory here
+      - ./books:/books
+    working_dir: /books
+    # Override entrypoint for interactive shell:
+    # docker-compose run --entrypoint bash audiobookify

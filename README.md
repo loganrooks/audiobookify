@@ -1,18 +1,24 @@
 # Audiobookify
 
-> Convert EPUB files to high-quality M4B audiobooks using Microsoft Edge's cloud-based text-to-speech.
+> Convert EPUB and MOBI/AZW files to high-quality M4B audiobooks using Microsoft Edge's cloud-based text-to-speech.
 
 Forked from [epub2tts-edge](https://github.com/aedocw/epub2tts-edge) with enhanced chapter detection, batch processing, and a terminal UI.
 
 ## Features
 
+- **Multi-Format Support** - EPUB, MOBI, AZW, and AZW3 files
 - **Enhanced Chapter Detection** - Parses Table of Contents (EPUB2/EPUB3) and HTML headings
-- **Batch Processing** - Convert entire folders of EPUBs at once
+- **Batch Processing** - Convert entire folders of ebooks at once
 - **Terminal UI** - Interactive interface for easy conversion
 - **Smart Resume** - Picks up where it left off if interrupted
 - **Chapter Markers** - Proper M4B chapter navigation
 - **Cover Art** - Automatically embeds cover images
 - **Fast** - Parallel sentence processing for quick conversion
+
+### New in v2.3.0
+- **MOBI/AZW Support** - Parse Kindle format ebooks (MOBI, AZW, AZW3)
+- **Docker Support** - Containerized deployment with docker-compose
+- **Calibre Plugin** - Convert books directly from Calibre library
 
 ### New in v2.2.0
 - **Audio Normalization** - Consistent volume across chapters (`--normalize`)
@@ -26,7 +32,7 @@ Forked from [epub2tts-edge](https://github.com/aedocw/epub2tts-edge) with enhanc
 - **Chapter Selection** - Convert only specific chapters (`--chapters "1-5"`)
 - **Pause/Resume** - Continue interrupted conversions (`--resume`)
 
-> **Note:** EPUB files must be DRM-free
+> **Note:** EPUB and MOBI/AZW files must be DRM-free
 
 ## Quick Start
 
@@ -38,6 +44,10 @@ pip install git+https://github.com/loganrooks/audiobookify.git
 audiobookify mybook.epub              # Export to text
 audiobookify mybook.txt               # Convert to audiobook
 
+# Convert a MOBI/AZW file
+audiobookify mybook.mobi              # Export to text
+audiobookify mybook.azw3              # Export to text
+
 # Or use the short alias
 abfy mybook.epub
 
@@ -47,6 +57,43 @@ audiobookify /path/to/books --batch
 # Launch interactive TUI
 audiobookify --tui
 ```
+
+### Docker
+
+```bash
+# Build the image
+docker build -t audiobookify .
+
+# Export EPUB to text
+docker run -v $(pwd)/books:/books audiobookify /books/mybook.epub
+
+# Convert to audiobook
+docker run -v $(pwd)/books:/books audiobookify /books/mybook.txt
+
+# Batch processing
+docker run -v $(pwd)/books:/books audiobookify /books --batch
+
+# Using docker-compose
+docker-compose build
+docker-compose run audiobookify /books/mybook.epub
+```
+
+### Calibre Plugin
+
+Convert books directly from your Calibre library:
+
+```bash
+# Build the plugin
+cd calibre_plugin
+./build_plugin.sh
+
+# Install in Calibre:
+# 1. Preferences → Plugins → Load plugin from file
+# 2. Select audiobookify-calibre.zip
+# 3. Restart Calibre
+```
+
+See [calibre_plugin/README.md](calibre_plugin/README.md) for detailed instructions.
 
 ## Usage
 

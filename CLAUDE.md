@@ -4,7 +4,7 @@ This file provides context for Claude Code when working on this project.
 
 ## Project Overview
 
-**Audiobookify** is a Python tool that converts EPUB files to M4B audiobooks using Microsoft Edge's cloud-based text-to-speech. It was forked from [epub2tts-edge](https://github.com/aedocw/epub2tts-edge) and enhanced with better chapter detection, batch processing, and a terminal UI.
+**Audiobookify** is a Python tool that converts EPUB and MOBI/AZW files to M4B audiobooks using Microsoft Edge's cloud-based text-to-speech. It was forked from [epub2tts-edge](https://github.com/aedocw/epub2tts-edge) and enhanced with better chapter detection, batch processing, and a terminal UI.
 
 ## Architecture
 
@@ -21,7 +21,8 @@ epub2tts_edge/
 ├── audio_normalization.py  # Audio level normalization (v2.2.0)
 ├── silence_detection.py    # Silence trimming (v2.2.0)
 ├── pronunciation.py        # Custom pronunciation dictionary (v2.2.0)
-└── multi_voice.py          # Multiple voice support (v2.2.0)
+├── multi_voice.py          # Multiple voice support (v2.2.0)
+└── mobi_parser.py          # MOBI/AZW file parsing (v2.3.0)
 
 tests/
 ├── test_chapter_detector.py
@@ -33,7 +34,8 @@ tests/
 ├── test_audio_normalization.py  # 17 tests (v2.2.0)
 ├── test_silence_detection.py    # 18 tests (v2.2.0)
 ├── test_pronunciation.py        # 23 tests (v2.2.0)
-└── test_multi_voice.py          # 28 tests (v2.2.0)
+├── test_multi_voice.py          # 28 tests (v2.2.0)
+└── test_mobi_parser.py          # 30 tests (v2.3.0)
 ```
 
 ## Key Components
@@ -118,6 +120,15 @@ Built with [Textual](https://textual.textualize.io/):
 - **DialogueSegment**: Parsed text with speaker attribution
 - Automatic dialogue detection and speaker attribution
 - Support for narrator voice separate from dialogue
+
+### 12. MOBI/AZW Parser (`mobi_parser.py`) - v2.3.0
+- **MobiParser**: Parses MOBI, AZW, and AZW3 Kindle files
+- **MobiBook**: Represents a parsed Kindle book with metadata
+- **MobiChapter**: Represents a chapter with title and content
+- **MobiParseError**: Exception for parsing errors
+- Helper functions: `is_kindle_file()`, `is_mobi_file()`, `is_azw_file()`
+- Extracts: chapters, metadata, cover images
+- Chapter detection from HTML headings
 
 ## CLI Commands
 

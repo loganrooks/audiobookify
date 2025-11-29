@@ -28,6 +28,11 @@ from .chapter_detector import (
     HierarchyStyle,
     detect_chapters
 )
+from .mobi_parser import (
+    MobiParser,
+    MobiParseError,
+    is_kindle_file,
+)
 
 
 namespaces = {
@@ -230,6 +235,76 @@ def export_legacy(book, sourcefile):
                     clean = re.sub(r'[""]', '"', clean)  # Curly double quotes to standard double quotes
                     clean = re.sub(r'['']', "'", clean)  # Curly single quotes to standard single quotes
                     file.write(f"{clean}\n\n")
+
+
+def export_mobi(sourcefile):
+    """
+    Export MOBI/AZW file to text file.
+
+    Args:
+        sourcefile: Path to the source MOBI/AZW file
+
+    Returns:
+        Path to the exported text file
+    """
+    print(f"Parsing MOBI/AZW file: {sourcefile}")
+
+    try:
+        parser = MobiParser(sourcefile)
+        book = parser.parse()
+    except MobiParseError as e:
+        print(f"Error parsing MOBI file: {e}")
+        raise
+
+    # Save cover image if available
+    if book.cover_image:
+        # Determine output extension
+        ext = os.path.splitext(sourcefile)[1].lower()
+        image_filename = sourcefile.replace(ext, ".png")
+        try:
+            with open(image_filename, 'wb') as f:
+                f.write(book.cover_image)
+            print(f"Cover image saved to {image_filename}")
+        except Exception as e:
+            print(f"Warning: Could not save cover image: {e}")
+
+    # Determine output filename
+    ext = os.path.splitext(sourcefile)[1].lower()
+    outfile = sourcefile.replace(ext, ".txt")
+    check_for_file(outfile)
+    print(f"Exporting {sourcefile} to {outfile}")
+
+    # Write to text file
+    with open(outfile, "w", encoding='utf-8') as file:
+        file.write(f"Title: {book.title}\n")
+        file.write(f"Author: {book.author}\n\n")
+
+        file.write(f"# Title\n")
+        file.write(f"{book.title}, by {book.author}\n\n")
+
+        for i, chapter in enumerate(book.chapters, start=1):
+            paragraphs = chapter.get_paragraphs()
+            if not paragraphs:
+                continue
+
+            if chapter.title:
+                file.write(f"# {chapter.title}\n\n")
+            else:
+                file.write(f"# Part {i}\n\n")
+
+            for paragraph in paragraphs:
+                clean = re.sub(r'[\s\n]+', ' ', paragraph)
+                clean = re.sub(r'[""]', '"', clean)  # Curly double quotes to standard double quotes
+                clean = re.sub(r'['']', "'", clean)  # Curly single quotes to standard single quotes
+                file.write(f"{clean}\n\n")
+
+    print(f"\nExported to {outfile}")
+    print(f"  Title: {book.title}")
+    print(f"  Author: {book.author}")
+    print(f"  Chapters: {len(book.chapters)}")
+
+    return outfile
+
 
 def get_book(sourcefile, flatten_chapters=True):
     """
@@ -1038,6 +1113,30 @@ Hierarchy Styles:
                 max_depth=args.max_depth,
                 hierarchy_style=args.hierarchy
             )
+        exit()
+
+    # If we get a MOBI/AZW file, export that to txt file, then exit
+    if is_kindle_file(args.sourcefile):
+        # Preview mode for MOBI/AZW
+        if args.preview:
+            print("\nPreviewing MOBI/AZW file structure...\n")
+            try:
+                parser = MobiParser(args.sourcefile)
+                book = parser.parse()
+                print(f"Title: {book.title}")
+                print(f"Author: {book.author}")
+                print(f"\nDetected chapters:")
+                for i, chapter in enumerate(book.chapters, start=1):
+                    para_count = len(chapter.get_paragraphs())
+                    print(f"  {i}. {chapter.title} ({para_count} paragraphs)")
+                total_paragraphs = sum(len(c.get_paragraphs()) for c in book.chapters)
+                print(f"\nSummary: {len(book.chapters)} chapters, {total_paragraphs} paragraphs")
+            except MobiParseError as e:
+                print(f"Error: {e}")
+            exit()
+
+        # Export MOBI/AZW to text
+        export_mobi(args.sourcefile)
         exit()
 
     # Process text file to audiobook

@@ -1,6 +1,6 @@
 # Audiobookify Roadmap
 
-## Current Version: 2.2.0
+## Current Version: 2.3.0
 
 ### Completed Features
 
@@ -46,15 +46,22 @@
 - [x] **Multiple voice support** - Different voices for different characters (`--voice-mapping`, `--narrator-voice`)
 - [x] **TUI integration** - All v2.2.0 features available in Terminal UI
 
+#### Phase 6: Format Support & Platform Integration (v2.3.0)
+- [x] **MOBI/AZW support** - Amazon Kindle formats (MOBI, AZW, AZW3)
+- [x] **Chapter detection for MOBI** - Extract chapters from Kindle books
+- [x] **Cover extraction** - Extract cover images from MOBI files
+- [x] **Metadata parsing** - Extract title, author from MOBI metadata
+- [x] **Docker support** - Dockerfile and docker-compose.yml for containerized usage
+- [x] **Calibre plugin** - Integration with Calibre library management
+
 ---
 
 ## Planned Features
 
-### v2.3.0 - Format Support & Advanced Features
+### v2.4.0 - Additional Formats & Advanced Features
 
 #### Format Support
 - [ ] **PDF support** - Extract text from PDF files
-- [ ] **MOBI/AZW support** - Amazon Kindle formats
 - [ ] **HTML/Markdown** - Direct conversion from web content
 - [ ] **Output formats** - MP3, OPUS, AAC options (not just M4B)
 - [ ] **Chapter images** - Embed chapter artwork if available
@@ -69,10 +76,8 @@
 ### v3.0.0 - Platform Expansion
 
 - [ ] **Web UI** - Browser-based interface (optional)
-- [ ] **Docker image** - Easy deployment
 - [ ] **REST API** - Programmatic access
 - [ ] **Mobile companion app** - Control from phone
-- [ ] **Calibre plugin** - Integration with Calibre library
 
 ---
 
@@ -109,7 +114,8 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to contribute.
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| 2.2.0 | 2024 | Audio normalization, silence trimming, custom pronunciation, multi-voice |
-| 2.1.0 | 2024 | Voice preview, rate/volume control, chapter selection, pause/resume |
-| 2.0.0 | 2024 | Enhanced chapter detection, batch processing, TUI |
-| 1.2.7 | 2024 | Original epub2tts-edge features |
+| 2.3.0 | 2025-11 | MOBI/AZW format support, Docker image, Calibre plugin |
+| 2.2.0 | 2025-11 | Audio normalization, silence trimming, custom pronunciation, multi-voice |
+| 2.1.0 | 2025-11 | Voice preview, rate/volume control, chapter selection, pause/resume |
+| 2.0.0 | 2025-11 | Enhanced chapter detection, batch processing, TUI |
+| 1.2.7 | 2024 | Original epub2tts-edge features (forked) |

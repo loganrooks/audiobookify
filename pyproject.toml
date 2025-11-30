@@ -7,7 +7,7 @@ name = "audiobookify"
 version = "2.3.0"
 description = "Convert EPUB and MOBI/AZW files to audiobooks with enhanced chapter detection"
 readme = "README.md"
-license = {text = "GPL-3.0"}
+license = "GPL-3.0"
 authors = [
     {name = "Christopher Aedo", email = "c@aedo.dev"}
 ]
@@ -19,7 +19,6 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",

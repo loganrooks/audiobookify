@@ -8,16 +8,16 @@ This module provides intelligent chapter detection from EPUB files by:
 4. Providing flexible output formats for audiobook generation
 """
 
+import os
 import re
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Tuple, Any
 from enum import Enum
-from bs4 import BeautifulSoup, Tag
-from lxml import etree
+from typing import Any, Optional
+
 import ebooklib
+from bs4 import BeautifulSoup, Tag
 from ebooklib import epub
-import zipfile
-import os
+from lxml import etree
 
 
 class DetectionMethod(Enum):
@@ -42,11 +42,11 @@ class ChapterNode:
     """Represents a chapter or section in the book hierarchy."""
     title: str
     level: int = 0  # 0 = root/book, 1 = part, 2 = chapter, 3 = section, etc.
-    href: Optional[str] = None  # Reference to content file
-    anchor: Optional[str] = None  # Fragment identifier within file
-    content: Optional[str] = None  # Extracted text content
-    paragraphs: List[str] = field(default_factory=list)
-    children: List['ChapterNode'] = field(default_factory=list)
+    href: str | None = None  # Reference to content file
+    anchor: str | None = None  # Fragment identifier within file
+    content: str | None = None  # Extracted text content
+    paragraphs: list[str] = field(default_factory=list)
+    children: list['ChapterNode'] = field(default_factory=list)
     parent: Optional['ChapterNode'] = None
     play_order: int = 0  # Reading order
 
@@ -62,7 +62,7 @@ class ChapterNode:
         self.children.append(child)
         return child
 
-    def get_path(self) -> List['ChapterNode']:
+    def get_path(self) -> list['ChapterNode']:
         """Get the path from root to this node."""
         path = []
         node = self
@@ -77,7 +77,7 @@ class ChapterNode:
             return 0
         return 1 + max(child.get_depth() for child in self.children)
 
-    def flatten(self, max_depth: Optional[int] = None) -> List['ChapterNode']:
+    def flatten(self, max_depth: int | None = None) -> list['ChapterNode']:
         """Flatten the hierarchy to a list, respecting max_depth."""
         result = []
         if self.level > 0:  # Skip root node
@@ -99,7 +99,7 @@ class ChapterNode:
         if style == HierarchyStyle.NUMBERED:
             # Generate numbered format like 1.2.3
             numbers = []
-            for i, node in enumerate(path[1:], 1):  # Skip root
+            for _, node in enumerate(path[1:], 1):  # Skip root
                 if node.parent:
                     idx = node.parent.children.index(node) + 1
                     numbers.append(str(idx))
@@ -120,7 +120,7 @@ class ChapterNode:
 
         return self.title
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "title": self.title,
@@ -149,7 +149,7 @@ class TOCParser:
     def __init__(self, epub_path: str):
         self.epub_path = epub_path
         self.book = epub.read_epub(epub_path)
-        self._item_map: Dict[str, Any] = {}
+        self._item_map: dict[str, Any] = {}
         self._build_item_map()
 
     def _build_item_map(self):
@@ -181,14 +181,14 @@ class TOCParser:
 
         return root
 
-    def _find_nav_document(self) -> Optional[Any]:
+    def _find_nav_document(self) -> Any | None:
         """Find the EPUB3 navigation document."""
         for item in self.book.get_items():
             if item.get_type() == ebooklib.ITEM_NAVIGATION:
                 return item
         return None
 
-    def _find_ncx(self) -> Optional[Any]:
+    def _find_ncx(self) -> Any | None:
         """Find the EPUB2 NCX file."""
         for item in self.book.get_items():
             if item.get_type() == ebooklib.ITEM_DOCUMENT:
@@ -201,7 +201,7 @@ class TOCParser:
             ncx_id = self.book.spine[0] if self.book.spine else None
             if ncx_id:
                 return self.book.get_item_with_id(ncx_id)
-        except:
+        except (IndexError, KeyError, AttributeError):
             pass
 
         return None
@@ -223,7 +223,7 @@ class TOCParser:
             if ol:
                 self._parse_nav_ol(ol, root, play_order=[0])
 
-    def _parse_nav_ol(self, ol: Tag, parent: ChapterNode, play_order: List[int]):
+    def _parse_nav_ol(self, ol: Tag, parent: ChapterNode, play_order: list[int]):
         """Recursively parse NAV ordered list."""
         for li in ol.find_all('li', recursive=False):
             a = li.find('a')
@@ -253,7 +253,7 @@ class TOCParser:
         content = ncx_item.get_content()
         try:
             tree = etree.fromstring(content)
-        except:
+        except etree.XMLSyntaxError:
             return
 
         # Find navMap
@@ -312,14 +312,14 @@ class TOCParser:
             # Recursively parse nested navPoints
             self._parse_ncx_navmap(nav_point, chapter)
 
-    def _split_href(self, href: str) -> Tuple[str, Optional[str]]:
+    def _split_href(self, href: str) -> tuple[str, str | None]:
         """Split href into file path and anchor."""
         if '#' in href:
             parts = href.split('#', 1)
             return parts[0], parts[1]
         return href, None
 
-    def get_item_for_href(self, href: str) -> Optional[Any]:
+    def get_item_for_href(self, href: str) -> Any | None:
         """Get the EPUB item for a given href."""
         if not href:
             return None
@@ -370,7 +370,7 @@ class HeadingDetector:
             re.compile(p, re.IGNORECASE) for p in self.CHAPTER_PATTERNS
         ]
 
-    def extract_headings(self, html_content: bytes | str) -> List[Tuple[int, str, Optional[str]]]:
+    def extract_headings(self, html_content: bytes | str) -> list[tuple[int, str, str | None]]:
         """
         Extract all headings from HTML content.
 
@@ -393,7 +393,7 @@ class HeadingDetector:
         # This is already in document order from BeautifulSoup
         return headings
 
-    def extract_sections(self, html_content: bytes | str) -> List[Dict[str, Any]]:
+    def extract_sections(self, html_content: bytes | str) -> list[dict[str, Any]]:
         """
         Extract sections with their headings and content.
 
@@ -406,7 +406,7 @@ class HeadingDetector:
         # Find all heading elements
         all_headings = soup.find_all(self.HEADING_TAGS)
 
-        for i, heading in enumerate(all_headings):
+        for _i, heading in enumerate(all_headings):
             level = int(heading.name[1])
             title = heading.get_text(strip=True)
             element_id = heading.get('id')
@@ -447,7 +447,7 @@ class HeadingDetector:
         text = text.strip().lower()
         return any(p.match(text) for p in self._compiled_patterns)
 
-    def detect_heading_in_text(self, text: str) -> Optional[int]:
+    def detect_heading_in_text(self, text: str) -> int | None:
         """
         Detect if plain text looks like a heading and estimate its level.
 
@@ -492,7 +492,7 @@ class ChapterDetector:
         self,
         epub_path: str,
         method: DetectionMethod = DetectionMethod.COMBINED,
-        max_depth: Optional[int] = None,
+        max_depth: int | None = None,
         hierarchy_style: HierarchyStyle = HierarchyStyle.FLAT
     ):
         self.epub_path = epub_path
@@ -504,7 +504,7 @@ class ChapterDetector:
         self.toc_parser = TOCParser(epub_path)
         self.heading_detector = HeadingDetector()
 
-        self._chapter_tree: Optional[ChapterNode] = None
+        self._chapter_tree: ChapterNode | None = None
 
     def detect(self) -> ChapterNode:
         """
@@ -659,7 +659,7 @@ class ChapterDetector:
     def _merge_headings_into_toc(self, toc_tree: ChapterNode, headings_tree: ChapterNode):
         """Merge heading information into TOC structure."""
         # Build href -> headings map
-        href_headings: Dict[str, List[ChapterNode]] = {}
+        href_headings: dict[str, list[ChapterNode]] = {}
         for chapter in headings_tree.flatten():
             href = chapter.href
             if href:
@@ -689,7 +689,7 @@ class ChapterDetector:
     def _populate_content(self, root: ChapterNode):
         """Populate paragraph content for all chapters."""
         # Build href -> content map
-        content_map: Dict[str, bytes] = {}
+        content_map: dict[str, bytes] = {}
         for item in self.book.get_items():
             if item.get_type() == ebooklib.ITEM_DOCUMENT:
                 content_map[item.get_name()] = item.get_content()
@@ -753,7 +753,7 @@ class ChapterDetector:
 
             chapter.paragraphs = paragraphs
 
-    def get_flat_chapters(self) -> List[Dict[str, Any]]:
+    def get_flat_chapters(self) -> list[dict[str, Any]]:
         """
         Get a flat list of chapters suitable for audiobook generation.
 
@@ -811,14 +811,14 @@ class ChapterDetector:
             title_meta = self.book.get_metadata('DC', 'title')
             if title_meta:
                 title = title_meta[0][0]
-        except:
+        except (IndexError, KeyError, TypeError):
             pass
 
         try:
             author_meta = self.book.get_metadata('DC', 'creator')
             if author_meta:
                 author = author_meta[0][0]
-        except:
+        except (IndexError, KeyError, TypeError):
             pass
 
         with open(output_path, 'w', encoding='utf-8') as f:
@@ -843,13 +843,13 @@ class ChapterDetector:
                 for paragraph in chapter.paragraphs:
                     # Clean up text
                     clean = re.sub(r'[\s\n]+', ' ', paragraph)
-                    clean = re.sub(r'[""]', '"', clean)
-                    clean = re.sub(r'['']', "'", clean)
+                    clean = re.sub(r'[\u201c\u201d]', '"', clean)
+                    clean = re.sub(r'[\u2018\u2019]', "'", clean)
                     f.write(f"{clean}\n\n")
 
         return output_path
 
-    def print_structure(self, node: Optional[ChapterNode] = None, indent: int = 0):
+    def print_structure(self, node: ChapterNode | None = None, indent: int = 0):
         """Print the chapter structure for debugging."""
         if node is None:
             node = self._chapter_tree or self.detect()
@@ -866,9 +866,9 @@ class ChapterDetector:
 def detect_chapters(
     epub_path: str,
     method: str = "combined",
-    max_depth: Optional[int] = None,
+    max_depth: int | None = None,
     hierarchy_style: str = "flat"
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Convenience function to detect chapters from an EPUB file.
 

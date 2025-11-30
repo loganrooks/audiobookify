@@ -1,10 +1,8 @@
 """Tests for multiple voice support functionality."""
 
-import os
 import json
+import os
 import tempfile
-import pytest
-from unittest.mock import Mock, patch, MagicMock
 
 
 class TestVoiceMapping:
@@ -67,7 +65,7 @@ class TestMultiVoiceProcessor:
 
     def test_init_default(self):
         """Test initializer with defaults."""
-        from epub2tts_edge.multi_voice import MultiVoiceProcessor, VoiceMapping
+        from epub2tts_edge.multi_voice import MultiVoiceProcessor
 
         processor = MultiVoiceProcessor()
         assert processor.mapping.default_voice == "en-US-AndrewNeural"
@@ -122,7 +120,7 @@ class TestMultiVoiceProcessor:
 
     def test_get_voice_for_segment_dialogue(self):
         """Test getting voice for dialogue segment."""
-        from epub2tts_edge.multi_voice import MultiVoiceProcessor, VoiceMapping, DialogueSegment
+        from epub2tts_edge.multi_voice import DialogueSegment, MultiVoiceProcessor, VoiceMapping
 
         mapping = VoiceMapping(
             default_voice="en-US-AndrewNeural",
@@ -136,7 +134,7 @@ class TestMultiVoiceProcessor:
 
     def test_get_voice_for_segment_unknown_character(self):
         """Test getting voice for unknown character uses default."""
-        from epub2tts_edge.multi_voice import MultiVoiceProcessor, VoiceMapping, DialogueSegment
+        from epub2tts_edge.multi_voice import DialogueSegment, MultiVoiceProcessor, VoiceMapping
 
         mapping = VoiceMapping(
             default_voice="en-US-AndrewNeural",
@@ -150,7 +148,7 @@ class TestMultiVoiceProcessor:
 
     def test_get_voice_for_narration(self):
         """Test getting voice for narration."""
-        from epub2tts_edge.multi_voice import MultiVoiceProcessor, VoiceMapping, DialogueSegment
+        from epub2tts_edge.multi_voice import DialogueSegment, MultiVoiceProcessor, VoiceMapping
 
         mapping = VoiceMapping(
             default_voice="en-US-AndrewNeural",
@@ -164,7 +162,7 @@ class TestMultiVoiceProcessor:
 
     def test_get_voice_narration_no_narrator_voice(self):
         """Test narration uses default when no narrator voice set."""
-        from epub2tts_edge.multi_voice import MultiVoiceProcessor, VoiceMapping, DialogueSegment
+        from epub2tts_edge.multi_voice import DialogueSegment, MultiVoiceProcessor, VoiceMapping
 
         mapping = VoiceMapping(default_voice="en-US-AndrewNeural")
         processor = MultiVoiceProcessor(mapping)
@@ -239,7 +237,7 @@ class TestVoiceMappingFile:
         try:
             processor.save_mapping(temp_path)
 
-            with open(temp_path, 'r') as f:
+            with open(temp_path) as f:
                 loaded = json.load(f)
 
             assert loaded["default_voice"] == "en-US-JennyNeural"

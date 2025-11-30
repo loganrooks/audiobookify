@@ -7,7 +7,6 @@ different characters and narration in audiobooks.
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -20,8 +19,8 @@ class VoiceMapping:
         character_voices: Dict mapping character names to voices
     """
     default_voice: str = "en-US-AndrewNeural"
-    narrator_voice: Optional[str] = None
-    character_voices: Dict[str, str] = field(default_factory=dict)
+    narrator_voice: str | None = None
+    character_voices: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -34,7 +33,7 @@ class DialogueSegment:
         is_dialogue: Whether this is dialogue (quoted speech)
     """
     text: str
-    speaker: Optional[str] = None
+    speaker: str | None = None
     is_dialogue: bool = False
 
 
@@ -70,7 +69,7 @@ class MultiVoiceProcessor:
         r'\u2018([^\u2019]+)\u2019',  # Curly single quotes
     ]
 
-    def __init__(self, mapping: Optional[VoiceMapping] = None):
+    def __init__(self, mapping: VoiceMapping | None = None):
         """Initialize the processor.
 
         Args:
@@ -95,7 +94,7 @@ class MultiVoiceProcessor:
             re.UNICODE
         )
 
-    def parse_text(self, text: str) -> List[DialogueSegment]:
+    def parse_text(self, text: str) -> list[DialogueSegment]:
         """Parse text into dialogue and narration segments.
 
         Args:
@@ -198,7 +197,7 @@ class MultiVoiceProcessor:
         # Fall back to default
         return self.mapping.default_voice
 
-    def process_paragraph(self, text: str) -> List[Tuple[str, str]]:
+    def process_paragraph(self, text: str) -> list[tuple[str, str]]:
         """Process a paragraph and return voice-text pairs.
 
         Args:
@@ -247,7 +246,7 @@ class MultiVoiceProcessor:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Mapping file not found: {file_path}")
 
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding='utf-8') as f:
             data = json.load(f)
 
         if 'default_voice' in data:
@@ -272,7 +271,7 @@ class MultiVoiceProcessor:
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
-    def list_character_voices(self) -> List[Tuple[str, str]]:
+    def list_character_voices(self) -> list[tuple[str, str]]:
         """List all character voice mappings.
 
         Returns:

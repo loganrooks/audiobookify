@@ -8,10 +8,8 @@ import os
 import re
 import tempfile
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict
 
 import edge_tts
-
 
 # Default sample text for voice preview
 DEFAULT_PREVIEW_TEXT = (
@@ -20,7 +18,7 @@ DEFAULT_PREVIEW_TEXT = (
 )
 
 # Available voices with metadata
-AVAILABLE_VOICES: List[Dict[str, str]] = [
+AVAILABLE_VOICES: list[dict[str, str]] = [
     {
         "id": "en-US-AndrewNeural",
         "name": "Andrew",
@@ -106,8 +104,8 @@ class VoicePreviewConfig:
     """
     speaker: str = "en-US-AndrewNeural"
     text: str = field(default_factory=lambda: DEFAULT_PREVIEW_TEXT)
-    rate: Optional[str] = None
-    volume: Optional[str] = None
+    rate: str | None = None
+    volume: str | None = None
 
 
 class VoicePreview:
@@ -128,7 +126,7 @@ class VoicePreview:
     RATE_PATTERN = re.compile(r'^[+-]\d+%$')
     VOLUME_PATTERN = re.compile(r'^[+-]\d+%$')
 
-    def __init__(self, config: Optional[VoicePreviewConfig] = None):
+    def __init__(self, config: VoicePreviewConfig | None = None):
         """Initialize VoicePreview with optional configuration.
 
         Args:
@@ -244,7 +242,7 @@ class VoicePreview:
         await communicate.save(output_path)
 
 
-def get_voice_by_id(voice_id: str) -> Optional[Dict[str, str]]:
+def get_voice_by_id(voice_id: str) -> dict[str, str] | None:
     """Get voice metadata by ID.
 
     Args:
@@ -259,7 +257,7 @@ def get_voice_by_id(voice_id: str) -> Optional[Dict[str, str]]:
     return None
 
 
-def get_voices_by_locale(locale: str) -> List[Dict[str, str]]:
+def get_voices_by_locale(locale: str) -> list[dict[str, str]]:
     """Get all voices for a specific locale.
 
     Args:
@@ -271,7 +269,7 @@ def get_voices_by_locale(locale: str) -> List[Dict[str, str]]:
     return [v for v in AVAILABLE_VOICES if v["locale"] == locale]
 
 
-def get_voices_by_gender(gender: str) -> List[Dict[str, str]]:
+def get_voices_by_gender(gender: str) -> list[dict[str, str]]:
     """Get all voices of a specific gender.
 
     Args:

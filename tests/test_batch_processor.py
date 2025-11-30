@@ -2,18 +2,20 @@
 Tests for the batch processing module.
 """
 
-import pytest
-import sys
-import os
-import tempfile
+import importlib.util
 import json
+import os
+import sys
+import tempfile
+
+import pytest
 
 # Add parent directory to path for imports
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, parent_dir)
 
 # Import directly from the module file to avoid __init__.py dependency issues
-import importlib.util
+
 spec = importlib.util.spec_from_file_location(
     "batch_processor",
     os.path.join(parent_dir, "epub2tts_edge", "batch_processor.py")

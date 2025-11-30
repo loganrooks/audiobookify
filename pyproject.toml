@@ -1,0 +1,152 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "audiobookify"
+version = "2.3.0"
+description = "Convert EPUB and MOBI/AZW files to audiobooks with enhanced chapter detection"
+readme = "README.md"
+license = "GPL-3.0"
+authors = [
+    {name = "Christopher Aedo", email = "c@aedo.dev"}
+]
+maintainers = [
+    {name = "Logan Rooks"}
+]
+keywords = ["audiobook", "epub", "mobi", "tts", "text-to-speech", "edge-tts"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Text Processing :: General",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "beautifulsoup4>=4.12.0",
+    "ebooklib>=0.18",
+    "edge-tts>=6.1.0",
+    "lxml>=4.9.0",
+    "mobi>=0.3.0",
+    "mutagen>=1.46.0",
+    "nltk>=3.8.0",
+    "pillow>=10.0.0",
+    "pydub>=0.25.0",
+    "setuptools>=61.0",
+    "textual>=0.40.0",
+    "tqdm>=4.65.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.21.0",
+    "mypy>=1.5.0",
+    "ruff>=0.1.0",
+]
+tui = [
+    "textual>=0.40.0",
+]
+
+[project.scripts]
+audiobookify = "epub2tts_edge:main"
+abfy = "epub2tts_edge:main"
+audiobookify-tui = "epub2tts_edge:tui_main"
+abfy-tui = "epub2tts_edge:tui_main"
+
+[project.urls]
+Homepage = "https://github.com/loganrooks/audiobookify"
+Repository = "https://github.com/loganrooks/audiobookify.git"
+Issues = "https://github.com/loganrooks/audiobookify/issues"
+Changelog = "https://github.com/loganrooks/audiobookify/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["epub2tts_edge*"]
+
+# Pytest configuration
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["epub2tts_edge"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+precision = 2
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+# Ruff linter configuration
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults
+    "C901",   # too complex
+]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]  # unused imports in __init__.py are fine
+"tests/*" = ["B011"]      # assert statements are fine in tests
+
+# MyPy type checker configuration
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false  # Start permissive, tighten later
+ignore_missing_imports = true
+exclude = [
+    "tests/",
+    "build/",
+    "dist/",
+]

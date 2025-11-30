@@ -2,9 +2,9 @@
 
 import os
 import tempfile
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from dataclasses import dataclass
 
 # Import will be created after tests
 # from epub2tts_edge.audio_normalization import (
@@ -80,7 +80,7 @@ class TestAudioNormalizer:
 
     def test_init_default_config(self):
         """Test initializer with default config."""
-        from epub2tts_edge.audio_normalization import AudioNormalizer, NormalizationConfig
+        from epub2tts_edge.audio_normalization import AudioNormalizer
 
         normalizer = AudioNormalizer()
         assert normalizer.config.target_dbfs == -16.0
@@ -98,7 +98,7 @@ class TestAudioNormalizer:
     @patch('epub2tts_edge.audio_normalization.AudioSegment')
     def test_analyze_audio_file(self, mock_audio_segment):
         """Test analyzing an audio file for stats."""
-        from epub2tts_edge.audio_normalization import AudioNormalizer, AudioStats
+        from epub2tts_edge.audio_normalization import AudioNormalizer
 
         # Mock audio segment
         mock_audio = MagicMock()
@@ -171,8 +171,8 @@ class TestAudioNormalizer:
     @patch('epub2tts_edge.audio_normalization.AudioSegment')
     def test_normalize_file_disabled(self, mock_audio_segment):
         """Test that normalization is skipped when disabled."""
+
         from epub2tts_edge.audio_normalization import AudioNormalizer, NormalizationConfig
-        import shutil
 
         config = NormalizationConfig(enabled=False)
         normalizer = AudioNormalizer(config)
@@ -239,7 +239,11 @@ class TestAudioNormalizer:
 
     def test_calculate_unified_gain(self):
         """Test calculating unified gain for consistent volume across chapters."""
-        from epub2tts_edge.audio_normalization import AudioNormalizer, AudioStats, NormalizationConfig
+        from epub2tts_edge.audio_normalization import (
+            AudioNormalizer,
+            AudioStats,
+            NormalizationConfig,
+        )
 
         config = NormalizationConfig(target_dbfs=-16.0, method="peak")
         normalizer = AudioNormalizer(config)
@@ -279,7 +283,7 @@ class TestNormalizationIntegration:
 
     def test_invalid_method_raises_error(self):
         """Test that invalid method raises error."""
-        from epub2tts_edge.audio_normalization import NormalizationConfig, validate_method
+        from epub2tts_edge.audio_normalization import validate_method
 
         with pytest.raises(ValueError):
             validate_method("invalid_method")

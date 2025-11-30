@@ -10,32 +10,34 @@ Usage:
     audiobookify-tui
 """
 
-import os
-import asyncio
 from pathlib import Path
-from typing import Optional, List
-from dataclasses import dataclass
 
-from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
-from textual.widgets import (
-    Header, Footer, Static, Button, Label,
-    DirectoryTree, ListView, ListItem, ProgressBar,
-    Input, Select, Switch, Rule, DataTable,
-    TabbedContent, TabPane, Log
-)
-from textual.binding import Binding
-from textual.message import Message
-from textual.worker import Worker, get_current_worker
 from textual import work
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical
+from textual.widgets import (
+    Button,
+    DataTable,
+    Footer,
+    Header,
+    Input,
+    Label,
+    ListItem,
+    ListView,
+    Log,
+    ProgressBar,
+    Rule,
+    Select,
+    Switch,
+    TabbedContent,
+    TabPane,
+)
+from textual.worker import Worker
 
 # Import our modules
-from .batch_processor import (
-    BatchProcessor, BatchConfig, BatchResult,
-    BookTask, ProcessingStatus
-)
-from .chapter_detector import DetectionMethod, HierarchyStyle
-from .voice_preview import VoicePreview, VoicePreviewConfig, AVAILABLE_VOICES
+from .batch_processor import BatchConfig, BatchProcessor, BookTask, ProcessingStatus
+from .voice_preview import AVAILABLE_VOICES, VoicePreview, VoicePreviewConfig
 
 
 class EPUBFileItem(ListItem):
@@ -89,7 +91,7 @@ class FilePanel(Vertical):
     def __init__(self, initial_path: str = ".") -> None:
         super().__init__()
         self.current_path = Path(initial_path).resolve()
-        self.epub_files: List[Path] = []
+        self.epub_files: list[Path] = []
 
     def compose(self) -> ComposeResult:
         yield Label("📁 Select EPUBs", classes="title")
@@ -144,7 +146,7 @@ class FilePanel(Vertical):
         if isinstance(event.item, EPUBFileItem):
             event.item.toggle()
 
-    def get_selected_files(self) -> List[Path]:
+    def get_selected_files(self) -> list[Path]:
         """Get list of selected EPUB files."""
         return [
             item.path for item in self.query(EPUBFileItem)
@@ -498,7 +500,7 @@ class QueuePanel(Vertical):
         }
         return icons.get(status, "?")
 
-    def _format_duration(self, duration: Optional[float]) -> str:
+    def _format_duration(self, duration: float | None) -> str:
         if duration is None:
             return "-"
         mins = int(duration // 60)
@@ -594,7 +596,7 @@ class AudiobookifyApp(App):
         self.initial_path = initial_path
         self.is_processing = False
         self.should_stop = False
-        self.current_worker: Optional[Worker] = None
+        self.current_worker: Worker | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -655,11 +657,10 @@ class AudiobookifyApp(App):
         self.preview_voice_async(speaker, rate, volume)
 
     @work(exclusive=False, thread=True)
-    def preview_voice_async(self, speaker: str, rate: Optional[str], volume: Optional[str]) -> None:
+    def preview_voice_async(self, speaker: str, rate: str | None, volume: str | None) -> None:
         """Generate voice preview in background thread."""
-        import tempfile
-        import subprocess
         import shutil
+        import subprocess
 
         try:
             preview_config = VoicePreviewConfig(speaker=speaker)
@@ -748,7 +749,7 @@ class AudiobookifyApp(App):
             self.current_worker.cancel()
 
     @work(exclusive=True, thread=True)
-    def process_files(self, files: List[Path]) -> None:
+    def process_files(self, files: list[Path]) -> None:
         """Process files in background thread."""
         settings_panel = self.query_one(SettingsPanel)
         config_dict = settings_panel.get_config()

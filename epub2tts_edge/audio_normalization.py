@@ -4,10 +4,9 @@ This module provides functionality to normalize audio levels across
 audiobook chapters for a consistent listening experience.
 """
 
-from dataclasses import dataclass, field
-from typing import List, Optional, Literal
-from pydub import AudioSegment
+from dataclasses import dataclass
 
+from pydub import AudioSegment
 
 # Valid normalization methods
 VALID_METHODS = ("peak", "rms")
@@ -90,7 +89,7 @@ class AudioNormalizer:
         config: NormalizationConfig instance with settings
     """
 
-    def __init__(self, config: Optional[NormalizationConfig] = None):
+    def __init__(self, config: NormalizationConfig | None = None):
         """Initialize the normalizer.
 
         Args:
@@ -114,7 +113,7 @@ class AudioNormalizer:
             duration_ms=len(audio)
         )
 
-    def analyze_files(self, file_paths: List[str]) -> List[AudioStats]:
+    def analyze_files(self, file_paths: list[str]) -> list[AudioStats]:
         """Analyze multiple audio files.
 
         Args:
@@ -125,7 +124,7 @@ class AudioNormalizer:
         """
         return [self.analyze_file(path) for path in file_paths]
 
-    def calculate_unified_gain(self, stats_list: List[AudioStats]) -> float:
+    def calculate_unified_gain(self, stats_list: list[AudioStats]) -> float:
         """Calculate unified gain for consistent volume across all files.
 
         Uses the loudest file as reference to prevent clipping in any file.
@@ -158,8 +157,8 @@ class AudioNormalizer:
         self,
         input_path: str,
         output_path: str,
-        gain_override: Optional[float] = None
-    ) -> Optional[str]:
+        gain_override: float | None = None
+    ) -> str | None:
         """Normalize an audio file to target level.
 
         Args:
@@ -209,10 +208,10 @@ class AudioNormalizer:
 
     def normalize_files(
         self,
-        input_paths: List[str],
+        input_paths: list[str],
         output_dir: str,
         unified: bool = True
-    ) -> List[str]:
+    ) -> list[str]:
         """Normalize multiple audio files.
 
         Args:

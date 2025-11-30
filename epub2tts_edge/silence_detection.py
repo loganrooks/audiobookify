@@ -5,7 +5,8 @@ in audio files for a better listening experience.
 """
 
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Any
+from typing import Any
+
 from pydub import AudioSegment
 from pydub.silence import detect_silence
 
@@ -64,7 +65,7 @@ class SilenceDetector:
         config: SilenceConfig instance with settings
     """
 
-    def __init__(self, config: Optional[SilenceConfig] = None):
+    def __init__(self, config: SilenceConfig | None = None):
         """Initialize the detector.
 
         Args:
@@ -72,7 +73,7 @@ class SilenceDetector:
         """
         self.config = config or SilenceConfig()
 
-    def detect_silence_in_file(self, file_path: str) -> List[SilenceSegment]:
+    def detect_silence_in_file(self, file_path: str) -> list[SilenceSegment]:
         """Detect silence segments in an audio file.
 
         Args:
@@ -95,7 +96,7 @@ class SilenceDetector:
             for start, end in silence_ranges
         ]
 
-    def analyze_file(self, file_path: str) -> Dict[str, Any]:
+    def analyze_file(self, file_path: str) -> dict[str, Any]:
         """Analyze an audio file for silence statistics.
 
         Args:
@@ -128,7 +129,7 @@ class SilenceDetector:
             'silence_percentage': (total_silence / total_duration * 100) if total_duration > 0 else 0
         }
 
-    def analyze_files(self, file_paths: List[str]) -> List[Dict[str, Any]]:
+    def analyze_files(self, file_paths: list[str]) -> list[dict[str, Any]]:
         """Analyze multiple audio files for silence.
 
         Args:
@@ -143,7 +144,7 @@ class SilenceDetector:
         self,
         input_path: str,
         output_path: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Trim excessive silence from an audio file.
 
         Reduces silence segments longer than max_silence_len to
@@ -203,9 +204,9 @@ class SilenceDetector:
 
     def trim_files(
         self,
-        input_paths: List[str],
+        input_paths: list[str],
         output_dir: str
-    ) -> List[str]:
+    ) -> list[str]:
         """Trim silence from multiple audio files.
 
         Args:

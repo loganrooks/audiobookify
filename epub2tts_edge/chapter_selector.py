@@ -10,9 +10,8 @@ Supported selection formats:
 - Open-start: "-5" (chapters 1 through 5)
 - Multiple: "1,3,5-7" (chapters 1, 3, and 5 through 7)
 """
-import re
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Any
+from typing import Any
 
 
 class InvalidSelectionError(ValueError):
@@ -28,8 +27,8 @@ class ChapterRange:
         start: Starting chapter number (1-indexed), or None for "from beginning"
         end: Ending chapter number (1-indexed), or None for "to end"
     """
-    start: Optional[int]
-    end: Optional[int]
+    start: int | None
+    end: int | None
 
     def contains(self, chapter_num: int) -> bool:
         """Check if a chapter number is within this range.
@@ -47,7 +46,7 @@ class ChapterRange:
         return True
 
 
-def parse_chapter_selection(selection: str) -> List[ChapterRange]:
+def parse_chapter_selection(selection: str) -> list[ChapterRange]:
     """Parse a chapter selection string into ranges.
 
     Args:
@@ -84,7 +83,7 @@ def parse_chapter_selection(selection: str) -> List[ChapterRange]:
                 except ValueError:
                     raise InvalidSelectionError(
                         f"Invalid chapter selection: {part}"
-                    )
+                    ) from None
             elif part.endswith("-"):
                 # Open end: 5- means chapter 5 to end
                 try:
@@ -97,7 +96,7 @@ def parse_chapter_selection(selection: str) -> List[ChapterRange]:
                 except ValueError:
                     raise InvalidSelectionError(
                         f"Invalid chapter selection: {part}"
-                    )
+                    ) from None
             else:
                 # Regular range: 2-5
                 try:
@@ -116,7 +115,7 @@ def parse_chapter_selection(selection: str) -> List[ChapterRange]:
                 except ValueError:
                     raise InvalidSelectionError(
                         f"Invalid chapter selection: {part}"
-                    )
+                    ) from None
         else:
             # Single chapter number
             try:
@@ -129,7 +128,7 @@ def parse_chapter_selection(selection: str) -> List[ChapterRange]:
             except ValueError:
                 raise InvalidSelectionError(
                     f"Invalid chapter number: {part}"
-                )
+                ) from None
 
     if not ranges:
         raise InvalidSelectionError("No valid chapter selections found")
@@ -147,7 +146,7 @@ class ChapterSelector:
         >>> selector.is_selected(5)  # True
     """
 
-    def __init__(self, selection: Optional[str] = None):
+    def __init__(self, selection: str | None = None):
         """Initialize the selector.
 
         Args:
@@ -172,7 +171,7 @@ class ChapterSelector:
             return True  # No selection means all chapters
         return any(r.contains(chapter_num) for r in self.ranges)
 
-    def filter_chapters(self, chapters: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def filter_chapters(self, chapters: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Filter a list of chapters based on selection.
 
         Args:
@@ -189,7 +188,7 @@ class ChapterSelector:
             if self.is_selected(i)
         ]
 
-    def get_selected_indices(self, total_chapters: int) -> List[int]:
+    def get_selected_indices(self, total_chapters: int) -> list[int]:
         """Get 0-indexed list of selected chapter indices.
 
         Args:

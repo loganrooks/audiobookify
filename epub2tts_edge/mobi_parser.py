@@ -7,8 +7,8 @@ and extract their content for text-to-speech conversion.
 import os
 import re
 import shutil
-from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from dataclasses import dataclass
+
 from bs4 import BeautifulSoup
 
 try:
@@ -39,7 +39,7 @@ class MobiChapter:
     index: int
     is_html: bool = False
 
-    def get_paragraphs(self) -> List[str]:
+    def get_paragraphs(self) -> list[str]:
         """Extract paragraphs from the chapter content.
 
         Returns:
@@ -73,12 +73,12 @@ class MobiBook:
     """
     title: str
     author: str
-    chapters: List[MobiChapter]
-    language: Optional[str] = None
-    publisher: Optional[str] = None
-    cover_image: Optional[bytes] = None
+    chapters: list[MobiChapter]
+    language: str | None = None
+    publisher: str | None = None
+    cover_image: bytes | None = None
 
-    def to_book_contents(self) -> List[dict]:
+    def to_book_contents(self) -> list[dict]:
         """Convert to audiobookify book_contents format.
 
         Returns:
@@ -217,7 +217,7 @@ class MobiParser:
         except MobiParseError:
             raise
         except Exception as e:
-            raise MobiParseError(f"Failed to parse MOBI file: {str(e)}")
+            raise MobiParseError(f"Failed to parse MOBI file: {str(e)}") from e
 
     def _read_extracted_html(self, tempdir: str) -> str:
         """Read HTML content from extracted MOBI directory.
@@ -230,7 +230,7 @@ class MobiParser:
         """
         # Look for HTML files in the extracted directory
         html_files = []
-        for root, dirs, files in os.walk(tempdir):
+        for root, _dirs, files in os.walk(tempdir):
             for f in files:
                 if f.endswith(('.html', '.htm', '.xhtml')):
                     html_files.append(os.path.join(root, f))
@@ -241,12 +241,12 @@ class MobiParser:
         # Read and concatenate all HTML files
         content_parts = []
         for html_file in sorted(html_files):
-            with open(html_file, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(html_file, encoding='utf-8', errors='ignore') as f:
                 content_parts.append(f.read())
 
         return '\n'.join(content_parts)
 
-    def _extract_metadata_from_opf(self, tempdir: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+    def _extract_metadata_from_opf(self, tempdir: str) -> tuple[str | None, str | None, str | None, str | None]:
         """Extract metadata from OPF file in extracted content.
 
         Args:
@@ -261,11 +261,11 @@ class MobiParser:
         publisher = None
 
         # Find OPF file
-        for root, dirs, files in os.walk(tempdir):
+        for root, _dirs, files in os.walk(tempdir):
             for f in files:
                 if f.endswith('.opf'):
                     opf_path = os.path.join(root, f)
-                    with open(opf_path, 'r', encoding='utf-8', errors='ignore') as opf_file:
+                    with open(opf_path, encoding='utf-8', errors='ignore') as opf_file:
                         soup = BeautifulSoup(opf_file.read(), 'html.parser')
 
                         # Extract title
@@ -292,7 +292,7 @@ class MobiParser:
 
         return title, author, language, publisher
 
-    def _extract_metadata(self) -> Tuple[str, str, Optional[str], Optional[str]]:
+    def _extract_metadata(self) -> tuple[str, str, str | None, str | None]:
         """Extract metadata from the MOBI book object.
 
         Returns:
@@ -317,7 +317,7 @@ class MobiParser:
 
         return title, author, language, publisher
 
-    def _extract_cover(self) -> Optional[bytes]:
+    def _extract_cover(self) -> bytes | None:
         """Extract cover image from the MOBI file.
 
         Returns:
@@ -330,7 +330,7 @@ class MobiParser:
                 pass
         return None
 
-    def _extract_cover_from_extracted(self, tempdir: str) -> Optional[bytes]:
+    def _extract_cover_from_extracted(self, tempdir: str) -> bytes | None:
         """Extract cover image from extracted MOBI content.
 
         Args:
@@ -342,7 +342,7 @@ class MobiParser:
         # Look for common cover image names
         cover_names = ['cover.jpg', 'cover.jpeg', 'cover.png', 'cover.gif']
 
-        for root, dirs, files in os.walk(tempdir):
+        for root, _dirs, files in os.walk(tempdir):
             for f in files:
                 if f.lower() in cover_names or 'cover' in f.lower():
                     if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
@@ -387,7 +387,7 @@ class MobiParser:
 
         return '\n\n'.join(text_parts)
 
-    def _detect_chapters_from_html(self, html: str) -> List[MobiChapter]:
+    def _detect_chapters_from_html(self, html: str) -> list[MobiChapter]:
         """Detect chapters from HTML content.
 
         Args:
@@ -442,7 +442,7 @@ class MobiParser:
 
         return chapters
 
-    def _extract_chapters(self) -> List[MobiChapter]:
+    def _extract_chapters(self) -> list[MobiChapter]:
         """Extract chapters from the MOBI content.
 
         Returns:

@@ -7,7 +7,6 @@ They use mock TTS to avoid actual API calls during testing.
 import os
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -112,7 +111,7 @@ class TestPronunciationProcessing:
     @pytest.mark.integration
     def test_load_and_apply_pronunciation(self, sample_pronunciation_dict: Path):
         """Test loading and applying pronunciation dictionary."""
-        from epub2tts_edge.pronunciation import PronunciationProcessor, PronunciationConfig
+        from epub2tts_edge.pronunciation import PronunciationConfig, PronunciationProcessor
 
         processor = PronunciationProcessor(PronunciationConfig())
         processor.load_dictionary(str(sample_pronunciation_dict))
@@ -130,7 +129,8 @@ class TestPronunciationProcessing:
     def test_pronunciation_case_insensitive(self, temp_dir: Path):
         """Test case-insensitive pronunciation replacement."""
         import json
-        from epub2tts_edge.pronunciation import PronunciationProcessor, PronunciationConfig
+
+        from epub2tts_edge.pronunciation import PronunciationConfig, PronunciationProcessor
 
         # Create a simple dictionary
         dict_file = temp_dir / "dict.json"
@@ -197,7 +197,11 @@ class TestAudioNormalization:
     @pytest.mark.integration
     def test_calculate_unified_gain(self):
         """Test unified gain calculation."""
-        from epub2tts_edge.audio_normalization import AudioNormalizer, AudioStats, NormalizationConfig
+        from epub2tts_edge.audio_normalization import (
+            AudioNormalizer,
+            AudioStats,
+            NormalizationConfig,
+        )
 
         config = NormalizationConfig(target_dbfs=-16.0, method="peak")
         normalizer = AudioNormalizer(config)
@@ -321,7 +325,8 @@ class TestLogging:
     def test_logger_setup(self):
         """Test logger setup and configuration."""
         import logging
-        from epub2tts_edge.logger import setup_logging, get_logger, enable_debug
+
+        from epub2tts_edge.logger import get_logger, setup_logging
 
         setup_logging(level=logging.INFO)
         logger = get_logger("test_module")
@@ -333,10 +338,11 @@ class TestLogging:
     def test_logger_levels(self):
         """Test different logging levels."""
         import logging
-        from epub2tts_edge.logger import setup_logging, get_logger, set_level
+
+        from epub2tts_edge.logger import get_logger, set_level, setup_logging
 
         setup_logging(level=logging.WARNING)
-        logger = get_logger("test_levels")
+        get_logger("test_levels")  # Create logger to test setup
 
         # Change level
         set_level(logging.DEBUG)

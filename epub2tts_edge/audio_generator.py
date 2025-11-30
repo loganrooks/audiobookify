@@ -8,12 +8,11 @@ import asyncio
 import concurrent.futures
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
-import shutil
 import time
-from typing import List, Optional, Tuple
 
 import edge_tts
 from mutagen import mp4
@@ -71,10 +70,10 @@ def get_duration(file_path: str) -> int:
 
 
 def generate_metadata(
-    files: List[str],
+    files: list[str],
     author: str,
     title: str,
-    chapter_titles: List[str]
+    chapter_titles: list[str]
 ) -> None:
     """Generate FFmpeg metadata file for M4B chapters.
 
@@ -117,8 +116,8 @@ def run_edgespeak(
     sentence: str,
     speaker: str,
     filename: str,
-    rate: Optional[str] = None,
-    volume: Optional[str] = None,
+    rate: str | None = None,
+    volume: str | None = None,
     retry_count: int = DEFAULT_RETRY_COUNT,
     retry_delay: int = DEFAULT_RETRY_DELAY
 ) -> None:
@@ -165,11 +164,11 @@ def run_edgespeak(
 
 
 async def parallel_edgespeak(
-    sentences: List[str],
-    speakers: List[str],
-    filenames: List[str],
-    rate: Optional[str] = None,
-    volume: Optional[str] = None,
+    sentences: list[str],
+    speakers: list[str],
+    filenames: list[str],
+    rate: str | None = None,
+    volume: str | None = None,
     max_concurrent: int = DEFAULT_CONCURRENT_TASKS,
     retry_count: int = DEFAULT_RETRY_COUNT,
     retry_delay: int = DEFAULT_RETRY_DELAY
@@ -190,7 +189,7 @@ async def parallel_edgespeak(
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         tasks = []
-        for sentence, speaker, filename in zip(sentences, speakers, filenames):
+        for sentence, speaker, filename in zip(sentences, speakers, filenames, strict=False):
             async with semaphore:
                 loop = asyncio.get_running_loop()
                 # Clean up excessive punctuation
@@ -205,17 +204,17 @@ async def parallel_edgespeak(
 
 
 def read_book(
-    book_contents: List[dict],
+    book_contents: list[dict],
     speaker: str,
     paragraphpause: int,
     sentencepause: int,
-    rate: Optional[str] = None,
-    volume: Optional[str] = None,
+    rate: str | None = None,
+    volume: str | None = None,
     pronunciation_processor=None,
     multi_voice_processor=None,
     retry_count: int = DEFAULT_RETRY_COUNT,
     retry_delay: int = DEFAULT_RETRY_DELAY
-) -> List[str]:
+) -> list[str]:
     """Generate audio for all chapters in a book.
 
     Args:
@@ -314,7 +313,7 @@ def read_book(
 
 
 def make_m4b(
-    files: List[str],
+    files: list[str],
     sourcefile: str,
     speaker: str,
     normalizer=None,
@@ -412,7 +411,7 @@ def add_cover(cover_img: str, filename: str) -> bool:
         else:
             logger.warning("Cover image not found: %s", cover_img)
             return False
-    except (OSError, IOError) as e:
+    except OSError as e:
         logger.warning("Could not add cover image %s: %s", cover_img, e)
         return False
     except Exception as e:

@@ -1,18 +1,19 @@
 """Tests for voice preview functionality."""
 import os
+
+# Import the module we're testing
+import sys
 import tempfile
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# Import the module we're testing
-import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from epub2tts_edge.voice_preview import (
+    AVAILABLE_VOICES,
+    DEFAULT_PREVIEW_TEXT,
     VoicePreview,
     VoicePreviewConfig,
-    DEFAULT_PREVIEW_TEXT,
-    AVAILABLE_VOICES,
 )
 
 
@@ -111,7 +112,7 @@ class TestVoicePreview(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = os.path.join(tmpdir, "preview.mp3")
-            result = preview.generate_preview(output_path)
+            preview.generate_preview(output_path)
 
             # Verify edge_tts was called correctly
             mock_edge_tts.Communicate.assert_called_once()

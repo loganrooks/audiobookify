@@ -12,17 +12,15 @@ Features:
 - Configurable processing options
 """
 
-import os
 import glob
 import json
+import os
 import time
-import hashlib
-from dataclasses import dataclass, field, asdict
-from typing import List, Optional, Dict, Any, Callable
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
-from pathlib import Path
-from tqdm import tqdm
+from typing import Any
 
 
 class ProcessingStatus(Enum):
@@ -40,12 +38,12 @@ class BookTask:
     """Represents a single book to be processed."""
     epub_path: str
     status: ProcessingStatus = ProcessingStatus.PENDING
-    txt_path: Optional[str] = None
-    m4b_path: Optional[str] = None
-    cover_path: Optional[str] = None
-    error_message: Optional[str] = None
-    start_time: Optional[float] = None
-    end_time: Optional[float] = None
+    txt_path: str | None = None
+    m4b_path: str | None = None
+    cover_path: str | None = None
+    error_message: str | None = None
+    start_time: float | None = None
+    end_time: float | None = None
     chapter_count: int = 0
     file_size: int = 0
 
@@ -54,7 +52,7 @@ class BookTask:
             self.file_size = os.path.getsize(self.epub_path)
 
     @property
-    def duration(self) -> Optional[float]:
+    def duration(self) -> float | None:
         """Get processing duration in seconds."""
         if self.start_time and self.end_time:
             return self.end_time - self.start_time
@@ -65,7 +63,7 @@ class BookTask:
         """Get the base filename without extension."""
         return os.path.splitext(os.path.basename(self.epub_path))[0]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "epub_path": self.epub_path,
@@ -87,23 +85,23 @@ class BatchConfig:
     """Configuration for batch processing."""
     # Input/Output
     input_path: str  # File or directory
-    output_dir: Optional[str] = None  # Output directory (default: same as input)
+    output_dir: str | None = None  # Output directory (default: same as input)
     recursive: bool = False  # Scan subdirectories
 
     # Processing options
     speaker: str = "en-US-AndrewNeural"
     detection_method: str = "combined"
     hierarchy_style: str = "flat"
-    max_depth: Optional[int] = None
+    max_depth: int | None = None
     sentence_pause: int = 1200
     paragraph_pause: int = 1200
 
     # TTS parameters
-    tts_rate: Optional[str] = None  # Speech rate (e.g., "+20%", "-10%")
-    tts_volume: Optional[str] = None  # Volume adjustment (e.g., "+50%", "-25%")
+    tts_rate: str | None = None  # Speech rate (e.g., "+20%", "-10%")
+    tts_volume: str | None = None  # Volume adjustment (e.g., "+50%", "-25%")
 
     # Chapter selection
-    chapters: Optional[str] = None  # Chapter selection (e.g., "1-5", "1,3,7")
+    chapters: str | None = None  # Chapter selection (e.g., "1-5", "1,3,7")
 
     # Batch options
     skip_existing: bool = True  # Skip if M4B already exists
@@ -112,10 +110,10 @@ class BatchConfig:
     save_state: bool = True  # Save processing state for resume
 
     # Filters
-    include_pattern: Optional[str] = None  # Glob pattern to include
-    exclude_pattern: Optional[str] = None  # Glob pattern to exclude
+    include_pattern: str | None = None  # Glob pattern to include
+    exclude_pattern: str | None = None  # Glob pattern to exclude
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return asdict(self)
 
@@ -124,9 +122,9 @@ class BatchConfig:
 class BatchResult:
     """Results of a batch processing run."""
     config: BatchConfig
-    tasks: List[BookTask] = field(default_factory=list)
-    start_time: Optional[float] = None
-    end_time: Optional[float] = None
+    tasks: list[BookTask] = field(default_factory=list)
+    start_time: float | None = None
+    end_time: float | None = None
 
     @property
     def total_count(self) -> int:
@@ -149,7 +147,7 @@ class BatchResult:
         return sum(1 for t in self.tasks if t.status == ProcessingStatus.PENDING)
 
     @property
-    def duration(self) -> Optional[float]:
+    def duration(self) -> float | None:
         if self.start_time and self.end_time:
             return self.end_time - self.start_time
         return None
@@ -209,7 +207,7 @@ class BatchResult:
 
         return "\n".join(lines)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "config": self.config.to_dict(),
@@ -226,7 +224,7 @@ class BatchResult:
             }
         }
 
-    def save_report(self, output_path: Optional[str] = None) -> str:
+    def save_report(self, output_path: str | None = None) -> str:
         """Save the batch report to a JSON file."""
         if output_path is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -254,14 +252,14 @@ class BatchProcessor:
     def __init__(
         self,
         config: BatchConfig,
-        progress_callback: Optional[Callable[[BookTask, int, int], None]] = None
+        progress_callback: Callable[[BookTask, int, int], None] | None = None
     ):
         self.config = config
         self.progress_callback = progress_callback
         self.result = BatchResult(config=config)
-        self._state_file: Optional[str] = None
+        self._state_file: str | None = None
 
-    def discover_books(self) -> List[str]:
+    def discover_books(self) -> list[str]:
         """
         Discover EPUB files to process based on configuration.
 
@@ -349,7 +347,7 @@ class BatchProcessor:
             return False
 
         try:
-            with open(state_file, 'r', encoding='utf-8') as f:
+            with open(state_file, encoding='utf-8') as f:
                 state = json.load(f)
 
             # Restore tasks
@@ -377,7 +375,7 @@ class BatchProcessor:
         if os.path.exists(state_file):
             os.remove(state_file)
 
-    def prepare(self) -> List[BookTask]:
+    def prepare(self) -> list[BookTask]:
         """
         Prepare the processing queue.
 
@@ -426,11 +424,16 @@ class BatchProcessor:
         """
         # Import here to avoid circular imports
         from ebooklib import epub
-        from .epub2tts_edge import (
-            export, get_book, read_book, generate_metadata,
-            make_m4b, add_cover, ensure_punkt
-        )
+
         from .chapter_detector import ChapterDetector, DetectionMethod, HierarchyStyle
+        from .epub2tts_edge import (
+            add_cover,
+            ensure_punkt,
+            generate_metadata,
+            get_book,
+            make_m4b,
+            read_book,
+        )
 
         task.start_time = time.time()
         task.status = ProcessingStatus.EXPORTING
@@ -450,7 +453,7 @@ class BatchProcessor:
 
             # Export EPUB to TXT
             print(f"\nExporting: {basename}")
-            book = epub.read_epub(task.epub_path)
+            epub.read_epub(task.epub_path)
 
             # Use chapter detector
             try:
@@ -594,12 +597,12 @@ class BatchProcessor:
 
 def batch_process(
     input_path: str,
-    output_dir: Optional[str] = None,
+    output_dir: str | None = None,
     recursive: bool = False,
     speaker: str = "en-US-AndrewNeural",
     detection_method: str = "combined",
     hierarchy_style: str = "flat",
-    max_depth: Optional[int] = None,
+    max_depth: int | None = None,
     skip_existing: bool = True,
     export_only: bool = False,
     continue_on_error: bool = True,

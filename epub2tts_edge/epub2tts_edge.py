@@ -1,36 +1,31 @@
 import argparse
 import os
 import re
-import warnings
 import sys
+import warnings
+import zipfile
+from typing import BinaryIO
 
-from bs4 import BeautifulSoup
 import ebooklib
+import nltk
+from bs4 import BeautifulSoup
 from ebooklib import epub
 from lxml import etree
-import nltk
 from nltk.tokenize import sent_tokenize
 from PIL import Image
-from pydub import AudioSegment
-import zipfile
 
-from .chapter_detector import (
-    ChapterDetector,
-    DetectionMethod,
-    HierarchyStyle,
-    detect_chapters
-)
-from .mobi_parser import (
-    MobiParser,
-    MobiParseError,
-    is_kindle_file,
-)
-from .logger import get_logger, setup_logging
 from .audio_generator import (
-    read_book,
-    make_m4b,
     add_cover,
     generate_metadata,
+    make_m4b,
+    read_book,
+)
+from .chapter_detector import ChapterDetector, DetectionMethod, HierarchyStyle
+from .logger import get_logger, setup_logging
+from .mobi_parser import (
+    MobiParseError,
+    MobiParser,
+    is_kindle_file,
 )
 
 # Module logger
@@ -48,8 +43,6 @@ namespaces = {
 
 warnings.filterwarnings("ignore", module="ebooklib.epub")
 
-from typing import List, Optional, Tuple, BinaryIO
-
 
 def ensure_punkt() -> None:
     """Ensure NLTK punkt tokenizer is available."""
@@ -63,7 +56,7 @@ def ensure_punkt() -> None:
         nltk.download("punkt_tab")
 
 
-def chap2text_epub(chap: bytes) -> Tuple[Optional[str], List[str]]:
+def chap2text_epub(chap: bytes) -> tuple[str | None, list[str]]:
     """Convert EPUB chapter HTML to text.
 
     Args:
@@ -72,16 +65,6 @@ def chap2text_epub(chap: bytes) -> Tuple[Optional[str], List[str]]:
     Returns:
         Tuple of (chapter_title, list of paragraphs)
     """
-    blacklist = [
-        "[document]",
-        "noscript",
-        "header",
-        "html",
-        "meta",
-        "head",
-        "input",
-        "script",
-    ]
     paragraphs = []
     soup = BeautifulSoup(chap, "html.parser")
 
@@ -108,7 +91,7 @@ def chap2text_epub(chap: bytes) -> Tuple[Optional[str], List[str]]:
 
     return chapter_title_text, paragraphs
 
-def get_epub_cover(epub_path: str) -> Optional[BinaryIO]:
+def get_epub_cover(epub_path: str) -> BinaryIO | None:
     """Extract cover image from EPUB file.
 
     Args:
@@ -148,7 +131,7 @@ def export(
     book: epub.EpubBook,
     sourcefile: str,
     detection_method: str = "combined",
-    max_depth: Optional[int] = None,
+    max_depth: int | None = None,
     hierarchy_style: str = "flat"
 ) -> str:
     """Export EPUB to text file with enhanced chapter detection.
@@ -254,13 +237,13 @@ def export_legacy(book: epub.EpubBook, sourcefile: str) -> str:
         file.write(f"Title: {booktitle}\n")
         file.write(f"Author: {author}\n\n")
 
-        file.write(f"# Title\n")
+        file.write("# Title\n")
         file.write(f"{booktitle}, by {author}\n\n")
         for i, chapter in enumerate(book_contents, start=1):
             if chapter["paragraphs"] == [] or chapter["paragraphs"] == ['']:
                 continue
             else:
-                if chapter["title"] == None:
+                if chapter["title"] is None:
                     file.write(f"# Part {i}\n")
                 else:
                     file.write(f"# {chapter['title']}\n\n")
@@ -312,7 +295,7 @@ def export_mobi(sourcefile: str) -> str:
         file.write(f"Title: {book.title}\n")
         file.write(f"Author: {book.author}\n\n")
 
-        file.write(f"# Title\n")
+        file.write("# Title\n")
         file.write(f"{book.title}, by {book.author}\n\n")
 
         for i, chapter in enumerate(book.chapters, start=1):
@@ -342,7 +325,7 @@ def export_mobi(sourcefile: str) -> str:
 def get_book(
     sourcefile: str,
     flatten_chapters: bool = True
-) -> Tuple[List[dict], str, str, List[str]]:
+) -> tuple[list[dict], str, str, list[str]]:
     """Parse a text file into book contents with chapter structure.
 
     Supports multi-level headers:
@@ -363,7 +346,7 @@ def get_book(
     book_author = "Unknown"
     chapter_titles = []
 
-    with open(sourcefile, "r", encoding="utf-8") as file:
+    with open(sourcefile, encoding="utf-8") as file:
         current_chapter = {"title": "blank", "level": 1, "paragraphs": []}
         initialized_first_chapter = False
         lines_skipped = 0
@@ -769,9 +752,10 @@ Hierarchy Styles:
 
     # Handle voice preview
     if args.preview_voice:
-        from .voice_preview import VoicePreview, VoicePreviewConfig
-        import subprocess
         import shutil
+        import subprocess
+
+        from .voice_preview import VoicePreview, VoicePreviewConfig
 
         config = VoicePreviewConfig(speaker=args.speaker)
         if args.rate:
@@ -838,7 +822,7 @@ Hierarchy Styles:
 
     if args.batch or is_directory:
         # Batch processing mode
-        from .batch_processor import BatchProcessor, BatchConfig
+        from .batch_processor import BatchConfig, BatchProcessor
 
         config = BatchConfig(
             input_path=args.sourcefile,
@@ -955,7 +939,7 @@ Hierarchy Styles:
         logger.info("Processing %d selected chapters", len(book_contents))
 
     # State management for pause/resume
-    from .pause_resume import StateManager, ConversionState
+    from .pause_resume import ConversionState, StateManager
     output_dir = os.path.dirname(os.path.abspath(args.sourcefile)) or "."
     state_manager = StateManager(output_dir)
 
@@ -998,7 +982,7 @@ Hierarchy Styles:
     # Set up silence detector if requested
     silence_detector = None
     if args.trim_silence:
-        from .silence_detection import SilenceDetector, SilenceConfig
+        from .silence_detection import SilenceConfig, SilenceDetector
         silence_detector = SilenceDetector(SilenceConfig(
             silence_thresh=args.silence_thresh,
             max_silence_len=args.max_silence,
@@ -1009,7 +993,7 @@ Hierarchy Styles:
     # Set up pronunciation processor if dictionary provided
     pronunciation_processor = None
     if args.pronunciation:
-        from .pronunciation import PronunciationProcessor, PronunciationConfig
+        from .pronunciation import PronunciationConfig, PronunciationProcessor
         pronunciation_processor = PronunciationProcessor(PronunciationConfig(
             case_sensitive=args.pronunciation_case_sensitive
         ))

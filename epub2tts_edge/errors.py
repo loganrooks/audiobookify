@@ -4,7 +4,6 @@ This module provides custom exception classes with contextual error messages
 and suggestions for resolution.
 """
 
-from typing import Optional, List
 
 
 class AudiobookifyError(Exception):
@@ -19,8 +18,8 @@ class AudiobookifyError(Exception):
     def __init__(
         self,
         message: str,
-        suggestion: Optional[str] = None,
-        context: Optional[str] = None
+        suggestion: str | None = None,
+        context: str | None = None
     ):
         self.message = message
         self.suggestion = suggestion
@@ -55,8 +54,8 @@ class InvalidFileFormatError(AudiobookifyError):
     def __init__(
         self,
         file_path: str,
-        expected_formats: List[str],
-        actual_format: Optional[str] = None
+        expected_formats: list[str],
+        actual_format: str | None = None
     ):
         format_list = ", ".join(expected_formats)
         message = f"Invalid file format for: {file_path}"
@@ -78,8 +77,8 @@ class TTSError(AudiobookifyError):
     def __init__(
         self,
         message: str,
-        text_sample: Optional[str] = None,
-        voice: Optional[str] = None,
+        text_sample: str | None = None,
+        voice: str | None = None,
         retry_count: int = 0
     ):
         context_parts = []
@@ -107,7 +106,7 @@ class TTSError(AudiobookifyError):
 class FFmpegError(AudiobookifyError):
     """Raised when FFmpeg processing fails."""
 
-    def __init__(self, operation: str, details: Optional[str] = None):
+    def __init__(self, operation: str, details: str | None = None):
         super().__init__(
             message=f"FFmpeg {operation} failed",
             suggestion="Ensure FFmpeg is installed and accessible in your PATH. "
@@ -126,7 +125,7 @@ class ChapterDetectionError(AudiobookifyError):
         self,
         file_path: str,
         detection_method: str,
-        details: Optional[str] = None
+        details: str | None = None
     ):
         super().__init__(
             message=f"No chapters detected in {file_path}",
@@ -141,7 +140,7 @@ class ChapterDetectionError(AudiobookifyError):
 class ConfigurationError(AudiobookifyError):
     """Raised when there's a configuration or argument error."""
 
-    def __init__(self, message: str, parameter: Optional[str] = None):
+    def __init__(self, message: str, parameter: str | None = None):
         suggestion = "Check your command line arguments or configuration file."
         if parameter:
             suggestion = f"Check the value of '{parameter}' parameter."
@@ -164,7 +163,7 @@ class DependencyError(AudiobookifyError):
         "nltk": "pip install nltk && python -c \"import nltk; nltk.download('punkt')\"",
     }
 
-    def __init__(self, dependency: str, purpose: Optional[str] = None):
+    def __init__(self, dependency: str, purpose: str | None = None):
         install_hint = self.INSTALL_INSTRUCTIONS.get(
             dependency.lower(),
             f"pip install {dependency}"
@@ -185,7 +184,7 @@ class DependencyError(AudiobookifyError):
 class ResumeError(AudiobookifyError):
     """Raised when resume operation fails."""
 
-    def __init__(self, message: str, state_file: Optional[str] = None):
+    def __init__(self, message: str, state_file: str | None = None):
         super().__init__(
             message=message,
             suggestion="Use --no-resume to start fresh, or delete the state file manually.",

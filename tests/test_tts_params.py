@@ -1,9 +1,8 @@
 """Tests for TTS rate and volume parameters."""
 import os
 import sys
-import tempfile
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 

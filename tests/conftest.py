@@ -1,10 +1,9 @@
 """Pytest configuration and shared fixtures for audiobookify tests."""
 
-import os
-import tempfile
 import shutil
+import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 
 import pytest
 
@@ -175,7 +174,7 @@ def create_minimal_epub(output_path: Path, content: dict) -> Path:
         # OEBPS/content.opf
         manifest_items = ""
         spine_items = ""
-        for i, chapter in enumerate(content["chapters"], start=1):
+        for i, _chapter in enumerate(content["chapters"], start=1):
             manifest_items += f'    <item id="chapter{i}" href="chapter{i}.xhtml" media-type="application/xhtml+xml"/>\n'
             spine_items += f'    <itemref idref="chapter{i}"/>\n'
 

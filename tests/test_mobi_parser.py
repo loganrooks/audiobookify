@@ -1,18 +1,17 @@
 """Tests for MOBI/AZW file parser."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-import tempfile
-import os
 
 from epub2tts_edge.mobi_parser import (
-    MobiParser,
     MobiBook,
     MobiChapter,
     MobiParseError,
-    is_mobi_file,
+    MobiParser,
     is_azw_file,
     is_kindle_file,
+    is_mobi_file,
 )
 
 

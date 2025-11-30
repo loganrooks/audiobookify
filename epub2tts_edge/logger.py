@@ -5,8 +5,6 @@ This module provides a consistent logging setup across all modules.
 
 import logging
 import sys
-from typing import Optional
-
 
 # Default format for log messages
 DEFAULT_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -18,8 +16,8 @@ _loggers: dict = {}
 
 def setup_logging(
     level: int = logging.INFO,
-    format_string: Optional[str] = None,
-    log_file: Optional[str] = None,
+    format_string: str | None = None,
+    log_file: str | None = None,
     simple: bool = True
 ) -> None:
     """Configure the root logger for audiobookify.

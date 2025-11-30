@@ -201,7 +201,7 @@ class TOCParser:
             ncx_id = self.book.spine[0] if self.book.spine else None
             if ncx_id:
                 return self.book.get_item_with_id(ncx_id)
-        except:
+        except (IndexError, KeyError, AttributeError):
             pass
 
         return None
@@ -253,7 +253,7 @@ class TOCParser:
         content = ncx_item.get_content()
         try:
             tree = etree.fromstring(content)
-        except:
+        except etree.XMLSyntaxError:
             return
 
         # Find navMap
@@ -811,14 +811,14 @@ class ChapterDetector:
             title_meta = self.book.get_metadata('DC', 'title')
             if title_meta:
                 title = title_meta[0][0]
-        except:
+        except (IndexError, KeyError, TypeError):
             pass
 
         try:
             author_meta = self.book.get_metadata('DC', 'creator')
             if author_meta:
                 author = author_meta[0][0]
-        except:
+        except (IndexError, KeyError, TypeError):
             pass
 
         with open(output_path, 'w', encoding='utf-8') as f:

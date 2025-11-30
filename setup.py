@@ -10,7 +10,7 @@ setup(
     author_email="c@aedo.dev",
     url="https://github.com/loganrooks/audiobookify",
     license="GPL 3.0",
-    version="2.0.0",
+    version="2.3.0",
     packages=find_packages(),
     install_requires=requirements,
     extras_require={

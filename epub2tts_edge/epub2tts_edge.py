@@ -1,23 +1,14 @@
 import argparse
-import asyncio
-import concurrent.futures
 import os
 import re
-import subprocess
-import time
 import warnings
 import sys
-from tqdm import tqdm
-
 
 from bs4 import BeautifulSoup
 import ebooklib
 from ebooklib import epub
-import edge_tts
 from lxml import etree
-from mutagen import mp4
 import nltk
-from nltk.tokenize import sent_tokenize
 from PIL import Image
 from pydub import AudioSegment
 import zipfile
@@ -34,6 +25,12 @@ from .mobi_parser import (
     is_kindle_file,
 )
 from .logger import get_logger, setup_logging
+from .audio_generator import (
+    read_book,
+    make_m4b,
+    add_cover,
+    generate_metadata,
+)
 
 # Module logger
 logger = get_logger(__name__)
@@ -50,7 +47,11 @@ namespaces = {
 
 warnings.filterwarnings("ignore", module="ebooklib.epub")
 
-def ensure_punkt():
+from typing import List, Optional, Tuple, BinaryIO
+
+
+def ensure_punkt() -> None:
+    """Ensure NLTK punkt tokenizer is available."""
     try:
         nltk.data.find("tokenizers/punkt")
     except LookupError:
@@ -60,7 +61,16 @@ def ensure_punkt():
     except LookupError:
         nltk.download("punkt_tab")
 
-def chap2text_epub(chap):
+
+def chap2text_epub(chap: bytes) -> Tuple[Optional[str], List[str]]:
+    """Convert EPUB chapter HTML to text.
+
+    Args:
+        chap: Raw HTML content of the chapter
+
+    Returns:
+        Tuple of (chapter_title, list of paragraphs)
+    """
     blacklist = [
         "[document]",
         "noscript",
@@ -97,7 +107,15 @@ def chap2text_epub(chap):
 
     return chapter_title_text, paragraphs
 
-def get_epub_cover(epub_path):
+def get_epub_cover(epub_path: str) -> Optional[BinaryIO]:
+    """Extract cover image from EPUB file.
+
+    Args:
+        epub_path: Path to the EPUB file
+
+    Returns:
+        File-like object containing cover image, or None if not found
+    """
     try:
         with zipfile.ZipFile(epub_path) as z:
             t = etree.fromstring(z.read("META-INF/container.xml"))
@@ -125,9 +143,14 @@ def get_epub_cover(epub_path):
     except FileNotFoundError:
         logger.warning("Could not get cover image of %s", epub_path)
 
-def export(book, sourcefile, detection_method="combined", max_depth=None, hierarchy_style="flat"):
-    """
-    Export EPUB to text file with enhanced chapter detection.
+def export(
+    book: epub.EpubBook,
+    sourcefile: str,
+    detection_method: str = "combined",
+    max_depth: Optional[int] = None,
+    hierarchy_style: str = "flat"
+) -> str:
+    """Export EPUB to text file with enhanced chapter detection.
 
     Args:
         book: The ebooklib epub object
@@ -181,10 +204,17 @@ def export(book, sourcefile, detection_method="combined", max_depth=None, hierar
     return outfile
 
 
-def export_legacy(book, sourcefile):
-    """
-    Legacy export function (original implementation).
+def export_legacy(book: epub.EpubBook, sourcefile: str) -> str:
+    """Legacy export function (original implementation).
+
     Kept for backward compatibility.
+
+    Args:
+        book: The ebooklib epub object
+        sourcefile: Path to the source EPUB file
+
+    Returns:
+        Path to the exported text file
     """
     book_contents = []
     cover_image = get_epub_cover(sourcefile)
@@ -240,9 +270,8 @@ def export_legacy(book, sourcefile):
                     file.write(f"{clean}\n\n")
 
 
-def export_mobi(sourcefile):
-    """
-    Export MOBI/AZW file to text file.
+def export_mobi(sourcefile: str) -> str:
+    """Export MOBI/AZW file to text file.
 
     Args:
         sourcefile: Path to the source MOBI/AZW file
@@ -309,9 +338,11 @@ def export_mobi(sourcefile):
     return outfile
 
 
-def get_book(sourcefile, flatten_chapters=True):
-    """
-    Parse a text file into book contents with chapter structure.
+def get_book(
+    sourcefile: str,
+    flatten_chapters: bool = True
+) -> Tuple[List[dict], str, str, List[str]]:
+    """Parse a text file into book contents with chapter structure.
 
     Supports multi-level headers:
     - # Level 1 (Part/Book)
@@ -391,11 +422,16 @@ def get_book(sourcefile, flatten_chapters=True):
 
     return book_contents, book_title, book_author, chapter_titles
 
-def sort_key(s):
-    # extract number from the string
-    return int(re.findall(r'\d+', s)[0])
 
-def check_for_file(filename):
+def check_for_file(filename: str) -> None:
+    """Check if file exists and prompt for overwrite.
+
+    Args:
+        filename: Path to check
+
+    Raises:
+        SystemExit: If user declines to overwrite
+    """
     if os.path.isfile(filename):
         logger.warning("The file '%s' already exists.", filename)
         overwrite = input("Do you want to overwrite the file? (y/n): ")
@@ -404,294 +440,6 @@ def check_for_file(filename):
             sys.exit()
         else:
             os.remove(filename)
-
-def append_silence(tempfile, duration=1200):
-    audio = AudioSegment.from_file(tempfile)
-    # Create a silence segment
-    silence = AudioSegment.silent(duration)
-    # Append the silence segment to the audio
-    combined = audio + silence
-    # Save the combined audio back to file
-    combined.export(tempfile, format="flac")
-
-def read_book(book_contents, speaker, paragraphpause, sentencepause, rate=None, volume=None, pronunciation_processor=None, multi_voice_processor=None):
-    """Generate audio for all chapters in a book.
-
-    Args:
-        book_contents: List of chapter dicts with 'title' and 'paragraphs'
-        speaker: Voice ID (e.g., "en-US-AndrewNeural")
-        paragraphpause: Pause duration after paragraphs in milliseconds
-        sentencepause: Pause duration after sentences in milliseconds
-        rate: Speech rate adjustment (e.g., "+20%", "-10%")
-        volume: Volume adjustment (e.g., "+50%", "-25%")
-        pronunciation_processor: Optional PronunciationProcessor for custom pronunciations
-        multi_voice_processor: Optional MultiVoiceProcessor for different character voices
-
-    Returns:
-        List of generated FLAC segment filenames
-    """
-    segments = []
-    # Do not read these into the audio file:
-    title_names_to_skip_reading = ['Title', 'blank']
-
-    for i, chapter in enumerate(book_contents, start=1):
-        files = []
-        partname = f"part{i}.flac"
-
-        if os.path.isfile(partname):
-            logger.info("%s exists, skipping to next chapter", partname)
-            segments.append(partname)
-        else:
-            if chapter["title"] in title_names_to_skip_reading:
-                logger.debug("Chapter name: '%s' - will not be read into audio file", chapter['title'])
-            else:
-                logger.info("Processing chapter: '%s'", chapter['title'])
-
-            if chapter["title"] == "":
-                chapter["title"] = "blank"
-            if chapter["title"] not in title_names_to_skip_reading:
-                # Apply pronunciation to chapter title
-                title_text = chapter["title"]
-                if pronunciation_processor:
-                    title_text = pronunciation_processor.process_text(title_text)
-                asyncio.run(
-                    parallel_edgespeak([title_text], [speaker], ["sntnc0.mp3"], rate, volume)
-                )
-                append_silence("sntnc0.mp3", 1200)
-
-            for pindex, paragraph in enumerate(
-                tqdm(chapter["paragraphs"], desc=f"Generating audio files: ",unit='pg')
-            ):
-                ptemp = f"pgraphs{pindex}.flac"
-                if os.path.isfile(ptemp):
-                    logger.debug("%s exists, skipping to next paragraph", ptemp)
-                else:
-                    # Apply pronunciation processing if available
-                    processed_paragraph = paragraph
-                    if pronunciation_processor:
-                        processed_paragraph = pronunciation_processor.process_text(paragraph)
-
-                    # Handle multi-voice processing
-                    if multi_voice_processor:
-                        # Get voice-text pairs for multi-voice
-                        voice_text_pairs = multi_voice_processor.process_paragraph(processed_paragraph)
-                        sentences = [text for _, text in voice_text_pairs]
-                        speakers = [voice for voice, _ in voice_text_pairs]
-                    else:
-                        sentences = sent_tokenize(processed_paragraph)
-                        speakers = [speaker] * len(sentences)
-
-                    filenames = [
-                        "sntnc" + str(z + 1) + ".mp3" for z in range(len(sentences))
-                    ]
-                    asyncio.run(parallel_edgespeak(sentences, speakers, filenames, rate, volume))
-                    append_silence(filenames[-1], paragraphpause)
-                    # combine sentences in paragraph
-                    sorted_files = sorted(filenames, key=sort_key)
-                    if os.path.exists("sntnc0.mp3"):
-                        sorted_files.insert(0, "sntnc0.mp3")
-                    combined = AudioSegment.empty()
-                    for file in sorted_files:
-                        combined += AudioSegment.from_file(file)
-                    combined.export(ptemp, format="flac")
-                    for file in sorted_files:
-                        os.remove(file)
-                files.append(ptemp)
-            # combine paragraphs into chapter
-            append_silence(files[-1], 2000)
-            combined = AudioSegment.empty()
-            for file in files:
-                combined += AudioSegment.from_file(file)
-            combined.export(partname, format="flac")
-            for file in files:
-                os.remove(file)
-            segments.append(partname)
-    return segments
-
-def generate_metadata(files, author, title, chapter_titles):
-    chap = 0
-    start_time = 0
-    with open("FFMETADATAFILE", "w") as file:
-        file.write(";FFMETADATA1\n")
-        file.write(f"ARTIST={author}\n")
-        file.write(f"ALBUM={title}\n")
-        file.write(f"TITLE={title}\n")
-        file.write("DESCRIPTION=Made with https://github.com/aedocw/epub2tts-edge\n")
-        for file_name in files:
-            duration = get_duration(file_name)
-            file.write("[CHAPTER]\n")
-            file.write("TIMEBASE=1/1000\n")
-            file.write(f"START={start_time}\n")
-            file.write(f"END={start_time + duration}\n")
-            file.write(f"title={chapter_titles[chap]}\n")
-            chap += 1
-            start_time += duration
-
-def get_duration(file_path):
-    audio = AudioSegment.from_file(file_path)
-    duration_milliseconds = len(audio)
-    return duration_milliseconds
-
-def make_m4b(files, sourcefile, speaker, normalizer=None, silence_detector=None):
-    """Create M4B audiobook from chapter files.
-
-    Args:
-        files: List of FLAC chapter files
-        sourcefile: Source text file path
-        speaker: Speaker voice ID
-        normalizer: Optional AudioNormalizer instance for volume normalization
-        silence_detector: Optional SilenceDetector instance for trimming silence
-    """
-    import tempfile
-    import shutil
-
-    files_to_use = files
-    cleanup_dirs = []
-
-    # Apply silence trimming if enabled
-    if silence_detector and silence_detector.config.enabled:
-        logger.info("Trimming excessive silence...")
-        silence_temp_dir = tempfile.mkdtemp(prefix="audiobookify_silence_")
-        cleanup_dirs.append(silence_temp_dir)
-
-        trimmed_files = silence_detector.trim_files(files_to_use, silence_temp_dir)
-        files_to_use = trimmed_files
-
-    # Apply normalization if enabled
-    if normalizer and normalizer.config.enabled:
-        logger.info("Normalizing audio levels...")
-        norm_temp_dir = tempfile.mkdtemp(prefix="audiobookify_norm_")
-        cleanup_dirs.append(norm_temp_dir)
-
-        # Normalize files with unified gain for consistent volume
-        normalized_files = normalizer.normalize_files(files_to_use, norm_temp_dir, unified=True)
-        files_to_use = normalized_files
-
-    filelist = "filelist.txt"
-    basefile = sourcefile.replace(".txt", "")
-    outputm4a = f"{basefile} ({speaker}).m4a"
-    outputm4b = f"{basefile} ({speaker}).m4b"
-    with open(filelist, "w") as f:
-        for filename in files_to_use:
-            filename = filename.replace("'", "'\\''")
-            f.write(f"file '{filename}'\n")
-    ffmpeg_command = [
-        "ffmpeg",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        filelist,
-        "-codec:a",
-        "flac",
-        "-f",
-        "mp4",
-        "-strict",
-        "-2",
-        outputm4a,
-    ]
-    subprocess.run(ffmpeg_command)
-    ffmpeg_command = [
-        "ffmpeg",
-        "-i",
-        outputm4a,
-        "-i",
-        "FFMETADATAFILE",
-        "-map_metadata",
-        "1",
-        "-codec",
-        "aac",
-        outputm4b,
-    ]
-    subprocess.run(ffmpeg_command)
-    os.remove(filelist)
-    os.remove("FFMETADATAFILE")
-    os.remove(outputm4a)
-    for f in files:
-        os.remove(f)
-
-    # Clean up temp directories from silence/normalization processing
-    for temp_dir in cleanup_dirs:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-
-    return outputm4b
-
-def add_cover(cover_img, filename):
-    try:
-        if os.path.isfile(cover_img):
-            m4b = mp4.MP4(filename)
-            with open(cover_img, "rb") as f:
-                cover_image = f.read()
-            m4b["covr"] = [mp4.MP4Cover(cover_image)]
-            m4b.save()
-            logger.info("Cover image added to %s", filename)
-        else:
-            logger.warning("Cover image not found: %s", cover_img)
-    except (OSError, IOError) as e:
-        logger.warning("Could not add cover image %s: %s", cover_img, e)
-    except Exception as e:
-        logger.error("Unexpected error adding cover image: %s", e)
-
-def run_edgespeak(sentence, speaker, filename, rate=None, volume=None):
-    """Generate speech for a sentence using edge-tts.
-
-    Args:
-        sentence: Text to speak
-        speaker: Voice ID (e.g., "en-US-AndrewNeural")
-        filename: Output MP3 filename
-        rate: Speech rate adjustment (e.g., "+20%", "-10%")
-        volume: Volume adjustment (e.g., "+50%", "-25%")
-    """
-    for speakattempt in range(3):
-        try:
-            # Build kwargs for edge_tts
-            kwargs = {}
-            if rate:
-                kwargs["rate"] = rate
-            if volume:
-                kwargs["volume"] = volume
-
-            communicate = edge_tts.Communicate(sentence, speaker, **kwargs)
-            run_save(communicate, filename)
-            if os.path.getsize(filename) == 0:
-                raise Exception("Failed to save file from edge_tts")
-            break
-        except Exception as e:
-            logger.warning("Attempt %d/3 failed with '%s': %s", speakattempt+1, sentence[:50], e)
-            # wait a few seconds in case its a transient network issue
-            time.sleep(3)
-    else:
-        logger.error("Giving up on sentence after 3 attempts: '%s'", sentence[:50])
-        sys.exit(1)
-
-def run_save(communicate, filename):
-    asyncio.run(communicate.save(filename))
-
-async def parallel_edgespeak(sentences, speakers, filenames, rate=None, volume=None):
-    """Generate speech for multiple sentences in parallel.
-
-    Args:
-        sentences: List of texts to speak
-        speakers: List of voice IDs
-        filenames: List of output filenames
-        rate: Speech rate adjustment (e.g., "+20%", "-10%")
-        volume: Volume adjustment (e.g., "+50%", "-25%")
-    """
-    semaphore = asyncio.Semaphore(10)  # Limit the number of concurrent tasks
-
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        tasks = []
-        for sentence, speaker, filename in zip(sentences, speakers, filenames):
-            async with semaphore:
-                loop = asyncio.get_running_loop()
-                sentence = re.sub(r'[!]+', '!', sentence)
-                sentence = re.sub(r'[?]+', '?', sentence)
-                task = loop.run_in_executor(
-                    executor, run_edgespeak, sentence, speaker, filename, rate, volume
-                )
-                tasks.append(task)
-        await asyncio.gather(*tasks)
 
 
 def main():
@@ -960,6 +708,26 @@ Hierarchy Styles:
         type=str,
         default=None,
         help="Voice to use for narration (non-dialogue text)"
+    )
+
+    # Retry configuration
+    parser.add_argument(
+        "--retry-count",
+        type=int,
+        default=3,
+        help="Number of retry attempts for TTS failures (default: 3)"
+    )
+    parser.add_argument(
+        "--retry-delay",
+        type=int,
+        default=3,
+        help="Delay in seconds between retry attempts (default: 3)"
+    )
+    parser.add_argument(
+        "--max-concurrent",
+        type=int,
+        default=10,
+        help="Maximum concurrent TTS tasks (default: 10)"
     )
 
     # Logging options
@@ -1277,10 +1045,14 @@ Hierarchy Styles:
             logger.info("Multi-voice enabled: narrator voice set to %s", args.narrator_voice)
 
     try:
-        files = read_book(book_contents, args.speaker, args.paragraphpause, args.sentencepause,
-                          rate=args.rate, volume=args.volume,
-                          pronunciation_processor=pronunciation_processor,
-                          multi_voice_processor=multi_voice_processor)
+        files = read_book(
+            book_contents, args.speaker, args.paragraphpause, args.sentencepause,
+            rate=args.rate, volume=args.volume,
+            pronunciation_processor=pronunciation_processor,
+            multi_voice_processor=multi_voice_processor,
+            retry_count=args.retry_count,
+            retry_delay=args.retry_delay
+        )
         generate_metadata(files, book_author, book_title, chapter_titles)
         m4bfilename = make_m4b(files, args.sourcefile, args.speaker,
                                normalizer=normalizer, silence_detector=silence_detector)

@@ -99,6 +99,34 @@ from .logger import (
     enable_quiet,
 )
 
+# Audio generation
+from .audio_generator import (
+    read_book,
+    make_m4b,
+    add_cover,
+    generate_metadata,
+    run_edgespeak,
+    parallel_edgespeak,
+    get_duration,
+    append_silence,
+    DEFAULT_RETRY_COUNT,
+    DEFAULT_RETRY_DELAY,
+    DEFAULT_CONCURRENT_TASKS,
+)
+
+# Custom errors
+from .errors import (
+    AudiobookifyError,
+    TTSError,
+    FFmpegError,
+    ChapterDetectionError,
+    ConfigurationError,
+    DependencyError,
+    ResumeError,
+    InvalidFileFormatError,
+    format_error_for_user,
+)
+
 __all__ = [
     # Main entry point
     'main',
@@ -168,4 +196,26 @@ __all__ = [
     'set_level',
     'enable_debug',
     'enable_quiet',
+    # Audio generation
+    'read_book',
+    'make_m4b',
+    'add_cover',
+    'generate_metadata',
+    'run_edgespeak',
+    'parallel_edgespeak',
+    'get_duration',
+    'append_silence',
+    'DEFAULT_RETRY_COUNT',
+    'DEFAULT_RETRY_DELAY',
+    'DEFAULT_CONCURRENT_TASKS',
+    # Custom errors
+    'AudiobookifyError',
+    'TTSError',
+    'FFmpegError',
+    'ChapterDetectionError',
+    'ConfigurationError',
+    'DependencyError',
+    'ResumeError',
+    'InvalidFileFormatError',
+    'format_error_for_user',
 ]

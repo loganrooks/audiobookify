@@ -15,6 +15,7 @@ try:
     import mobi
     MOBI_AVAILABLE = True
 except ImportError:
+    mobi = None  # Allows tests to mock this attribute
     MOBI_AVAILABLE = False
 
 

@@ -70,12 +70,12 @@ class TestTTSParamsValidation(unittest.TestCase):
 class TestRunEdgeSpeakParams(unittest.TestCase):
     """Tests for run_edgespeak with rate/volume parameters."""
 
-    @patch('epub2tts_edge.epub2tts_edge.edge_tts')
-    @patch('epub2tts_edge.epub2tts_edge.run_save')
+    @patch('epub2tts_edge.audio_generator.edge_tts')
+    @patch('epub2tts_edge.audio_generator.run_save')
     @patch('os.path.getsize', return_value=1000)
     def test_run_edgespeak_with_rate(self, mock_getsize, mock_run_save, mock_edge_tts):
         """Test run_edgespeak passes rate to edge_tts."""
-        from epub2tts_edge.epub2tts_edge import run_edgespeak
+        from epub2tts_edge.audio_generator import run_edgespeak
 
         mock_communicate = MagicMock()
         mock_edge_tts.Communicate.return_value = mock_communicate
@@ -86,12 +86,12 @@ class TestRunEdgeSpeakParams(unittest.TestCase):
         call_kwargs = mock_edge_tts.Communicate.call_args[1]
         self.assertEqual(call_kwargs.get("rate"), "+20%")
 
-    @patch('epub2tts_edge.epub2tts_edge.edge_tts')
-    @patch('epub2tts_edge.epub2tts_edge.run_save')
+    @patch('epub2tts_edge.audio_generator.edge_tts')
+    @patch('epub2tts_edge.audio_generator.run_save')
     @patch('os.path.getsize', return_value=1000)
     def test_run_edgespeak_with_volume(self, mock_getsize, mock_run_save, mock_edge_tts):
         """Test run_edgespeak passes volume to edge_tts."""
-        from epub2tts_edge.epub2tts_edge import run_edgespeak
+        from epub2tts_edge.audio_generator import run_edgespeak
 
         mock_communicate = MagicMock()
         mock_edge_tts.Communicate.return_value = mock_communicate
@@ -102,12 +102,12 @@ class TestRunEdgeSpeakParams(unittest.TestCase):
         call_kwargs = mock_edge_tts.Communicate.call_args[1]
         self.assertEqual(call_kwargs.get("volume"), "-10%")
 
-    @patch('epub2tts_edge.epub2tts_edge.edge_tts')
-    @patch('epub2tts_edge.epub2tts_edge.run_save')
+    @patch('epub2tts_edge.audio_generator.edge_tts')
+    @patch('epub2tts_edge.audio_generator.run_save')
     @patch('os.path.getsize', return_value=1000)
     def test_run_edgespeak_with_rate_and_volume(self, mock_getsize, mock_run_save, mock_edge_tts):
         """Test run_edgespeak passes both rate and volume."""
-        from epub2tts_edge.epub2tts_edge import run_edgespeak
+        from epub2tts_edge.audio_generator import run_edgespeak
 
         mock_communicate = MagicMock()
         mock_edge_tts.Communicate.return_value = mock_communicate
@@ -119,12 +119,12 @@ class TestRunEdgeSpeakParams(unittest.TestCase):
         self.assertEqual(call_kwargs.get("rate"), "+30%")
         self.assertEqual(call_kwargs.get("volume"), "-20%")
 
-    @patch('epub2tts_edge.epub2tts_edge.edge_tts')
-    @patch('epub2tts_edge.epub2tts_edge.run_save')
+    @patch('epub2tts_edge.audio_generator.edge_tts')
+    @patch('epub2tts_edge.audio_generator.run_save')
     @patch('os.path.getsize', return_value=1000)
     def test_run_edgespeak_without_params(self, mock_getsize, mock_run_save, mock_edge_tts):
         """Test run_edgespeak works without rate/volume."""
-        from epub2tts_edge.epub2tts_edge import run_edgespeak
+        from epub2tts_edge.audio_generator import run_edgespeak
 
         mock_communicate = MagicMock()
         mock_edge_tts.Communicate.return_value = mock_communicate

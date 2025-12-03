@@ -10,32 +10,34 @@ Usage:
     audiobookify-tui
 """
 
-import os
-import asyncio
 from pathlib import Path
-from typing import Optional, List
-from dataclasses import dataclass
 
-from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
-from textual.widgets import (
-    Header, Footer, Static, Button, Label,
-    DirectoryTree, ListView, ListItem, ProgressBar,
-    Input, Select, Switch, Rule, DataTable,
-    TabbedContent, TabPane, Log
-)
-from textual.binding import Binding
-from textual.message import Message
-from textual.worker import Worker, get_current_worker
 from textual import work
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical
+from textual.widgets import (
+    Button,
+    DataTable,
+    Footer,
+    Header,
+    Input,
+    Label,
+    ListItem,
+    ListView,
+    Log,
+    ProgressBar,
+    Rule,
+    Select,
+    Switch,
+    TabbedContent,
+    TabPane,
+)
+from textual.worker import Worker
 
 # Import our modules
-from .batch_processor import (
-    BatchProcessor, BatchConfig, BatchResult,
-    BookTask, ProcessingStatus
-)
-from .chapter_detector import DetectionMethod, HierarchyStyle
-from .voice_preview import VoicePreview, VoicePreviewConfig, AVAILABLE_VOICES
+from .batch_processor import BatchConfig, BatchProcessor, BookTask, ProcessingStatus
+from .voice_preview import AVAILABLE_VOICES, VoicePreview, VoicePreviewConfig
 
 
 class EPUBFileItem(ListItem):
@@ -57,70 +59,94 @@ class EPUBFileItem(ListItem):
 
 
 class FilePanel(Vertical):
-    """Panel for browsing and selecting EPUB files."""
+    """Panel for browsing and selecting EPUB/MOBI files."""
 
     DEFAULT_CSS = """
     FilePanel {
         width: 1fr;
         height: 100%;
+        border: round $primary;
+        border-title-color: $primary;
+        padding: 1;
+        background: $surface;
+    }
+
+    FilePanel > Label.title {
+        text-style: bold;
+        margin-bottom: 1;
+        color: $primary-lighten-2;
+    }
+
+    FilePanel > Label.file-count {
+        color: $text-muted;
+        margin-bottom: 1;
+    }
+
+    FilePanel > #path-input {
+        margin-bottom: 1;
+        border: round $primary-darken-1;
+    }
+
+    FilePanel > #file-list {
+        height: 1fr;
+        border: round $primary-darken-2;
+        background: $surface-darken-1;
+    }
+
+    FilePanel > #file-actions {
+        height: auto;
+        margin-top: 1;
+    }
+
+    FilePanel > #file-actions > Button {
+        margin-right: 1;
     }
     """
 
     def __init__(self, initial_path: str = ".") -> None:
         super().__init__()
         self.current_path = Path(initial_path).resolve()
-        self.epub_files: List[Path] = []
+        self.epub_files: list[Path] = []
 
     def compose(self) -> ComposeResult:
-        yield Label("📚 Select EPUB Files", classes="title")
-        with Horizontal(id="path-container"):
-            yield Input(
-                placeholder="Enter folder path and press Enter...",
-                value=str(self.current_path),
-                id="path-input"
-            )
-            yield Button("📂 Browse", id="browse-btn", variant="primary")
-        yield Label(f"📁 {self.current_path}", id="current-folder-label")
+        yield Label("📁 Select Books (EPUB/MOBI/AZW)", classes="title")
+        yield Label("0 files found", classes="file-count", id="file-count")
+        yield Input(
+            placeholder="Enter folder path...",
+            value=str(self.current_path),
+            id="path-input"
+        )
         yield ListView(id="file-list")
         with Horizontal(id="file-actions"):
-            yield Button("☑ All", id="select-all", variant="default")
-            yield Button("☐ None", id="deselect-all", variant="default")
+            yield Button("✓ All", id="select-all", variant="default")
+            yield Button("✗ None", id="deselect-all", variant="default")
             yield Button("🔄 Refresh", id="refresh", variant="primary")
 
     def on_mount(self) -> None:
         self.scan_directory()
 
     def scan_directory(self) -> None:
-        """Scan current directory for EPUB files."""
+        """Scan current directory for EPUB, MOBI, and AZW files."""
         file_list = self.query_one("#file-list", ListView)
         file_list.clear()
 
         self.epub_files = []
 
-        # Update the current folder label
-        try:
-            folder_label = self.query_one("#current-folder-label", Label)
-            folder_label.update(f"📁 {self.current_path}")
-        except Exception:
-            pass
-
         if self.current_path.exists() and self.current_path.is_dir():
-            epub_files = list(self.current_path.glob("*.epub"))
-            mobi_files = list(self.current_path.glob("*.mobi"))
-            azw_files = list(self.current_path.glob("*.azw*"))
-            all_files = sorted(epub_files + mobi_files + azw_files, key=lambda p: p.name.lower())
+            # Scan for all supported formats
+            patterns = ["*.epub", "*.mobi", "*.azw", "*.azw3"]
+            all_files = []
+            for pattern in patterns:
+                all_files.extend(self.current_path.glob(pattern))
 
-            for ebook_path in all_files:
-                self.epub_files.append(ebook_path)
-                file_list.append(EPUBFileItem(ebook_path))
+            for book_path in sorted(set(all_files)):
+                self.epub_files.append(book_path)
+                file_list.append(EPUBFileItem(book_path))
 
-            # Update count in label
-            try:
-                folder_label = self.query_one("#current-folder-label", Label)
-                count = len(all_files)
-                folder_label.update(f"📁 {self.current_path} ({count} files)")
-            except Exception:
-                pass
+        # Update file count
+        count_label = self.query_one("#file-count", Label)
+        count = len(self.epub_files)
+        count_label.update(f"{count} file{'s' if count != 1 else ''} found")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "path-input":
@@ -142,20 +168,12 @@ class FilePanel(Vertical):
             path_input = self.query_one("#path-input", Input)
             self.current_path = Path(path_input.value).resolve()
             self.scan_directory()
-        elif event.button.id == "browse-btn":
-            # Go up one directory when browse is clicked
-            parent = self.current_path.parent
-            if parent.exists():
-                self.current_path = parent
-                path_input = self.query_one("#path-input", Input)
-                path_input.value = str(self.current_path)
-                self.scan_directory()
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         if isinstance(event.item, EPUBFileItem):
             event.item.toggle()
 
-    def get_selected_files(self) -> List[Path]:
+    def get_selected_files(self) -> list[Path]:
         """Get list of selected EPUB files."""
         return [
             item.path for item in self.query(EPUBFileItem)
@@ -170,14 +188,17 @@ class SettingsPanel(Vertical):
     SettingsPanel {
         width: 40;
         height: 100%;
-        border: solid $secondary;
+        border: round $secondary;
+        border-title-color: $secondary;
         padding: 1;
         overflow-y: auto;
+        background: $surface;
     }
 
     SettingsPanel > Label.title {
         text-style: bold;
         margin-bottom: 1;
+        color: $secondary-lighten-2;
     }
 
     SettingsPanel > .setting-row {
@@ -205,7 +226,13 @@ class SettingsPanel(Vertical):
     SettingsPanel > Label.section-title {
         text-style: bold;
         margin-top: 1;
-        color: $text-muted;
+        color: $secondary-lighten-1;
+    }
+
+    SettingsPanel Rule {
+        margin-top: 1;
+        margin-bottom: 1;
+        color: $secondary-darken-2;
     }
     """
 
@@ -389,13 +416,16 @@ class ProgressPanel(Vertical):
     ProgressPanel {
         height: auto;
         min-height: 12;
-        border: solid $success;
+        border: round $success;
+        border-title-color: $success;
         padding: 1;
+        background: $surface;
     }
 
     ProgressPanel > Label.title {
         text-style: bold;
         margin-bottom: 1;
+        color: $success-lighten-2;
     }
 
     ProgressPanel > #current-book {
@@ -412,6 +442,10 @@ class ProgressPanel(Vertical):
 
     ProgressPanel > #action-buttons {
         margin-top: 1;
+    }
+
+    ProgressPanel > #action-buttons > Button {
+        margin-right: 1;
     }
     """
 
@@ -447,17 +481,21 @@ class QueuePanel(Vertical):
     DEFAULT_CSS = """
     QueuePanel {
         height: 1fr;
-        border: solid $warning;
+        border: round $warning;
+        border-title-color: $warning;
         padding: 1;
+        background: $surface;
     }
 
     QueuePanel > Label.title {
         text-style: bold;
         margin-bottom: 1;
+        color: $warning-lighten-2;
     }
 
     QueuePanel > #queue-table {
         height: 1fr;
+        background: $surface-darken-1;
     }
     """
 
@@ -509,7 +547,7 @@ class QueuePanel(Vertical):
         }
         return icons.get(status, "?")
 
-    def _format_duration(self, duration: Optional[float]) -> str:
+    def _format_duration(self, duration: float | None) -> str:
         if duration is None:
             return "-"
         mins = int(duration // 60)
@@ -523,17 +561,22 @@ class LogPanel(Vertical):
     DEFAULT_CSS = """
     LogPanel {
         height: 1fr;
-        border: solid $primary-darken-2;
+        border: round $primary-darken-1;
+        border-title-color: $primary-darken-1;
         padding: 1;
+        background: $surface;
     }
 
     LogPanel > Label.title {
         text-style: bold;
         margin-bottom: 1;
+        color: $primary-lighten-1;
     }
 
     LogPanel > #log-output {
         height: 1fr;
+        background: $surface-darken-1;
+        border: round $primary-darken-2;
     }
     """
 
@@ -557,16 +600,13 @@ class AudiobookifyApp(App):
     SUB_TITLE = "EPUB to Audiobook Converter"
 
     CSS = """
-    /* === GLOBAL THEME === */
     Screen {
         layout: grid;
         grid-size: 2 2;
-        grid-columns: 1fr 45;
+        grid-columns: 1fr 40;
         grid-rows: 1fr auto;
-        background: $surface;
     }
 
-    /* === LAYOUT AREAS === */
     #main-area {
         column-span: 1;
         row-span: 1;
@@ -581,253 +621,14 @@ class AudiobookifyApp(App):
         column-span: 1;
         row-span: 1;
         height: 100%;
-        min-height: 20;
     }
 
     #left-panels {
         height: 100%;
     }
 
-    /* === FILE PANEL STYLING === */
-    FilePanel {
-        background: $panel;
-        border: round $primary;
-        border-title-color: $primary-lighten-2;
-        border-title-style: bold;
-        padding: 1 2;
-    }
-
-    FilePanel > Label.title {
-        text-style: bold;
-        color: $primary-lighten-2;
-        margin-bottom: 1;
-        text-align: center;
-        width: 100%;
-    }
-
-    FilePanel > #path-container {
-        height: auto;
-        margin-bottom: 1;
-    }
-
-    FilePanel > #path-container > Input {
-        width: 1fr;
-        border: tall $accent;
-    }
-
-    FilePanel > #path-container > Button {
-        width: auto;
-        min-width: 10;
-        margin-left: 1;
-    }
-
-    FilePanel > #current-folder-label {
-        color: $text-muted;
-        text-style: italic;
-        margin-bottom: 1;
-        padding: 0 1;
-    }
-
-    FilePanel > #file-list {
-        height: 1fr;
-        border: tall $primary-darken-1;
-        background: $surface-darken-1;
-    }
-
-    FilePanel > #file-actions {
-        height: auto;
-        margin-top: 1;
-        align: center middle;
-    }
-
-    FilePanel > #file-actions > Button {
-        margin: 0 1;
-    }
-
-    /* === SETTINGS PANEL STYLING === */
-    SettingsPanel {
-        background: $panel;
-        border: round $secondary;
-        border-title-color: $secondary-lighten-2;
-        border-title-style: bold;
-        padding: 1 2;
-        overflow-y: auto;
-    }
-
-    SettingsPanel > Label.title {
-        text-style: bold;
-        color: $secondary-lighten-2;
-        margin-bottom: 1;
-        text-align: center;
-        width: 100%;
-    }
-
-    SettingsPanel > Label.section-title {
-        text-style: bold italic;
-        color: $text-muted;
-        margin-top: 1;
-        margin-bottom: 1;
-        border-bottom: solid $surface-lighten-1;
-        padding-bottom: 1;
-    }
-
-    SettingsPanel > .setting-row {
-        height: auto;
-        margin-bottom: 1;
-        align: left middle;
-    }
-
-    SettingsPanel > .setting-row > Label {
-        width: 12;
-        color: $text;
-    }
-
-    SettingsPanel > .setting-row > Select {
-        width: 1fr;
-    }
-
-    SettingsPanel > .setting-row > Input {
-        width: 1fr;
-        border: tall $surface-lighten-2;
-    }
-
-    SettingsPanel > .setting-row > Switch {
-        background: $surface-darken-1;
-    }
-
-    SettingsPanel > #preview-voice-btn {
-        margin: 1 0;
-        width: 100%;
-    }
-
-    SettingsPanel Rule {
-        margin: 1 0;
-        color: $surface-lighten-2;
-    }
-
-    /* === PROGRESS PANEL STYLING === */
-    ProgressPanel {
-        background: $panel;
-        border: round $success;
-        border-title-color: $success-lighten-2;
-        padding: 1 2;
-        min-height: 10;
-    }
-
-    ProgressPanel > Label.title {
-        text-style: bold;
-        color: $success-lighten-2;
-        margin-bottom: 1;
-    }
-
-    ProgressPanel > #current-book {
-        color: $text;
-        margin-bottom: 1;
-    }
-
-    ProgressPanel > #progress-bar {
-        margin-bottom: 1;
-    }
-
-    ProgressPanel > #status-text {
-        color: $text-muted;
-        text-style: italic;
-    }
-
-    ProgressPanel > #action-buttons {
-        margin-top: 1;
-        align: center middle;
-    }
-
-    ProgressPanel > #action-buttons > Button {
-        margin: 0 1;
-        min-width: 12;
-    }
-
-    /* === QUEUE PANEL STYLING === */
-    QueuePanel {
-        background: $panel;
-        border: round $warning;
-        border-title-color: $warning-lighten-1;
-        padding: 1 2;
-    }
-
-    QueuePanel > Label.title {
-        text-style: bold;
-        color: $warning-lighten-1;
-        margin-bottom: 1;
-    }
-
-    QueuePanel > #queue-table {
-        height: 1fr;
-        background: $surface-darken-1;
-    }
-
-    /* === LOG PANEL STYLING === */
-    LogPanel {
-        background: $panel;
-        border: round $primary-darken-1;
-        padding: 1 2;
-    }
-
-    LogPanel > Label.title {
-        text-style: bold;
-        color: $primary-lighten-1;
-        margin-bottom: 1;
-    }
-
-    LogPanel > #log-output {
-        height: 1fr;
-        background: $surface-darken-2;
-        border: tall $surface;
-    }
-
-    /* === BUTTONS === */
-    Button {
-        min-width: 8;
-    }
-
-    Button.-primary {
-        background: $primary;
-    }
-
-    Button.-success {
-        background: $success;
-    }
-
-    Button.-error {
-        background: $error;
-    }
-
-    /* === TABS === */
-    TabbedContent {
+    #right-bottom {
         height: 100%;
-    }
-
-    TabPane {
-        padding: 0;
-    }
-
-    /* === LIST ITEMS === */
-    EPUBFileItem {
-        padding: 0 1;
-    }
-
-    EPUBFileItem:hover {
-        background: $primary-darken-2;
-    }
-
-    EPUBFileItem.-selected {
-        background: $primary-darken-1;
-    }
-
-    /* === HEADER/FOOTER === */
-    Header {
-        background: $primary-darken-2;
-    }
-
-    Footer {
-        background: $surface-darken-1;
     }
     """
 
@@ -847,7 +648,7 @@ class AudiobookifyApp(App):
         self.initial_path = initial_path
         self.is_processing = False
         self.should_stop = False
-        self.current_worker: Optional[Worker] = None
+        self.current_worker: Worker | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -908,17 +709,12 @@ class AudiobookifyApp(App):
         self.preview_voice_async(speaker, rate, volume)
 
     @work(exclusive=False, thread=True)
-    def preview_voice_async(self, speaker: str, rate: Optional[str], volume: Optional[str]) -> None:
+    def preview_voice_async(self, speaker: str, rate: str | None, volume: str | None) -> None:
         """Generate voice preview in background thread."""
-        import subprocess
         import shutil
+        import subprocess
 
         try:
-            self.call_from_thread(
-                self.log_message,
-                "   Generating audio..."
-            )
-
             preview_config = VoicePreviewConfig(speaker=speaker)
             if rate:
                 preview_config.rate = rate
@@ -930,78 +726,48 @@ class AudiobookifyApp(App):
 
             self.call_from_thread(
                 self.log_message,
-                f"   ✅ Audio generated: {output_path}"
+                f"   Preview saved to: {output_path}"
             )
 
             # Try to play the audio with various players
-            # Order: ffplay (ffmpeg), mpv, paplay (PulseAudio), aplay (ALSA), vlc, afplay (macOS)
+            # Priority: PulseAudio/PipeWire tools, then common media players
             players = [
-                ('ffplay', ['-nodisp', '-autoexit', '-loglevel', 'quiet']),
-                ('mpv', ['--no-video', '--really-quiet']),
-                ('paplay', []),  # PulseAudio
-                ('pw-play', []),  # PipeWire
-                ('aplay', []),   # ALSA
-                ('vlc', ['--intf', 'dummy', '--play-and-exit']),
-                ('afplay', []),  # macOS
+                ('paplay', []),                      # PulseAudio
+                ('pw-play', []),                     # PipeWire
+                ('ffplay', ['-nodisp', '-autoexit']), # FFmpeg
+                ('mpv', ['--no-video']),             # MPV
+                ('vlc', ['--intf', 'dummy', '--play-and-exit']),  # VLC
+                ('aplay', []),                       # ALSA
+                ('afplay', []),                      # macOS
             ]
-
-            played = False
             for player, args in players:
-                player_path = shutil.which(player)
-                if player_path:
+                if shutil.which(player):
                     self.call_from_thread(
                         self.log_message,
-                        f"   🔊 Playing with {player}..."
+                        f"   Playing with {player}..."
                     )
                     try:
-                        cmd = [player_path] + args + [output_path]
-                        result = subprocess.run(
-                            cmd,
-                            capture_output=True,
-                            timeout=30
+                        subprocess.run(
+                            [player] + args + [output_path],
+                            capture_output=True, timeout=30
                         )
-                        if result.returncode == 0:
-                            played = True
-                            self.call_from_thread(
-                                self.log_message,
-                                "   ✅ Preview complete!"
-                            )
-                            break
-                        else:
-                            # Try next player
-                            continue
-                    except subprocess.TimeoutExpired:
-                        self.call_from_thread(
-                            self.log_message,
-                            f"   ⚠️ {player} timed out, trying next..."
-                        )
+                        break
+                    except Exception:
                         continue
-                    except Exception as e:
-                        self.call_from_thread(
-                            self.log_message,
-                            f"   ⚠️ {player} failed: {e}"
-                        )
-                        continue
-
-            if not played:
+            else:
                 self.call_from_thread(
                     self.log_message,
-                    f"   ⚠️ No audio player found. Install ffmpeg, mpv, or vlc."
+                    "   No audio player found. File saved for manual playback."
                 )
                 self.call_from_thread(
                     self.log_message,
-                    f"   📁 Audio saved to: {output_path}"
+                    f"   Install: paplay (PulseAudio), mpv, or ffplay"
                 )
 
         except Exception as e:
             self.call_from_thread(
                 self.log_message,
                 f"   ❌ Preview failed: {e}"
-            )
-            import traceback
-            self.call_from_thread(
-                self.log_message,
-                f"   {traceback.format_exc()}"
             )
 
     def action_start(self) -> None:
@@ -1042,7 +808,7 @@ class AudiobookifyApp(App):
             self.current_worker.cancel()
 
     @work(exclusive=True, thread=True)
-    def process_files(self, files: List[Path]) -> None:
+    def process_files(self, files: list[Path]) -> None:
         """Process files in background thread."""
         settings_panel = self.query_one(SettingsPanel)
         config_dict = settings_panel.get_config()

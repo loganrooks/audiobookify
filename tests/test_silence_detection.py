@@ -2,9 +2,7 @@
 
 import os
 import tempfile
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from dataclasses import dataclass
+from unittest.mock import MagicMock, Mock, patch
 
 
 class TestSilenceConfig:
@@ -76,7 +74,7 @@ class TestSilenceDetector:
 
     def test_init_default_config(self):
         """Test initializer with default config."""
-        from epub2tts_edge.silence_detection import SilenceDetector, SilenceConfig
+        from epub2tts_edge.silence_detection import SilenceDetector
 
         detector = SilenceDetector()
         assert detector.config.min_silence_len == 1000
@@ -84,7 +82,7 @@ class TestSilenceDetector:
 
     def test_init_custom_config(self):
         """Test initializer with custom config."""
-        from epub2tts_edge.silence_detection import SilenceDetector, SilenceConfig
+        from epub2tts_edge.silence_detection import SilenceConfig, SilenceDetector
 
         config = SilenceConfig(min_silence_len=500, silence_thresh=-50)
         detector = SilenceDetector(config)
@@ -136,7 +134,7 @@ class TestSilenceDetector:
     @patch('epub2tts_edge.silence_detection.AudioSegment')
     def test_trim_silence_basic(self, mock_audio_segment, mock_detect_silence):
         """Test trimming excessive silence."""
-        from epub2tts_edge.silence_detection import SilenceDetector, SilenceConfig
+        from epub2tts_edge.silence_detection import SilenceConfig, SilenceDetector
 
         # Create a result mock that tracks all operations
         result_audio = MagicMock()
@@ -175,7 +173,7 @@ class TestSilenceDetector:
     @patch('epub2tts_edge.silence_detection.AudioSegment')
     def test_trim_silence_disabled(self, mock_audio_segment):
         """Test that silence trimming is skipped when disabled."""
-        from epub2tts_edge.silence_detection import SilenceDetector, SilenceConfig
+        from epub2tts_edge.silence_detection import SilenceConfig, SilenceDetector
 
         config = SilenceConfig(enabled=False)
         detector = SilenceDetector(config)
@@ -188,7 +186,7 @@ class TestSilenceDetector:
     @patch('epub2tts_edge.silence_detection.AudioSegment')
     def test_get_excessive_silence_count(self, mock_audio_segment, mock_detect_silence):
         """Test counting excessive silence segments."""
-        from epub2tts_edge.silence_detection import SilenceDetector, SilenceConfig
+        from epub2tts_edge.silence_detection import SilenceConfig, SilenceDetector
 
         mock_audio = MagicMock()
         mock_audio.__len__ = Mock(return_value=10000)
@@ -213,7 +211,7 @@ class TestSilenceDetector:
     @patch('epub2tts_edge.silence_detection.AudioSegment')
     def test_calculate_total_silence_reduction(self, mock_audio_segment, mock_detect_silence):
         """Test calculating total silence reduction."""
-        from epub2tts_edge.silence_detection import SilenceDetector, SilenceConfig
+        from epub2tts_edge.silence_detection import SilenceConfig, SilenceDetector
 
         mock_audio = MagicMock()
         mock_audio.__len__ = Mock(return_value=10000)
@@ -243,7 +241,7 @@ class TestSilenceAnalysis:
     @patch('epub2tts_edge.silence_detection.AudioSegment')
     def test_analyze_file_returns_stats(self, mock_audio_segment, mock_detect_silence):
         """Test that analyze returns useful statistics."""
-        from epub2tts_edge.silence_detection import SilenceDetector, SilenceConfig
+        from epub2tts_edge.silence_detection import SilenceConfig, SilenceDetector
 
         mock_audio = MagicMock()
         mock_audio.__len__ = Mock(return_value=60000)  # 60s audio
@@ -295,7 +293,7 @@ class TestSilenceIntegration:
         assert config.min_silence_len == 500
 
         # max_silence should be >= min_silence for sensible behavior
-        config2 = SilenceConfig(min_silence_len=1000, max_silence_len=500)
+        _config2 = SilenceConfig(min_silence_len=1000, max_silence_len=500)
         # This is allowed (user's choice) but may not be useful
 
     def test_threshold_range(self):

@@ -1,18 +1,17 @@
 """Tests for MOBI/AZW file parser."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-import tempfile
-import os
 
 from epub2tts_edge.mobi_parser import (
-    MobiParser,
     MobiBook,
     MobiChapter,
     MobiParseError,
-    is_mobi_file,
+    MobiParser,
     is_azw_file,
     is_kindle_file,
+    is_mobi_file,
 )
 
 
@@ -150,6 +149,7 @@ class TestMobiParser:
             with pytest.raises(ValueError, match="Unsupported file format"):
                 MobiParser("book.epub")
 
+    @patch('epub2tts_edge.mobi_parser.MOBI_AVAILABLE', True)
     @patch('epub2tts_edge.mobi_parser.mobi')
     @patch('epub2tts_edge.mobi_parser.shutil')
     def test_parse_mobi_file(self, mock_shutil, mock_mobi):
@@ -170,6 +170,7 @@ class TestMobiParser:
         assert book.author == "Test Author"
         assert len(book.chapters) >= 1
 
+    @patch('epub2tts_edge.mobi_parser.MOBI_AVAILABLE', True)
     @patch('epub2tts_edge.mobi_parser.mobi')
     @patch('epub2tts_edge.mobi_parser.shutil')
     def test_parse_azw3_file(self, mock_shutil, mock_mobi):
@@ -381,14 +382,15 @@ class TestMobiParserErrorHandling:
 
     def test_parse_corrupted_file(self):
         """Test handling of corrupted MOBI file."""
-        with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
-            with patch('epub2tts_edge.mobi_parser.mobi') as mock_mobi:
-                mock_mobi.extract.side_effect = Exception("Corrupted file")
+        with patch('epub2tts_edge.mobi_parser.MOBI_AVAILABLE', True):
+            with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
+                with patch('epub2tts_edge.mobi_parser.mobi') as mock_mobi:
+                    mock_mobi.extract.side_effect = Exception("Corrupted file")
 
-                parser = MobiParser("corrupted.mobi")
+                    parser = MobiParser("corrupted.mobi")
 
-                with pytest.raises(MobiParseError, match="Failed to parse"):
-                    parser.parse()
+                    with pytest.raises(MobiParseError, match="Failed to parse"):
+                        parser.parse()
 
     def test_parse_drm_protected_file(self):
         """Test handling of DRM-protected file."""
@@ -405,6 +407,7 @@ class TestMobiParserErrorHandling:
 class TestMobiParserIntegration:
     """Integration tests for MobiParser."""
 
+    @patch('epub2tts_edge.mobi_parser.MOBI_AVAILABLE', True)
     @patch('epub2tts_edge.mobi_parser.shutil')
     def test_full_parse_workflow(self, mock_shutil):
         """Test complete parsing workflow with mocked MOBI file."""

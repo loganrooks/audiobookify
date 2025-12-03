@@ -6,10 +6,10 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from epub2tts_edge.chapter_selector import (
-    ChapterSelector,
     ChapterRange,
-    parse_chapter_selection,
+    ChapterSelector,
     InvalidSelectionError,
+    parse_chapter_selection,
 )
 
 

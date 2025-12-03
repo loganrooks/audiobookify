@@ -11,9 +11,7 @@ Features:
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
-from pathlib import Path
-
+from typing import Any
 
 STATE_FILE_NAME = ".audiobookify_state.json"
 
@@ -37,11 +35,11 @@ class ConversionState:
     total_chapters: int = 0
     completed_chapters: int = 0
     speaker: str = "en-US-AndrewNeural"
-    rate: Optional[str] = None
-    volume: Optional[str] = None
-    chapters_selection: Optional[str] = None
-    intermediate_files: List[str] = field(default_factory=list)
-    timestamp: Optional[float] = None
+    rate: str | None = None
+    volume: str | None = None
+    chapters_selection: str | None = None
+    intermediate_files: list[str] = field(default_factory=list)
+    timestamp: float | None = None
 
     @property
     def is_resumable(self) -> bool:
@@ -68,7 +66,7 @@ class ConversionState:
         """Get number of remaining chapters."""
         return max(0, self.total_chapters - self.completed_chapters)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize state to dictionary.
 
         Returns:
@@ -87,7 +85,7 @@ class ConversionState:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ConversionState':
+    def from_dict(cls, data: dict[str, Any]) -> 'ConversionState':
         """Create state from dictionary.
 
         Args:
@@ -147,7 +145,7 @@ class StateManager:
         with open(self.state_path, 'w') as f:
             json.dump(state.to_dict(), f, indent=2)
 
-    def load_state(self) -> Optional[ConversionState]:
+    def load_state(self) -> ConversionState | None:
         """Load conversion state from file.
 
         Returns:
@@ -157,10 +155,10 @@ class StateManager:
             return None
 
         try:
-            with open(self.state_path, 'r') as f:
+            with open(self.state_path) as f:
                 data = json.load(f)
             return ConversionState.from_dict(data)
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             return None
 
     def clear_state(self) -> None:
@@ -192,7 +190,7 @@ class StateManager:
         return os.path.normpath(state.source_file) == os.path.normpath(source_file)
 
     def update_progress(self, completed_chapters: int,
-                       intermediate_files: Optional[List[str]] = None) -> None:
+                       intermediate_files: list[str] | None = None) -> None:
         """Update progress in the saved state.
 
         Args:
@@ -206,7 +204,7 @@ class StateManager:
                 state.intermediate_files = intermediate_files
             self.save_state(state)
 
-    def get_resume_info(self, source_file: str) -> Optional[Dict[str, Any]]:
+    def get_resume_info(self, source_file: str) -> dict[str, Any] | None:
         """Get resume information if available.
 
         Args:
@@ -249,7 +247,7 @@ def prompt_resume(source_file: str, state_dir: str) -> bool:
     if not info:
         return False
 
-    print(f"\nFound incomplete conversion:")
+    print("\nFound incomplete conversion:")
     print(f"  Progress: {info['progress']:.1f}% ({info['start_chapter']-1}/{info['total_chapters']} chapters)")
     print(f"  Voice: {info['speaker']}")
 

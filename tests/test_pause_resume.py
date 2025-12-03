@@ -8,9 +8,9 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from epub2tts_edge.pause_resume import (
+    STATE_FILE_NAME,
     ConversionState,
     StateManager,
-    STATE_FILE_NAME,
 )
 
 

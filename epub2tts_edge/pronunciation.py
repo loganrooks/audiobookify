@@ -8,7 +8,6 @@ mispronounced by the TTS engine.
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -20,7 +19,7 @@ class PronunciationConfig:
         case_sensitive: Whether replacements are case-sensitive
         enabled: Whether pronunciation processing is enabled
     """
-    dictionary: Dict[str, str] = field(default_factory=dict)
+    dictionary: dict[str, str] = field(default_factory=dict)
     case_sensitive: bool = False
     enabled: bool = True
 
@@ -36,7 +35,7 @@ class PronunciationEntry:
     """
     original: str
     replacement: str
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class PronunciationProcessor:
@@ -49,14 +48,14 @@ class PronunciationProcessor:
         config: PronunciationConfig instance with settings
     """
 
-    def __init__(self, config: Optional[PronunciationConfig] = None):
+    def __init__(self, config: PronunciationConfig | None = None):
         """Initialize the processor.
 
         Args:
             config: Optional configuration. Uses defaults if not provided.
         """
         self.config = config or PronunciationConfig()
-        self._compiled_patterns: Dict[str, re.Pattern] = {}
+        self._compiled_patterns: dict[str, re.Pattern] = {}
         self._compile_patterns()
 
     def _compile_patterns(self) -> None:
@@ -151,7 +150,7 @@ class PronunciationProcessor:
 
     def _load_json(self, file_path: str) -> None:
         """Load dictionary from JSON file."""
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding='utf-8') as f:
             data = json.load(f)
 
         if isinstance(data, dict):
@@ -161,7 +160,7 @@ class PronunciationProcessor:
 
     def _load_text(self, file_path: str) -> None:
         """Load dictionary from text file."""
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
 
@@ -192,7 +191,7 @@ class PronunciationProcessor:
         """Get the number of entries in the dictionary."""
         return len(self.config.dictionary)
 
-    def list_entries(self) -> List[Tuple[str, str]]:
+    def list_entries(self) -> list[tuple[str, str]]:
         """List all dictionary entries.
 
         Returns:

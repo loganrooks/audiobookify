@@ -2,16 +2,18 @@
 Tests for the enhanced chapter detection module.
 """
 
-import pytest
-import sys
+import importlib.util
 import os
+import sys
+
+import pytest
 
 # Add parent directory to path for imports
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, parent_dir)
 
 # Import directly from the module file to avoid __init__.py dependency issues
-import importlib.util
+
 spec = importlib.util.spec_from_file_location(
     "chapter_detector",
     os.path.join(parent_dir, "epub2tts_edge", "chapter_detector.py")

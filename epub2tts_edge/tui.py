@@ -112,9 +112,7 @@ class FilePanel(Vertical):
         yield Label("📁 Select Books (EPUB/MOBI/AZW)", classes="title")
         yield Label("0 files found", classes="file-count", id="file-count")
         yield Input(
-            placeholder="Enter folder path...",
-            value=str(self.current_path),
-            id="path-input"
+            placeholder="Enter folder path...", value=str(self.current_path), id="path-input"
         )
         yield ListView(id="file-list")
         with Horizontal(id="file-actions"):
@@ -175,10 +173,7 @@ class FilePanel(Vertical):
 
     def get_selected_files(self) -> list[Path]:
         """Get list of selected EPUB files."""
-        return [
-            item.path for item in self.query(EPUBFileItem)
-            if item.is_selected
-        ]
+        return [item.path for item in self.query(EPUBFileItem) if item.is_selected]
 
 
 class SettingsPanel(Vertical):
@@ -282,9 +277,7 @@ class SettingsPanel(Vertical):
         with Horizontal(classes="setting-row"):
             yield Label("Voice:")
             yield Select(
-                [(v[1], v[0]) for v in self.VOICES],
-                value="en-US-AndrewNeural",
-                id="voice-select"
+                [(v[1], v[0]) for v in self.VOICES], value="en-US-AndrewNeural", id="voice-select"
             )
 
         yield Button("🔊 Preview Voice", id="preview-voice-btn", variant="default")
@@ -294,19 +287,11 @@ class SettingsPanel(Vertical):
 
         with Horizontal(classes="setting-row"):
             yield Label("Rate:")
-            yield Select(
-                [(r[1], r[0]) for r in self.RATE_OPTIONS],
-                value="",
-                id="rate-select"
-            )
+            yield Select([(r[1], r[0]) for r in self.RATE_OPTIONS], value="", id="rate-select")
 
         with Horizontal(classes="setting-row"):
             yield Label("Volume:")
-            yield Select(
-                [(v[1], v[0]) for v in self.VOLUME_OPTIONS],
-                value="",
-                id="volume-select"
-            )
+            yield Select([(v[1], v[0]) for v in self.VOLUME_OPTIONS], value="", id="volume-select")
 
         yield Rule()
 
@@ -314,17 +299,13 @@ class SettingsPanel(Vertical):
         with Horizontal(classes="setting-row"):
             yield Label("Detection:")
             yield Select(
-                [(d[1], d[0]) for d in self.DETECTION_METHODS],
-                value="combined",
-                id="detect-select"
+                [(d[1], d[0]) for d in self.DETECTION_METHODS], value="combined", id="detect-select"
             )
 
         with Horizontal(classes="setting-row"):
             yield Label("Hierarchy:")
             yield Select(
-                [(h[1], h[0]) for h in self.HIERARCHY_STYLES],
-                value="flat",
-                id="hierarchy-select"
+                [(h[1], h[0]) for h in self.HIERARCHY_STYLES], value="flat", id="hierarchy-select"
             )
 
         # v2.1.0: Chapter selection
@@ -332,10 +313,7 @@ class SettingsPanel(Vertical):
 
         with Horizontal(classes="setting-row"):
             yield Label("Chapters:")
-            yield Input(
-                placeholder="e.g., 1-5, 1,3,7",
-                id="chapters-input"
-            )
+            yield Input(placeholder="e.g., 1-5, 1,3,7", id="chapters-input")
 
         yield Rule()
 
@@ -370,17 +348,11 @@ class SettingsPanel(Vertical):
 
         with Horizontal(classes="setting-row"):
             yield Label("Pronuncia.:")
-            yield Input(
-                placeholder="Path to dictionary file",
-                id="pronunciation-input"
-            )
+            yield Input(placeholder="Path to dictionary file", id="pronunciation-input")
 
         with Horizontal(classes="setting-row"):
             yield Label("Voice Map:")
-            yield Input(
-                placeholder="Path to voice mapping",
-                id="voice-mapping-input"
-            )
+            yield Input(placeholder="Path to voice mapping", id="voice-mapping-input")
 
     def get_config(self) -> dict:
         """Get current settings as a dictionary."""
@@ -465,9 +437,7 @@ class ProgressPanel(Vertical):
         self.query_one("#current-book", Label).update(
             f"Processing: {book_name}" if book_name else "Ready to convert"
         )
-        self.query_one("#status-text", Label).update(
-            status or f"{current}/{total} books processed"
-        )
+        self.query_one("#status-text", Label).update(status or f"{current}/{total} books processed")
 
     def set_running(self, running: bool) -> None:
         """Update button states based on running status."""
@@ -516,7 +486,7 @@ class QueuePanel(Vertical):
             task.basename[:30],
             str(task.chapter_count) if task.chapter_count else "-",
             self._format_duration(task.duration),
-            key=task.epub_path
+            key=task.epub_path,
         )
 
     def update_task(self, task: BookTask) -> None:
@@ -526,7 +496,9 @@ class QueuePanel(Vertical):
             row_key = table.get_row_index(task.epub_path)
             status_icon = self._get_status_icon(task.status)
             table.update_cell_at((row_key, 0), status_icon)
-            table.update_cell_at((row_key, 2), str(task.chapter_count) if task.chapter_count else "-")
+            table.update_cell_at(
+                (row_key, 2), str(task.chapter_count) if task.chapter_count else "-"
+            )
             table.update_cell_at((row_key, 3), self._format_duration(task.duration))
         except Exception:
             pass
@@ -603,32 +575,39 @@ class AudiobookifyApp(App):
     Screen {
         layout: grid;
         grid-size: 2 2;
-        grid-columns: 1fr 40;
-        grid-rows: 1fr auto;
+        grid-columns: 2fr 1fr;
+        grid-rows: 2fr 1fr;
     }
 
     #main-area {
         column-span: 1;
         row-span: 1;
+        min-height: 15;
     }
 
     #settings-area {
         column-span: 1;
         row-span: 2;
+        min-width: 42;
     }
 
     #bottom-area {
         column-span: 1;
         row-span: 1;
-        height: 100%;
+        min-height: 10;
     }
 
     #left-panels {
         height: 100%;
+        width: 100%;
     }
 
-    #right-bottom {
-        height: 100%;
+    FilePanel {
+        min-height: 10;
+    }
+
+    FilePanel #file-list {
+        min-height: 5;
     }
     """
 
@@ -724,51 +703,39 @@ class AudiobookifyApp(App):
             preview = VoicePreview(preview_config)
             output_path = preview.generate_preview_temp()
 
-            self.call_from_thread(
-                self.log_message,
-                f"   Preview saved to: {output_path}"
-            )
+            self.call_from_thread(self.log_message, f"   Preview saved to: {output_path}")
 
             # Try to play the audio with various players
             # Priority: PulseAudio/PipeWire tools, then common media players
             players = [
-                ('paplay', []),                      # PulseAudio
-                ('pw-play', []),                     # PipeWire
-                ('ffplay', ['-nodisp', '-autoexit']), # FFmpeg
-                ('mpv', ['--no-video']),             # MPV
-                ('vlc', ['--intf', 'dummy', '--play-and-exit']),  # VLC
-                ('aplay', []),                       # ALSA
-                ('afplay', []),                      # macOS
+                ("paplay", []),  # PulseAudio
+                ("pw-play", []),  # PipeWire
+                ("ffplay", ["-nodisp", "-autoexit"]),  # FFmpeg
+                ("mpv", ["--no-video"]),  # MPV
+                ("vlc", ["--intf", "dummy", "--play-and-exit"]),  # VLC
+                ("aplay", []),  # ALSA
+                ("afplay", []),  # macOS
             ]
             for player, args in players:
                 if shutil.which(player):
-                    self.call_from_thread(
-                        self.log_message,
-                        f"   Playing with {player}..."
-                    )
+                    self.call_from_thread(self.log_message, f"   Playing with {player}...")
                     try:
                         subprocess.run(
-                            [player] + args + [output_path],
-                            capture_output=True, timeout=30
+                            [player] + args + [output_path], capture_output=True, timeout=30
                         )
                         break
                     except Exception:
                         continue
             else:
                 self.call_from_thread(
-                    self.log_message,
-                    "   No audio player found. File saved for manual playback."
+                    self.log_message, "   No audio player found. File saved for manual playback."
                 )
                 self.call_from_thread(
-                    self.log_message,
-                    f"   Install: paplay (PulseAudio), mpv, or ffplay"
+                    self.log_message, "   Install: paplay (PulseAudio), mpv, or ffplay"
                 )
 
         except Exception as e:
-            self.call_from_thread(
-                self.log_message,
-                f"   ❌ Preview failed: {e}"
-            )
+            self.call_from_thread(self.log_message, f"   ❌ Preview failed: {e}")
 
     def action_start(self) -> None:
         """Start processing selected files."""
@@ -817,39 +784,30 @@ class AudiobookifyApp(App):
 
         for i, epub_path in enumerate(files):
             if self.should_stop:
-                self.call_from_thread(
-                    self.log_message,
-                    "Processing stopped by user"
-                )
+                self.call_from_thread(self.log_message, "Processing stopped by user")
                 break
 
             # Create task
             task = BookTask(epub_path=str(epub_path))
 
             # Add to queue display
-            self.call_from_thread(
-                self.query_one(QueuePanel).add_task,
-                task
-            )
+            self.call_from_thread(self.query_one(QueuePanel).add_task, task)
 
             # Update progress
             self.call_from_thread(
                 self.query_one(ProgressPanel).set_progress,
-                i, total, epub_path.name, "Processing..."
+                i,
+                total,
+                epub_path.name,
+                "Processing...",
             )
 
-            self.call_from_thread(
-                self.log_message,
-                f"Processing: {epub_path.name}"
-            )
+            self.call_from_thread(self.log_message, f"Processing: {epub_path.name}")
 
             # Process the book
             try:
                 task.status = ProcessingStatus.EXPORTING
-                self.call_from_thread(
-                    self.query_one(QueuePanel).update_task,
-                    task
-                )
+                self.call_from_thread(self.query_one(QueuePanel).update_task, task)
 
                 # Create config for single file
                 config = BatchConfig(
@@ -878,35 +836,23 @@ class AudiobookifyApp(App):
                     task.end_time = book_task.end_time
 
                     if success:
-                        self.call_from_thread(
-                            self.log_message,
-                            f"✅ Completed: {epub_path.name}"
-                        )
+                        self.call_from_thread(self.log_message, f"✅ Completed: {epub_path.name}")
                     else:
                         self.call_from_thread(
                             self.log_message,
-                            f"❌ Failed: {epub_path.name} - {book_task.error_message}"
+                            f"❌ Failed: {epub_path.name} - {book_task.error_message}",
                         )
                 else:
                     task.status = ProcessingStatus.SKIPPED
-                    self.call_from_thread(
-                        self.log_message,
-                        f"⏭️ Skipped: {epub_path.name}"
-                    )
+                    self.call_from_thread(self.log_message, f"⏭️ Skipped: {epub_path.name}")
 
             except Exception as e:
                 task.status = ProcessingStatus.FAILED
                 task.error_message = str(e)
-                self.call_from_thread(
-                    self.log_message,
-                    f"❌ Error: {epub_path.name} - {e}"
-                )
+                self.call_from_thread(self.log_message, f"❌ Error: {epub_path.name} - {e}")
 
             # Update queue display
-            self.call_from_thread(
-                self.query_one(QueuePanel).update_task,
-                task
-            )
+            self.call_from_thread(self.query_one(QueuePanel).update_task, task)
 
         # Processing complete
         self.call_from_thread(self._processing_complete, total)
@@ -973,5 +919,6 @@ def main(path: str = ".") -> None:
 
 if __name__ == "__main__":
     import sys
+
     path = sys.argv[1] if len(sys.argv) > 1 else "."
     main(path)

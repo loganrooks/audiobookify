@@ -21,8 +21,9 @@ class SilenceConfig:
         max_silence_len: Maximum allowed silence length before trimming (ms)
         enabled: Whether silence detection/trimming is enabled
     """
+
     min_silence_len: int = 1000  # 1 second
-    silence_thresh: int = -40    # dBFS
+    silence_thresh: int = -40  # dBFS
     max_silence_len: int = 2000  # 2 seconds max
     enabled: bool = True
 
@@ -35,6 +36,7 @@ class SilenceSegment:
         start_ms: Start position in milliseconds
         end_ms: End position in milliseconds
     """
+
     start_ms: int
     end_ms: int
 
@@ -88,13 +90,10 @@ class SilenceDetector:
         silence_ranges = detect_silence(
             audio,
             min_silence_len=self.config.min_silence_len,
-            silence_thresh=self.config.silence_thresh
+            silence_thresh=self.config.silence_thresh,
         )
 
-        return [
-            SilenceSegment(start_ms=start, end_ms=end)
-            for start, end in silence_ranges
-        ]
+        return [SilenceSegment(start_ms=start, end_ms=end) for start, end in silence_ranges]
 
     def analyze_file(self, file_path: str) -> dict[str, Any]:
         """Analyze an audio file for silence statistics.
@@ -111,22 +110,20 @@ class SilenceDetector:
         segments = self.detect_silence_in_file(file_path)
 
         total_silence = sum(s.duration_ms for s in segments)
-        excessive_segments = [
-            s for s in segments
-            if s.is_excessive(self.config.max_silence_len)
-        ]
+        excessive_segments = [s for s in segments if s.is_excessive(self.config.max_silence_len)]
         potential_reduction = sum(
-            max(0, s.duration_ms - self.config.max_silence_len)
-            for s in segments
+            max(0, s.duration_ms - self.config.max_silence_len) for s in segments
         )
 
         return {
-            'total_duration_ms': total_duration,
-            'silence_count': len(segments),
-            'total_silence_ms': total_silence,
-            'excessive_silence_count': len(excessive_segments),
-            'potential_reduction_ms': potential_reduction,
-            'silence_percentage': (total_silence / total_duration * 100) if total_duration > 0 else 0
+            "total_duration_ms": total_duration,
+            "silence_count": len(segments),
+            "total_silence_ms": total_silence,
+            "excessive_silence_count": len(excessive_segments),
+            "potential_reduction_ms": potential_reduction,
+            "silence_percentage": (total_silence / total_duration * 100)
+            if total_duration > 0
+            else 0,
         }
 
     def analyze_files(self, file_paths: list[str]) -> list[dict[str, Any]]:
@@ -140,11 +137,7 @@ class SilenceDetector:
         """
         return [self.analyze_file(path) for path in file_paths]
 
-    def trim_silence(
-        self,
-        input_path: str,
-        output_path: str
-    ) -> str | None:
+    def trim_silence(self, input_path: str, output_path: str) -> str | None:
         """Trim excessive silence from an audio file.
 
         Reduces silence segments longer than max_silence_len to
@@ -166,7 +159,7 @@ class SilenceDetector:
         silence_ranges = detect_silence(
             audio,
             min_silence_len=self.config.min_silence_len,
-            silence_thresh=self.config.silence_thresh
+            silence_thresh=self.config.silence_thresh,
         )
 
         if not silence_ranges:
@@ -202,11 +195,7 @@ class SilenceDetector:
         result.export(output_path, format=self._get_format(output_path))
         return output_path
 
-    def trim_files(
-        self,
-        input_paths: list[str],
-        output_dir: str
-    ) -> list[str]:
+    def trim_files(self, input_paths: list[str], output_dir: str) -> list[str]:
         """Trim silence from multiple audio files.
 
         Args:
@@ -240,7 +229,7 @@ class SilenceDetector:
         Returns:
             Format string for pydub export
         """
-        ext = file_path.rsplit('.', 1)[-1].lower()
-        if ext in ('m4a', 'm4b'):
-            return 'ipod'
+        ext = file_path.rsplit(".", 1)[-1].lower()
+        if ext in ("m4a", "m4b"):
+            return "ipod"
         return ext

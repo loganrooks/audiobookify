@@ -15,8 +15,7 @@ sys.path.insert(0, parent_dir)
 # Import directly from the module file to avoid __init__.py dependency issues
 
 spec = importlib.util.spec_from_file_location(
-    "chapter_detector",
-    os.path.join(parent_dir, "epub2tts_edge", "chapter_detector.py")
+    "chapter_detector", os.path.join(parent_dir, "epub2tts_edge", "chapter_detector.py")
 )
 chapter_detector = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(chapter_detector)
@@ -162,10 +161,7 @@ class TestChapterNode:
     def test_to_dict(self):
         """Test dictionary serialization."""
         node = ChapterNode(
-            title="Chapter 1",
-            level=1,
-            href="chapter1.html",
-            paragraphs=["Para 1", "Para 2"]
+            title="Chapter 1", level=1, href="chapter1.html", paragraphs=["Para 1", "Para 2"]
         )
 
         d = node.to_dict()
@@ -260,7 +256,12 @@ class TestHeadingDetector:
         assert detector.detect_heading_in_text("Section 2.1") == 3
 
         # Not a heading
-        assert detector.detect_heading_in_text("This is a normal paragraph that is quite long and should not be detected as a heading.") is None
+        assert (
+            detector.detect_heading_in_text(
+                "This is a normal paragraph that is quite long and should not be detected as a heading."
+            )
+            is None
+        )
 
 
 class TestDetectionMethodEnum:

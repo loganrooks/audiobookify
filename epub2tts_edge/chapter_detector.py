@@ -22,32 +22,35 @@ from lxml import etree
 
 class DetectionMethod(Enum):
     """Chapter detection method preference."""
-    TOC_ONLY = "toc"           # Use only Table of Contents
+
+    TOC_ONLY = "toc"  # Use only Table of Contents
     HEADINGS_ONLY = "headings"  # Use only HTML headings
-    COMBINED = "combined"       # Combine TOC with headings (default)
-    AUTO = "auto"              # Automatically choose best method
+    COMBINED = "combined"  # Combine TOC with headings (default)
+    AUTO = "auto"  # Automatically choose best method
 
 
 class HierarchyStyle(Enum):
     """How to display chapter hierarchy in flat output."""
-    FLAT = "flat"              # No hierarchy indication
-    NUMBERED = "numbered"       # 1.1, 1.2, 1.2.1, etc.
-    INDENTED = "indented"       # Indent with spaces/dashes
-    ARROW = "arrow"            # Part 1 > Chapter 1 > Section 1
+
+    FLAT = "flat"  # No hierarchy indication
+    NUMBERED = "numbered"  # 1.1, 1.2, 1.2.1, etc.
+    INDENTED = "indented"  # Indent with spaces/dashes
+    ARROW = "arrow"  # Part 1 > Chapter 1 > Section 1
     BREADCRUMB = "breadcrumb"  # Full path: Part 1 / Chapter 1 / Section 1
 
 
 @dataclass
 class ChapterNode:
     """Represents a chapter or section in the book hierarchy."""
+
     title: str
     level: int = 0  # 0 = root/book, 1 = part, 2 = chapter, 3 = section, etc.
     href: str | None = None  # Reference to content file
     anchor: str | None = None  # Fragment identifier within file
     content: str | None = None  # Extracted text content
     paragraphs: list[str] = field(default_factory=list)
-    children: list['ChapterNode'] = field(default_factory=list)
-    parent: Optional['ChapterNode'] = None
+    children: list["ChapterNode"] = field(default_factory=list)
+    parent: Optional["ChapterNode"] = None
     play_order: int = 0  # Reading order
 
     def __post_init__(self):
@@ -55,14 +58,14 @@ class ChapterNode:
         for child in self.children:
             child.parent = self
 
-    def add_child(self, child: 'ChapterNode') -> 'ChapterNode':
+    def add_child(self, child: "ChapterNode") -> "ChapterNode":
         """Add a child chapter/section."""
         child.parent = self
         child.level = self.level + 1
         self.children.append(child)
         return child
 
-    def get_path(self) -> list['ChapterNode']:
+    def get_path(self) -> list["ChapterNode"]:
         """Get the path from root to this node."""
         path = []
         node = self
@@ -77,7 +80,7 @@ class ChapterNode:
             return 0
         return 1 + max(child.get_depth() for child in self.children)
 
-    def flatten(self, max_depth: int | None = None) -> list['ChapterNode']:
+    def flatten(self, max_depth: int | None = None) -> list["ChapterNode"]:
         """Flatten the hierarchy to a list, respecting max_depth."""
         result = []
         if self.level > 0:  # Skip root node
@@ -129,7 +132,7 @@ class ChapterNode:
             "anchor": self.anchor,
             "play_order": self.play_order,
             "children": [child.to_dict() for child in self.children],
-            "paragraph_count": len(self.paragraphs)
+            "paragraph_count": len(self.paragraphs),
         }
 
 
@@ -193,7 +196,7 @@ class TOCParser:
         for item in self.book.get_items():
             if item.get_type() == ebooklib.ITEM_DOCUMENT:
                 name = item.get_name().lower()
-                if name.endswith('.ncx'):
+                if name.endswith(".ncx"):
                     return item
 
         # Try to find via spine
@@ -209,42 +212,39 @@ class TOCParser:
     def _parse_nav(self, nav_item: Any, root: ChapterNode):
         """Parse EPUB3 NAV document."""
         content = nav_item.get_content()
-        soup = BeautifulSoup(content, 'html.parser')
+        soup = BeautifulSoup(content, "html.parser")
 
         # Find the TOC nav element
-        nav = soup.find('nav', attrs={'epub:type': 'toc'})
+        nav = soup.find("nav", attrs={"epub:type": "toc"})
         if not nav:
-            nav = soup.find('nav', id='toc')
+            nav = soup.find("nav", id="toc")
         if not nav:
-            nav = soup.find('nav')
+            nav = soup.find("nav")
 
         if nav:
-            ol = nav.find('ol')
+            ol = nav.find("ol")
             if ol:
                 self._parse_nav_ol(ol, root, play_order=[0])
 
     def _parse_nav_ol(self, ol: Tag, parent: ChapterNode, play_order: list[int]):
         """Recursively parse NAV ordered list."""
-        for li in ol.find_all('li', recursive=False):
-            a = li.find('a')
+        for li in ol.find_all("li", recursive=False):
+            a = li.find("a")
             if a:
                 title = a.get_text(strip=True)
-                href = a.get('href', '')
+                href = a.get("href", "")
 
                 # Split href into file and anchor
                 file_href, anchor = self._split_href(href)
 
                 play_order[0] += 1
                 chapter = ChapterNode(
-                    title=title,
-                    href=file_href,
-                    anchor=anchor,
-                    play_order=play_order[0]
+                    title=title, href=file_href, anchor=anchor, play_order=play_order[0]
                 )
                 parent.add_child(chapter)
 
                 # Check for nested ol
-                nested_ol = li.find('ol')
+                nested_ol = li.find("ol")
                 if nested_ol:
                     self._parse_nav_ol(nested_ol, chapter, play_order)
 
@@ -257,56 +257,51 @@ class TOCParser:
             return
 
         # Find navMap
-        nav_map = tree.find('.//{http://www.daisy.org/z3986/2005/ncx/}navMap')
+        nav_map = tree.find(".//{http://www.daisy.org/z3986/2005/ncx/}navMap")
         if nav_map is None:
             # Try without namespace
-            nav_map = tree.find('.//navMap')
+            nav_map = tree.find(".//navMap")
 
         if nav_map is not None:
             self._parse_ncx_navmap(nav_map, root)
 
     def _parse_ncx_navmap(self, nav_map: Any, parent: ChapterNode):
         """Recursively parse NCX navMap."""
-        ns = {'ncx': 'http://www.daisy.org/z3986/2005/ncx/'}
+        ns = {"ncx": "http://www.daisy.org/z3986/2005/ncx/"}
 
-        nav_points = nav_map.findall('ncx:navPoint', ns)
+        nav_points = nav_map.findall("ncx:navPoint", ns)
         if not nav_points:
-            nav_points = nav_map.findall('navPoint')
+            nav_points = nav_map.findall("navPoint")
 
         for nav_point in nav_points:
             # Get title
-            nav_label = nav_point.find('ncx:navLabel', ns)
+            nav_label = nav_point.find("ncx:navLabel", ns)
             if nav_label is None:
-                nav_label = nav_point.find('navLabel')
+                nav_label = nav_point.find("navLabel")
 
             title = ""
             if nav_label is not None:
-                text_elem = nav_label.find('ncx:text', ns)
+                text_elem = nav_label.find("ncx:text", ns)
                 if text_elem is None:
-                    text_elem = nav_label.find('text')
+                    text_elem = nav_label.find("text")
                 if text_elem is not None and text_elem.text:
                     title = text_elem.text.strip()
 
             # Get content href
-            content_elem = nav_point.find('ncx:content', ns)
+            content_elem = nav_point.find("ncx:content", ns)
             if content_elem is None:
-                content_elem = nav_point.find('content')
+                content_elem = nav_point.find("content")
 
             href = ""
             anchor = None
             if content_elem is not None:
-                src = content_elem.get('src', '')
+                src = content_elem.get("src", "")
                 href, anchor = self._split_href(src)
 
             # Get play order
-            play_order = int(nav_point.get('playOrder', 0))
+            play_order = int(nav_point.get("playOrder", 0))
 
-            chapter = ChapterNode(
-                title=title,
-                href=href,
-                anchor=anchor,
-                play_order=play_order
-            )
+            chapter = ChapterNode(title=title, href=href, anchor=anchor, play_order=play_order)
             parent.add_child(chapter)
 
             # Recursively parse nested navPoints
@@ -314,8 +309,8 @@ class TOCParser:
 
     def _split_href(self, href: str) -> tuple[str, str | None]:
         """Split href into file path and anchor."""
-        if '#' in href:
-            parts = href.split('#', 1)
+        if "#" in href:
+            parts = href.split("#", 1)
             return parts[0], parts[1]
         return href, None
 
@@ -344,31 +339,29 @@ class TOCParser:
 class HeadingDetector:
     """Detects and extracts heading hierarchy from HTML content."""
 
-    HEADING_TAGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']
+    HEADING_TAGS = ["h1", "h2", "h3", "h4", "h5", "h6"]
 
     # Common chapter title patterns
     CHAPTER_PATTERNS = [
-        r'^chapter\s+(\d+|[ivxlcdm]+)',  # Chapter 1, Chapter IV
-        r'^part\s+(\d+|[ivxlcdm]+)',      # Part 1, Part II
-        r'^book\s+(\d+|[ivxlcdm]+)',      # Book 1, Book III
-        r'^section\s+(\d+|[ivxlcdm]+)',   # Section 1
-        r'^act\s+(\d+|[ivxlcdm]+)',       # Act 1
-        r'^scene\s+(\d+|[ivxlcdm]+)',     # Scene 1
-        r'^prologue',
-        r'^epilogue',
-        r'^introduction',
-        r'^preface',
-        r'^foreword',
-        r'^afterword',
-        r'^appendix',
-        r'^\d+\.',                         # 1. Title
-        r'^[ivxlcdm]+\.',                  # IV. Title
+        r"^chapter\s+(\d+|[ivxlcdm]+)",  # Chapter 1, Chapter IV
+        r"^part\s+(\d+|[ivxlcdm]+)",  # Part 1, Part II
+        r"^book\s+(\d+|[ivxlcdm]+)",  # Book 1, Book III
+        r"^section\s+(\d+|[ivxlcdm]+)",  # Section 1
+        r"^act\s+(\d+|[ivxlcdm]+)",  # Act 1
+        r"^scene\s+(\d+|[ivxlcdm]+)",  # Scene 1
+        r"^prologue",
+        r"^epilogue",
+        r"^introduction",
+        r"^preface",
+        r"^foreword",
+        r"^afterword",
+        r"^appendix",
+        r"^\d+\.",  # 1. Title
+        r"^[ivxlcdm]+\.",  # IV. Title
     ]
 
     def __init__(self):
-        self._compiled_patterns = [
-            re.compile(p, re.IGNORECASE) for p in self.CHAPTER_PATTERNS
-        ]
+        self._compiled_patterns = [re.compile(p, re.IGNORECASE) for p in self.CHAPTER_PATTERNS]
 
     def extract_headings(self, html_content: bytes | str) -> list[tuple[int, str, str | None]]:
         """
@@ -377,14 +370,14 @@ class HeadingDetector:
         Returns:
             List of tuples: (level, title, element_id)
         """
-        soup = BeautifulSoup(html_content, 'html.parser')
+        soup = BeautifulSoup(html_content, "html.parser")
         headings = []
 
         for tag_name in self.HEADING_TAGS:
             for tag in soup.find_all(tag_name):
                 level = int(tag_name[1])  # h1 -> 1, h2 -> 2, etc.
                 title = tag.get_text(strip=True)
-                element_id = tag.get('id')
+                element_id = tag.get("id")
 
                 if title:  # Only include non-empty headings
                     headings.append((level, title, element_id))
@@ -400,7 +393,7 @@ class HeadingDetector:
         Returns:
             List of section dictionaries with heading info and paragraphs
         """
-        soup = BeautifulSoup(html_content, 'html.parser')
+        soup = BeautifulSoup(html_content, "html.parser")
         sections = []
 
         # Find all heading elements
@@ -409,7 +402,7 @@ class HeadingDetector:
         for _i, heading in enumerate(all_headings):
             level = int(heading.name[1])
             title = heading.get_text(strip=True)
-            element_id = heading.get('id')
+            element_id = heading.get("id")
 
             if not title:
                 continue
@@ -421,24 +414,21 @@ class HeadingDetector:
             while sibling:
                 if sibling.name in self.HEADING_TAGS:
                     break
-                if sibling.name == 'p':
+                if sibling.name == "p":
                     text = sibling.get_text(strip=True)
                     if text:
                         paragraphs.append(text)
-                elif sibling.name == 'div':
+                elif sibling.name == "div":
                     # Check for paragraphs inside div
-                    for p in sibling.find_all('p'):
+                    for p in sibling.find_all("p"):
                         text = p.get_text(strip=True)
                         if text:
                             paragraphs.append(text)
                 sibling = sibling.find_next_sibling()
 
-            sections.append({
-                'level': level,
-                'title': title,
-                'id': element_id,
-                'paragraphs': paragraphs
-            })
+            sections.append(
+                {"level": level, "title": title, "id": element_id, "paragraphs": paragraphs}
+            )
 
         return sections
 
@@ -463,20 +453,20 @@ class HeadingDetector:
         # Check for chapter patterns (usually level 1 or 2)
         lower_text = text.lower()
 
-        if any(lower_text.startswith(p) for p in ['part ', 'book ']):
+        if any(lower_text.startswith(p) for p in ["part ", "book "]):
             return 1
 
-        if any(lower_text.startswith(p) for p in ['chapter ', 'act ']):
+        if any(lower_text.startswith(p) for p in ["chapter ", "act "]):
             return 2
 
-        if any(lower_text.startswith(p) for p in ['section ', 'scene ']):
+        if any(lower_text.startswith(p) for p in ["section ", "scene "]):
             return 3
 
         # Numbered patterns
-        if re.match(r'^\d+\.?\s+\w', text):
+        if re.match(r"^\d+\.?\s+\w", text):
             return 2
 
-        if re.match(r'^[ivxlcdm]+\.?\s+\w', text, re.IGNORECASE):
+        if re.match(r"^[ivxlcdm]+\.?\s+\w", text, re.IGNORECASE):
             return 2
 
         return None
@@ -493,7 +483,7 @@ class ChapterDetector:
         epub_path: str,
         method: DetectionMethod = DetectionMethod.COMBINED,
         max_depth: int | None = None,
-        hierarchy_style: HierarchyStyle = HierarchyStyle.FLAT
+        hierarchy_style: HierarchyStyle = HierarchyStyle.FLAT,
     ):
         self.epub_path = epub_path
         self.method = method
@@ -536,9 +526,12 @@ class ChapterDetector:
         root = ChapterNode(title="Root", level=0)
 
         # Process spine items in order
-        spine_ids = [s[0] for s in self.book.spine if s[1] == 'yes']
-        items = {item.get_id(): item for item in self.book.get_items()
-                 if item.get_type() == ebooklib.ITEM_DOCUMENT}
+        spine_ids = [s[0] for s in self.book.spine if s[1] == "yes"]
+        items = {
+            item.get_id(): item
+            for item in self.book.get_items()
+            if item.get_type() == ebooklib.ITEM_DOCUMENT
+        }
 
         play_order = 0
         for spine_id in spine_ids:
@@ -552,12 +545,12 @@ class ChapterDetector:
             for section in sections:
                 play_order += 1
                 chapter = ChapterNode(
-                    title=section['title'],
-                    level=section['level'],
+                    title=section["title"],
+                    level=section["level"],
                     href=item.get_name(),
-                    anchor=section['id'],
-                    paragraphs=section['paragraphs'],
-                    play_order=play_order
+                    anchor=section["id"],
+                    paragraphs=section["paragraphs"],
+                    play_order=play_order,
                 )
 
                 # Add to appropriate parent based on level
@@ -611,9 +604,12 @@ class ChapterDetector:
         """Create a flat chapter structure from spine items."""
         root = ChapterNode(title="Root", level=0)
 
-        spine_ids = [s[0] for s in self.book.spine if s[1] == 'yes']
-        items = {item.get_id(): item for item in self.book.get_items()
-                 if item.get_type() == ebooklib.ITEM_DOCUMENT}
+        spine_ids = [s[0] for s in self.book.spine if s[1] == "yes"]
+        items = {
+            item.get_id(): item
+            for item in self.book.get_items()
+            if item.get_type() == ebooklib.ITEM_DOCUMENT
+        }
 
         for i, spine_id in enumerate(spine_ids, 1):
             item = items.get(spine_id)
@@ -622,10 +618,10 @@ class ChapterDetector:
 
             # Try to get title from content
             content = item.get_content()
-            soup = BeautifulSoup(content, 'html.parser')
+            soup = BeautifulSoup(content, "html.parser")
 
             title = None
-            for tag in ['h1', 'h2', 'title']:
+            for tag in ["h1", "h2", "title"]:
                 elem = soup.find(tag)
                 if elem:
                     title = elem.get_text(strip=True)
@@ -635,12 +631,7 @@ class ChapterDetector:
             if not title:
                 title = f"Part {i}"
 
-            chapter = ChapterNode(
-                title=title,
-                level=1,
-                href=item.get_name(),
-                play_order=i
-            )
+            chapter = ChapterNode(title=title, level=1, href=item.get_name(), play_order=i)
             root.add_child(chapter)
 
         return root
@@ -677,14 +668,16 @@ class ChapterDetector:
                     if heading.title != toc_chapter.title:
                         # Check if this is a sub-section
                         if heading.level > 1 and not toc_chapter.children:
-                            toc_chapter.add_child(ChapterNode(
-                                title=heading.title,
-                                level=toc_chapter.level + 1,
-                                href=heading.href,
-                                anchor=heading.anchor,
-                                paragraphs=heading.paragraphs,
-                                play_order=heading.play_order
-                            ))
+                            toc_chapter.add_child(
+                                ChapterNode(
+                                    title=heading.title,
+                                    level=toc_chapter.level + 1,
+                                    href=heading.href,
+                                    anchor=heading.anchor,
+                                    paragraphs=heading.paragraphs,
+                                    play_order=heading.play_order,
+                                )
+                            )
 
     def _populate_content(self, root: ChapterNode):
         """Populate paragraph content for all chapters."""
@@ -713,7 +706,7 @@ class ChapterDetector:
                 continue
 
             # Extract paragraphs
-            soup = BeautifulSoup(content, 'html.parser')
+            soup = BeautifulSoup(content, "html.parser")
 
             # If there's an anchor, try to find content after it
             start_elem = None
@@ -728,25 +721,25 @@ class ChapterDetector:
                     if sibling.name in HeadingDetector.HEADING_TAGS:
                         # Stop at next heading
                         break
-                    if sibling.name == 'p':
+                    if sibling.name == "p":
                         text = sibling.get_text(strip=True)
                         if text:
                             paragraphs.append(text)
             else:
                 # Get all paragraphs from the file
                 # Remove link-only text (footnotes)
-                for a in soup.find_all('a', href=True):
+                for a in soup.find_all("a", href=True):
                     if not any(char.isalpha() for char in a.get_text()):
                         a.extract()
 
-                for p in soup.find_all('p'):
+                for p in soup.find_all("p"):
                     text = p.get_text(strip=True)
                     if text:
                         paragraphs.append(text)
 
                 # Fallback to div if no paragraphs
                 if not paragraphs:
-                    for div in soup.find_all('div'):
+                    for div in soup.find_all("div"):
                         text = div.get_text(strip=True)
                         if text and len(text) > 20:  # Skip short divs
                             paragraphs.append(text)
@@ -766,14 +759,16 @@ class ChapterDetector:
         chapters = []
         for node in self._chapter_tree.flatten(self.max_depth):
             formatted_title = node.format_title(self.hierarchy_style)
-            chapters.append({
-                'title': formatted_title,
-                'original_title': node.title,
-                'level': node.level,
-                'paragraphs': node.paragraphs,
-                'href': node.href,
-                'play_order': node.play_order
-            })
+            chapters.append(
+                {
+                    "title": formatted_title,
+                    "original_title": node.title,
+                    "level": node.level,
+                    "paragraphs": node.paragraphs,
+                    "href": node.href,
+                    "play_order": node.play_order,
+                }
+            )
 
         return chapters
 
@@ -784,10 +779,7 @@ class ChapterDetector:
         return self._chapter_tree
 
     def export_to_text(
-        self,
-        output_path: str,
-        include_metadata: bool = True,
-        level_markers: bool = True
+        self, output_path: str, include_metadata: bool = True, level_markers: bool = True
     ) -> str:
         """
         Export chapters to text file format compatible with epub2tts.
@@ -808,20 +800,20 @@ class ChapterDetector:
         author = "Unknown"
 
         try:
-            title_meta = self.book.get_metadata('DC', 'title')
+            title_meta = self.book.get_metadata("DC", "title")
             if title_meta:
                 title = title_meta[0][0]
         except (IndexError, KeyError, TypeError):
             pass
 
         try:
-            author_meta = self.book.get_metadata('DC', 'creator')
+            author_meta = self.book.get_metadata("DC", "creator")
             if author_meta:
                 author = author_meta[0][0]
         except (IndexError, KeyError, TypeError):
             pass
 
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             if include_metadata:
                 f.write(f"Title: {title}\n")
                 f.write(f"Author: {author}\n\n")
@@ -833,18 +825,18 @@ class ChapterDetector:
             for chapter in self._chapter_tree.flatten(self.max_depth):
                 # Determine header level
                 if level_markers:
-                    markers = '#' * min(chapter.level, 6)
+                    markers = "#" * min(chapter.level, 6)
                 else:
-                    markers = '#'
+                    markers = "#"
 
                 title = chapter.format_title(self.hierarchy_style)
                 f.write(f"{markers} {title}\n\n")
 
                 for paragraph in chapter.paragraphs:
                     # Clean up text
-                    clean = re.sub(r'[\s\n]+', ' ', paragraph)
-                    clean = re.sub(r'[\u201c\u201d]', '"', clean)
-                    clean = re.sub(r'[\u2018\u2019]', "'", clean)
+                    clean = re.sub(r"[\s\n]+", " ", paragraph)
+                    clean = re.sub(r"[\u201c\u201d]", '"', clean)
+                    clean = re.sub(r"[\u2018\u2019]", "'", clean)
                     f.write(f"{clean}\n\n")
 
         return output_path
@@ -867,7 +859,7 @@ def detect_chapters(
     epub_path: str,
     method: str = "combined",
     max_depth: int | None = None,
-    hierarchy_style: str = "flat"
+    hierarchy_style: str = "flat",
 ) -> list[dict[str, Any]]:
     """
     Convenience function to detect chapters from an EPUB file.
@@ -885,10 +877,7 @@ def detect_chapters(
     style_enum = HierarchyStyle(hierarchy_style)
 
     detector = ChapterDetector(
-        epub_path,
-        method=method_enum,
-        max_depth=max_depth,
-        hierarchy_style=style_enum
+        epub_path, method=method_enum, max_depth=max_depth, hierarchy_style=style_enum
     )
 
     return detector.get_flat_chapters()

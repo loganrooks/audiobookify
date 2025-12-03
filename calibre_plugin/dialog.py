@@ -28,12 +28,12 @@ from qt.core import (
 
 # Default voice options
 VOICES = [
-    ('en-US-AndrewNeural', 'Andrew (US Male)'),
-    ('en-US-JennyNeural', 'Jenny (US Female)'),
-    ('en-GB-RyanNeural', 'Ryan (UK Male)'),
-    ('en-GB-SoniaNeural', 'Sonia (UK Female)'),
-    ('en-AU-WilliamNeural', 'William (AU Male)'),
-    ('en-AU-NatashaNeural', 'Natasha (AU Female)'),
+    ("en-US-AndrewNeural", "Andrew (US Male)"),
+    ("en-US-JennyNeural", "Jenny (US Female)"),
+    ("en-GB-RyanNeural", "Ryan (UK Male)"),
+    ("en-GB-SoniaNeural", "Sonia (UK Female)"),
+    ("en-AU-WilliamNeural", "William (AU Male)"),
+    ("en-AU-NatashaNeural", "Natasha (AU Female)"),
 ]
 
 
@@ -46,7 +46,7 @@ class ConversionDialog(QDialog):
         self.db = db.new_api
         self.book_ids = book_ids
 
-        self.setWindowTitle('Convert to Audiobook')
+        self.setWindowTitle("Convert to Audiobook")
         self.setMinimumWidth(500)
         self.setMinimumHeight(400)
 
@@ -58,55 +58,55 @@ class ConversionDialog(QDialog):
         layout = QVBoxLayout(self)
 
         # Book list
-        books_group = QGroupBox('Books to Convert')
+        books_group = QGroupBox("Books to Convert")
         books_layout = QVBoxLayout(books_group)
         self.book_list = QListWidget()
         books_layout.addWidget(self.book_list)
         layout.addWidget(books_group)
 
         # Settings
-        settings_group = QGroupBox('Conversion Settings')
+        settings_group = QGroupBox("Conversion Settings")
         settings_layout = QFormLayout(settings_group)
 
         # Voice selection
         self.voice_combo = QComboBox()
         for voice_id, voice_name in VOICES:
             self.voice_combo.addItem(voice_name, voice_id)
-        settings_layout.addRow('Voice:', self.voice_combo)
+        settings_layout.addRow("Voice:", self.voice_combo)
 
         # Speech rate
         self.rate_spin = QSpinBox()
         self.rate_spin.setRange(-50, 50)
         self.rate_spin.setValue(0)
-        self.rate_spin.setSuffix('%')
-        settings_layout.addRow('Speech Rate:', self.rate_spin)
+        self.rate_spin.setSuffix("%")
+        settings_layout.addRow("Speech Rate:", self.rate_spin)
 
         # Volume adjustment
         self.volume_spin = QSpinBox()
         self.volume_spin.setRange(-50, 50)
         self.volume_spin.setValue(0)
-        self.volume_spin.setSuffix('%')
-        settings_layout.addRow('Volume:', self.volume_spin)
+        self.volume_spin.setSuffix("%")
+        settings_layout.addRow("Volume:", self.volume_spin)
 
         # Normalization
-        self.normalize_check = QCheckBox('Normalize audio levels')
+        self.normalize_check = QCheckBox("Normalize audio levels")
         self.normalize_check.setChecked(True)
-        settings_layout.addRow('', self.normalize_check)
+        settings_layout.addRow("", self.normalize_check)
 
         # Silence trimming
-        self.trim_silence_check = QCheckBox('Trim excessive silence')
+        self.trim_silence_check = QCheckBox("Trim excessive silence")
         self.trim_silence_check.setChecked(False)
-        settings_layout.addRow('', self.trim_silence_check)
+        settings_layout.addRow("", self.trim_silence_check)
 
         # Output directory
         output_layout = QHBoxLayout()
         self.output_edit = QLineEdit()
-        self.output_edit.setPlaceholderText('Default: Same as book location')
+        self.output_edit.setPlaceholderText("Default: Same as book location")
         output_layout.addWidget(self.output_edit)
-        browse_btn = QPushButton('Browse...')
+        browse_btn = QPushButton("Browse...")
         browse_btn.clicked.connect(self.browse_output)
         output_layout.addWidget(browse_btn)
-        settings_layout.addRow('Output:', output_layout)
+        settings_layout.addRow("Output:", output_layout)
 
         layout.addWidget(settings_group)
 
@@ -123,31 +123,27 @@ class ConversionDialog(QDialog):
         layout.addWidget(self.log)
 
         # Buttons
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
-        )
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.start_conversion)
         buttons.rejected.connect(self.reject)
         self.convert_btn = buttons.button(QDialogButtonBox.Ok)
-        self.convert_btn.setText('Convert')
+        self.convert_btn.setText("Convert")
         layout.addWidget(buttons)
 
     def load_book_info(self):
         """Load information about selected books."""
         for book_id in self.book_ids:
-            title = self.db.field_for('title', book_id)
-            authors = self.db.field_for('authors', book_id)
-            author_str = ', '.join(authors) if authors else 'Unknown'
+            title = self.db.field_for("title", book_id)
+            authors = self.db.field_for("authors", book_id)
+            author_str = ", ".join(authors) if authors else "Unknown"
 
-            item = QListWidgetItem(f'{title} by {author_str}')
+            item = QListWidgetItem(f"{title} by {author_str}")
             item.setData(Qt.UserRole, book_id)
             self.book_list.addItem(item)
 
     def browse_output(self):
         """Browse for output directory."""
-        directory = QFileDialog.getExistingDirectory(
-            self, 'Select Output Directory'
-        )
+        directory = QFileDialog.getExistingDirectory(self, "Select Output Directory")
         if directory:
             self.output_edit.setText(directory)
 
@@ -161,18 +157,18 @@ class ConversionDialog(QDialog):
         rate = self.rate_spin.value()
         volume = self.volume_spin.value()
 
-        self.log.append(f'Starting conversion with voice: {voice}')
-        self.log.append(f'Rate: {rate}%, Volume: {volume}%')
+        self.log.append(f"Starting conversion with voice: {voice}")
+        self.log.append(f"Rate: {rate}%, Volume: {volume}%")
 
         # TODO: Implement actual conversion using a worker thread
         # For now, show a message
         info_dialog(
             self,
-            'Conversion Started',
-            'Audiobook conversion has been queued.\n\n'
-            'Note: Full conversion requires the audiobookify package '
-            'to be installed and configured.',
-            show=True
+            "Conversion Started",
+            "Audiobook conversion has been queued.\n\n"
+            "Note: Full conversion requires the audiobookify package "
+            "to be installed and configured.",
+            show=True,
         )
 
         self.accept()
@@ -187,8 +183,8 @@ class PreviewDialog(QDialog):
         self.db = db.new_api
         self.book_id = book_id
 
-        title = self.db.field_for('title', book_id)
-        self.setWindowTitle(f'Chapter Preview - {title}')
+        title = self.db.field_for("title", book_id)
+        self.setWindowTitle(f"Chapter Preview - {title}")
         self.setMinimumWidth(400)
         self.setMinimumHeight(300)
 
@@ -200,7 +196,7 @@ class PreviewDialog(QDialog):
         layout = QVBoxLayout(self)
 
         # Info label
-        self.info_label = QLabel('Detected chapters:')
+        self.info_label = QLabel("Detected chapters:")
         layout.addWidget(self.info_label)
 
         # Chapter list
@@ -208,11 +204,11 @@ class PreviewDialog(QDialog):
         layout.addWidget(self.chapter_list)
 
         # Summary
-        self.summary_label = QLabel('')
+        self.summary_label = QLabel("")
         layout.addWidget(self.summary_label)
 
         # Close button
-        close_btn = QPushButton('Close')
+        close_btn = QPushButton("Close")
         close_btn.clicked.connect(self.accept)
         layout.addWidget(close_btn)
 
@@ -222,11 +218,11 @@ class PreviewDialog(QDialog):
         formats = self.db.formats(self.book_id)
 
         if not formats:
-            self.info_label.setText('No formats available for this book.')
+            self.info_label.setText("No formats available for this book.")
             return
 
         # Prefer EPUB, then MOBI, then AZW3
-        format_priority = ['EPUB', 'MOBI', 'AZW3', 'AZW']
+        format_priority = ["EPUB", "MOBI", "AZW3", "AZW"]
         selected_format = None
         for fmt in format_priority:
             if fmt in formats:
@@ -236,15 +232,13 @@ class PreviewDialog(QDialog):
         if not selected_format:
             selected_format = formats[0]
 
-        self.info_label.setText(f'Chapters from {selected_format} format:')
+        self.info_label.setText(f"Chapters from {selected_format} format:")
 
         # TODO: Use audiobookify's chapter detection
         # For now, show placeholder
-        self.chapter_list.addItem('Chapter 1: Introduction')
-        self.chapter_list.addItem('Chapter 2: Getting Started')
-        self.chapter_list.addItem('Chapter 3: Main Content')
-        self.chapter_list.addItem('...')
+        self.chapter_list.addItem("Chapter 1: Introduction")
+        self.chapter_list.addItem("Chapter 2: Getting Started")
+        self.chapter_list.addItem("Chapter 3: Main Content")
+        self.chapter_list.addItem("...")
 
-        self.summary_label.setText(
-            'Note: Install audiobookify for full chapter detection.'
-        )
+        self.summary_label.setText("Note: Install audiobookify for full chapter detection.")

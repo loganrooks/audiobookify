@@ -25,6 +25,7 @@ from typing import Any
 
 class ProcessingStatus(Enum):
     """Status of a book in the processing queue."""
+
     PENDING = "pending"
     EXPORTING = "exporting"
     CONVERTING = "converting"
@@ -36,6 +37,7 @@ class ProcessingStatus(Enum):
 @dataclass
 class BookTask:
     """Represents a single book to be processed."""
+
     epub_path: str
     status: ProcessingStatus = ProcessingStatus.PENDING
     txt_path: str | None = None
@@ -83,6 +85,7 @@ class BookTask:
 @dataclass
 class BatchConfig:
     """Configuration for batch processing."""
+
     # Input/Output
     input_path: str  # File or directory
     output_dir: str | None = None  # Output directory (default: same as input)
@@ -121,6 +124,7 @@ class BatchConfig:
 @dataclass
 class BatchResult:
     """Results of a batch processing run."""
+
     config: BatchConfig
     tasks: list[BookTask] = field(default_factory=list)
     start_time: float | None = None
@@ -221,7 +225,7 @@ class BatchResult:
                 "failed": self.failed_count,
                 "skipped": self.skipped_count,
                 "pending": self.pending_count,
-            }
+            },
         }
 
     def save_report(self, output_path: str | None = None) -> str:
@@ -231,7 +235,7 @@ class BatchResult:
             output_dir = self.config.output_dir or os.path.dirname(self.config.input_path)
             output_path = os.path.join(output_dir, f"batch_report_{timestamp}.json")
 
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             json.dump(self.to_dict(), f, indent=2, default=str)
 
         return output_path
@@ -252,7 +256,7 @@ class BatchProcessor:
     def __init__(
         self,
         config: BatchConfig,
-        progress_callback: Callable[[BookTask, int, int], None] | None = None
+        progress_callback: Callable[[BookTask, int, int], None] | None = None,
     ):
         self.config = config
         self.progress_callback = progress_callback
@@ -271,7 +275,7 @@ class BatchProcessor:
 
         if os.path.isfile(input_path):
             # Single file
-            if input_path.lower().endswith('.epub'):
+            if input_path.lower().endswith(".epub"):
                 epub_files.append(input_path)
         elif os.path.isdir(input_path):
             # Directory
@@ -336,7 +340,7 @@ class BatchProcessor:
             "timestamp": datetime.now().isoformat(),
         }
 
-        with open(state_file, 'w', encoding='utf-8') as f:
+        with open(state_file, "w", encoding="utf-8") as f:
             json.dump(state, f, indent=2)
 
     def _load_state(self) -> bool:
@@ -347,7 +351,7 @@ class BatchProcessor:
             return False
 
         try:
-            with open(state_file, encoding='utf-8') as f:
+            with open(state_file, encoding="utf-8") as f:
                 state = json.load(f)
 
             # Restore tasks
@@ -385,8 +389,11 @@ class BatchProcessor:
         # Try to load previous state
         if self.config.save_state and self._load_state():
             # Filter out completed tasks, keep pending/failed
-            pending = [t for t in self.result.tasks
-                      if t.status in (ProcessingStatus.PENDING, ProcessingStatus.FAILED)]
+            pending = [
+                t
+                for t in self.result.tasks
+                if t.status in (ProcessingStatus.PENDING, ProcessingStatus.FAILED)
+            ]
             if pending:
                 print(f"Resuming previous batch: {len(pending)} books remaining")
                 return pending
@@ -467,7 +474,7 @@ class BatchProcessor:
                 task.epub_path,
                 method=method_enum,
                 max_depth=self.config.max_depth,
-                hierarchy_style=style_enum
+                hierarchy_style=style_enum,
             )
             detector.detect()
             detector.export_to_text(txt_path, include_metadata=True, level_markers=True)
@@ -498,6 +505,7 @@ class BatchProcessor:
                 # Apply chapter selection if specified
                 if self.config.chapters:
                     from .chapter_selector import ChapterSelector
+
                     selector = ChapterSelector(self.config.chapters)
                     selected_indices = selector.get_selected_indices(len(book_contents))
                     book_contents = [book_contents[i] for i in selected_indices]
@@ -510,7 +518,7 @@ class BatchProcessor:
                     self.config.paragraph_pause,
                     self.config.sentence_pause,
                     rate=self.config.tts_rate,
-                    volume=self.config.tts_volume
+                    volume=self.config.tts_volume,
                 )
                 generate_metadata(files, book_author, book_title, chapter_titles)
                 m4b_filename = make_m4b(files, txt_path, self.config.speaker)
@@ -549,7 +557,9 @@ class BatchProcessor:
         # Prepare queue
         pending_tasks = self.prepare()
 
-        if not pending_tasks and not any(t.status == ProcessingStatus.SKIPPED for t in self.result.tasks):
+        if not pending_tasks and not any(
+            t.status == ProcessingStatus.SKIPPED for t in self.result.tasks
+        ):
             print("No books to process")
             self.result.end_time = time.time()
             return self.result
@@ -566,7 +576,7 @@ class BatchProcessor:
 
         # Process each book
         for i, task in enumerate(pending_tasks):
-            print(f"\n[{i+1}/{pending}] Processing: {task.basename}")
+            print(f"\n[{i + 1}/{pending}] Processing: {task.basename}")
             print("-" * 50)
 
             success = self.process_book(task)

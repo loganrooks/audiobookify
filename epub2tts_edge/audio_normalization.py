@@ -25,7 +25,9 @@ def validate_method(method: str) -> str:
         ValueError: If method is not valid
     """
     if method not in VALID_METHODS:
-        raise ValueError(f"Invalid normalization method '{method}'. Must be one of: {VALID_METHODS}")
+        raise ValueError(
+            f"Invalid normalization method '{method}'. Must be one of: {VALID_METHODS}"
+        )
     return method
 
 
@@ -38,6 +40,7 @@ class NormalizationConfig:
         method: Normalization method ('peak' or 'rms')
         enabled: Whether normalization is enabled
     """
+
     target_dbfs: float = -16.0
     method: str = "peak"
     enabled: bool = True
@@ -57,6 +60,7 @@ class AudioStats:
         rms_dbfs: RMS (average) level in dBFS
         duration_ms: Duration in milliseconds
     """
+
     peak_dbfs: float
     rms_dbfs: float
     duration_ms: int
@@ -107,11 +111,7 @@ class AudioNormalizer:
             AudioStats with peak, RMS, and duration info
         """
         audio = AudioSegment.from_file(file_path)
-        return AudioStats(
-            peak_dbfs=audio.max_dBFS,
-            rms_dbfs=audio.dBFS,
-            duration_ms=len(audio)
-        )
+        return AudioStats(peak_dbfs=audio.max_dBFS, rms_dbfs=audio.dBFS, duration_ms=len(audio))
 
     def analyze_files(self, file_paths: list[str]) -> list[AudioStats]:
         """Analyze multiple audio files.
@@ -154,10 +154,7 @@ class AudioNormalizer:
             return min(ideal_gain, max_safe_gain)
 
     def normalize_file(
-        self,
-        input_path: str,
-        output_path: str,
-        gain_override: float | None = None
+        self, input_path: str, output_path: str, gain_override: float | None = None
     ) -> str | None:
         """Normalize an audio file to target level.
 
@@ -194,23 +191,20 @@ class AudioNormalizer:
         normalized_audio = audio + gain
 
         # Determine output format from extension
-        output_format = output_path.rsplit('.', 1)[-1].lower()
-        if output_format == 'flac':
-            normalized_audio.export(output_path, format='flac')
-        elif output_format == 'm4a' or output_format == 'm4b':
-            normalized_audio.export(output_path, format='ipod')
-        elif output_format == 'mp3':
-            normalized_audio.export(output_path, format='mp3')
+        output_format = output_path.rsplit(".", 1)[-1].lower()
+        if output_format == "flac":
+            normalized_audio.export(output_path, format="flac")
+        elif output_format == "m4a" or output_format == "m4b":
+            normalized_audio.export(output_path, format="ipod")
+        elif output_format == "mp3":
+            normalized_audio.export(output_path, format="mp3")
         else:
             normalized_audio.export(output_path, format=output_format)
 
         return output_path
 
     def normalize_files(
-        self,
-        input_paths: list[str],
-        output_dir: str,
-        unified: bool = True
+        self, input_paths: list[str], output_dir: str, unified: bool = True
     ) -> list[str]:
         """Normalize multiple audio files.
 

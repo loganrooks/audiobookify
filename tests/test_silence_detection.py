@@ -23,10 +23,7 @@ class TestSilenceConfig:
         from epub2tts_edge.silence_detection import SilenceConfig
 
         config = SilenceConfig(
-            min_silence_len=500,
-            silence_thresh=-50,
-            max_silence_len=1500,
-            enabled=True
+            min_silence_len=500, silence_thresh=-50, max_silence_len=1500, enabled=True
         )
         assert config.min_silence_len == 500
         assert config.silence_thresh == -50
@@ -89,8 +86,8 @@ class TestSilenceDetector:
         assert detector.config.min_silence_len == 500
         assert detector.config.silence_thresh == -50
 
-    @patch('epub2tts_edge.silence_detection.detect_silence')
-    @patch('epub2tts_edge.silence_detection.AudioSegment')
+    @patch("epub2tts_edge.silence_detection.detect_silence")
+    @patch("epub2tts_edge.silence_detection.AudioSegment")
     def test_detect_silence_in_file(self, mock_audio_segment, mock_detect_silence):
         """Test detecting silence segments in a file."""
         from epub2tts_edge.silence_detection import SilenceDetector
@@ -114,8 +111,8 @@ class TestSilenceDetector:
         assert segments[0].end_ms == 2500
         assert segments[0].duration_ms == 1500
 
-    @patch('epub2tts_edge.silence_detection.detect_silence')
-    @patch('epub2tts_edge.silence_detection.AudioSegment')
+    @patch("epub2tts_edge.silence_detection.detect_silence")
+    @patch("epub2tts_edge.silence_detection.AudioSegment")
     def test_detect_no_silence(self, mock_audio_segment, mock_detect_silence):
         """Test when no silence is detected."""
         from epub2tts_edge.silence_detection import SilenceDetector
@@ -130,8 +127,8 @@ class TestSilenceDetector:
 
         assert len(segments) == 0
 
-    @patch('epub2tts_edge.silence_detection.detect_silence')
-    @patch('epub2tts_edge.silence_detection.AudioSegment')
+    @patch("epub2tts_edge.silence_detection.detect_silence")
+    @patch("epub2tts_edge.silence_detection.AudioSegment")
     def test_trim_silence_basic(self, mock_audio_segment, mock_detect_silence):
         """Test trimming excessive silence."""
         from epub2tts_edge.silence_detection import SilenceConfig, SilenceDetector
@@ -158,7 +155,7 @@ class TestSilenceDetector:
         config = SilenceConfig(max_silence_len=2000)
         detector = SilenceDetector(config)
 
-        with tempfile.NamedTemporaryFile(suffix='.flac', delete=False) as f:
+        with tempfile.NamedTemporaryFile(suffix=".flac", delete=False) as f:
             output_path = f.name
 
         try:
@@ -170,7 +167,7 @@ class TestSilenceDetector:
             if os.path.exists(output_path):
                 os.unlink(output_path)
 
-    @patch('epub2tts_edge.silence_detection.AudioSegment')
+    @patch("epub2tts_edge.silence_detection.AudioSegment")
     def test_trim_silence_disabled(self, mock_audio_segment):
         """Test that silence trimming is skipped when disabled."""
         from epub2tts_edge.silence_detection import SilenceConfig, SilenceDetector
@@ -182,8 +179,8 @@ class TestSilenceDetector:
         assert result is None
         mock_audio_segment.from_file.assert_not_called()
 
-    @patch('epub2tts_edge.silence_detection.detect_silence')
-    @patch('epub2tts_edge.silence_detection.AudioSegment')
+    @patch("epub2tts_edge.silence_detection.detect_silence")
+    @patch("epub2tts_edge.silence_detection.AudioSegment")
     def test_get_excessive_silence_count(self, mock_audio_segment, mock_detect_silence):
         """Test counting excessive silence segments."""
         from epub2tts_edge.silence_detection import SilenceConfig, SilenceDetector
@@ -194,9 +191,9 @@ class TestSilenceDetector:
 
         # Mix of normal and excessive silences
         mock_detect_silence.return_value = [
-            [0, 1500],    # 1.5s - not excessive
-            [3000, 6500], # 3.5s - excessive
-            [8000, 9000], # 1s - not excessive
+            [0, 1500],  # 1.5s - not excessive
+            [3000, 6500],  # 3.5s - excessive
+            [8000, 9000],  # 1s - not excessive
         ]
 
         config = SilenceConfig(max_silence_len=2000)
@@ -207,8 +204,8 @@ class TestSilenceDetector:
         assert len(excessive) == 1
         assert excessive[0].duration_ms == 3500
 
-    @patch('epub2tts_edge.silence_detection.detect_silence')
-    @patch('epub2tts_edge.silence_detection.AudioSegment')
+    @patch("epub2tts_edge.silence_detection.detect_silence")
+    @patch("epub2tts_edge.silence_detection.AudioSegment")
     def test_calculate_total_silence_reduction(self, mock_audio_segment, mock_detect_silence):
         """Test calculating total silence reduction."""
         from epub2tts_edge.silence_detection import SilenceConfig, SilenceDetector
@@ -219,26 +216,23 @@ class TestSilenceDetector:
 
         # Silences that would be trimmed
         mock_detect_silence.return_value = [
-            [0, 3000],    # 3s -> trim 1s (keep 2s max)
-            [5000, 9000], # 4s -> trim 2s (keep 2s max)
+            [0, 3000],  # 3s -> trim 1s (keep 2s max)
+            [5000, 9000],  # 4s -> trim 2s (keep 2s max)
         ]
 
         config = SilenceConfig(max_silence_len=2000)
         detector = SilenceDetector(config)
         segments = detector.detect_silence_in_file("/path/to/audio.flac")
 
-        reduction = sum(
-            max(0, s.duration_ms - config.max_silence_len)
-            for s in segments
-        )
+        reduction = sum(max(0, s.duration_ms - config.max_silence_len) for s in segments)
         assert reduction == 3000  # 1000 + 2000 = 3s total reduction
 
 
 class TestSilenceAnalysis:
     """Tests for silence analysis features."""
 
-    @patch('epub2tts_edge.silence_detection.detect_silence')
-    @patch('epub2tts_edge.silence_detection.AudioSegment')
+    @patch("epub2tts_edge.silence_detection.detect_silence")
+    @patch("epub2tts_edge.silence_detection.AudioSegment")
     def test_analyze_file_returns_stats(self, mock_audio_segment, mock_detect_silence):
         """Test that analyze returns useful statistics."""
         from epub2tts_edge.silence_detection import SilenceConfig, SilenceDetector
@@ -248,23 +242,23 @@ class TestSilenceAnalysis:
         mock_audio_segment.from_file.return_value = mock_audio
 
         mock_detect_silence.return_value = [
-            [5000, 8000],   # 3s
-            [20000, 22000], # 2s
-            [40000, 45000], # 5s
+            [5000, 8000],  # 3s
+            [20000, 22000],  # 2s
+            [40000, 45000],  # 5s
         ]
 
         config = SilenceConfig(max_silence_len=2000)
         detector = SilenceDetector(config)
         stats = detector.analyze_file("/path/to/audio.flac")
 
-        assert stats['total_duration_ms'] == 60000
-        assert stats['silence_count'] == 3
-        assert stats['total_silence_ms'] == 10000  # 3+2+5 = 10s
-        assert stats['excessive_silence_count'] == 2  # 3s and 5s
-        assert stats['potential_reduction_ms'] == 4000  # (3-2) + (5-2) = 4s
+        assert stats["total_duration_ms"] == 60000
+        assert stats["silence_count"] == 3
+        assert stats["total_silence_ms"] == 10000  # 3+2+5 = 10s
+        assert stats["excessive_silence_count"] == 2  # 3s and 5s
+        assert stats["potential_reduction_ms"] == 4000  # (3-2) + (5-2) = 4s
 
-    @patch('epub2tts_edge.silence_detection.detect_silence')
-    @patch('epub2tts_edge.silence_detection.AudioSegment')
+    @patch("epub2tts_edge.silence_detection.detect_silence")
+    @patch("epub2tts_edge.silence_detection.AudioSegment")
     def test_analyze_multiple_files(self, mock_audio_segment, mock_detect_silence):
         """Test analyzing multiple files."""
         from epub2tts_edge.silence_detection import SilenceDetector

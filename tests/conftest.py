@@ -53,20 +53,20 @@ def sample_epub_content() -> dict:
             {
                 "title": "Chapter 1",
                 "content": "<p>This is the first paragraph of chapter one.</p>"
-                          "<p>This is the second paragraph with more text.</p>"
+                "<p>This is the second paragraph with more text.</p>",
             },
             {
                 "title": "Chapter 2",
                 "content": "<p>Chapter two begins here with interesting content.</p>"
-                          "<p>Another paragraph in chapter two.</p>"
-                          "<p>A third paragraph to make it more substantial.</p>"
+                "<p>Another paragraph in chapter two.</p>"
+                "<p>A third paragraph to make it more substantial.</p>",
             },
             {
                 "title": "Chapter 3",
                 "content": "<p>The final chapter has some concluding remarks.</p>"
-                          "<p>Thank you for reading this test book.</p>"
+                "<p>Thank you for reading this test book.</p>",
             },
-        ]
+        ],
     }
 
 
@@ -108,12 +108,11 @@ def sample_pronunciation_dict(temp_dir: Path) -> Path:
     """
     dict_file = temp_dir / "pronunciation.json"
     import json
+
     with open(dict_file, "w", encoding="utf-8") as f:
-        json.dump({
-            "Tolkien": "toll-keen",
-            "Gandalf": "gan-dalf",
-            "CLI": "command line interface"
-        }, f)
+        json.dump(
+            {"Tolkien": "toll-keen", "Gandalf": "gan-dalf", "CLI": "command line interface"}, f
+        )
     return dict_file
 
 
@@ -129,15 +128,19 @@ def sample_voice_mapping(temp_dir: Path) -> Path:
     """
     mapping_file = temp_dir / "voice_mapping.json"
     import json
+
     with open(mapping_file, "w", encoding="utf-8") as f:
-        json.dump({
-            "default_voice": "en-US-AriaNeural",
-            "narrator_voice": "en-US-GuyNeural",
-            "character_voices": {
-                "Alice": "en-US-JennyNeural",
-                "Bob": "en-US-ChristopherNeural"
-            }
-        }, f)
+        json.dump(
+            {
+                "default_voice": "en-US-AriaNeural",
+                "narrator_voice": "en-US-GuyNeural",
+                "character_voices": {
+                    "Alice": "en-US-JennyNeural",
+                    "Bob": "en-US-ChristopherNeural",
+                },
+            },
+            f,
+        )
     return mapping_file
 
 
@@ -158,17 +161,17 @@ def create_minimal_epub(output_path: Path, content: dict) -> Path:
     # Create EPUB structure
     epub_path = output_path / "test_book.epub"
 
-    with zipfile.ZipFile(epub_path, 'w', zipfile.ZIP_DEFLATED) as epub:
+    with zipfile.ZipFile(epub_path, "w", zipfile.ZIP_DEFLATED) as epub:
         # mimetype (must be first and uncompressed)
         epub.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
 
         # META-INF/container.xml
-        container_xml = '''<?xml version="1.0" encoding="UTF-8"?>
+        container_xml = """<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
     <rootfiles>
         <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
     </rootfiles>
-</container>'''
+</container>"""
         epub.writestr("META-INF/container.xml", container_xml)
 
         # OEBPS/content.opf
@@ -178,7 +181,7 @@ def create_minimal_epub(output_path: Path, content: dict) -> Path:
             manifest_items += f'    <item id="chapter{i}" href="chapter{i}.xhtml" media-type="application/xhtml+xml"/>\n'
             spine_items += f'    <itemref idref="chapter{i}"/>\n'
 
-        content_opf = f'''<?xml version="1.0" encoding="UTF-8"?>
+        content_opf = f"""<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="bookid">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:title>{content["title"]}</dc:title>
@@ -191,7 +194,7 @@ def create_minimal_epub(output_path: Path, content: dict) -> Path:
 {manifest_items}  </manifest>
   <spine toc="ncx">
 {spine_items}  </spine>
-</package>'''
+</package>"""
         epub.writestr("OEBPS/content.opf", content_opf)
 
         # OEBPS/toc.ncx
@@ -203,7 +206,7 @@ def create_minimal_epub(output_path: Path, content: dict) -> Path:
     </navPoint>
 '''
 
-        toc_ncx = f'''<?xml version="1.0" encoding="UTF-8"?>
+        toc_ncx = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN" "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
   <head>
@@ -215,12 +218,12 @@ def create_minimal_epub(output_path: Path, content: dict) -> Path:
   <docTitle><text>{content["title"]}</text></docTitle>
   <navMap>
 {nav_points}  </navMap>
-</ncx>'''
+</ncx>"""
         epub.writestr("OEBPS/toc.ncx", toc_ncx)
 
         # Chapter files
         for i, chapter in enumerate(content["chapters"], start=1):
-            chapter_xhtml = f'''<?xml version="1.0" encoding="UTF-8"?>
+            chapter_xhtml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
@@ -230,7 +233,7 @@ def create_minimal_epub(output_path: Path, content: dict) -> Path:
   <h1>{chapter["title"]}</h1>
   {chapter["content"]}
 </body>
-</html>'''
+</html>"""
             epub.writestr(f"OEBPS/chapter{i}.xhtml", chapter_xhtml)
 
     return epub_path

@@ -24,7 +24,7 @@ class TestVoiceMapping:
         mapping = VoiceMapping(
             default_voice="en-US-JennyNeural",
             narrator_voice="en-US-GuyNeural",
-            character_voices={"Harry": "en-GB-RyanNeural"}
+            character_voices={"Harry": "en-GB-RyanNeural"},
         )
         assert mapping.default_voice == "en-US-JennyNeural"
         assert mapping.narrator_voice == "en-US-GuyNeural"
@@ -38,11 +38,7 @@ class TestDialogueSegment:
         """Test dialogue segment creation."""
         from epub2tts_edge.multi_voice import DialogueSegment
 
-        segment = DialogueSegment(
-            text="Hello there!",
-            speaker="Gandalf",
-            is_dialogue=True
-        )
+        segment = DialogueSegment(text="Hello there!", speaker="Gandalf", is_dialogue=True)
         assert segment.text == "Hello there!"
         assert segment.speaker == "Gandalf"
         assert segment.is_dialogue is True
@@ -51,11 +47,7 @@ class TestDialogueSegment:
         """Test narration segment."""
         from epub2tts_edge.multi_voice import DialogueSegment
 
-        segment = DialogueSegment(
-            text="He walked slowly.",
-            speaker=None,
-            is_dialogue=False
-        )
+        segment = DialogueSegment(text="He walked slowly.", speaker=None, is_dialogue=False)
         assert segment.is_dialogue is False
         assert segment.speaker is None
 
@@ -75,8 +67,7 @@ class TestMultiVoiceProcessor:
         from epub2tts_edge.multi_voice import MultiVoiceProcessor, VoiceMapping
 
         mapping = VoiceMapping(
-            default_voice="en-US-JennyNeural",
-            character_voices={"Alice": "en-GB-SoniaNeural"}
+            default_voice="en-US-JennyNeural", character_voices={"Alice": "en-GB-SoniaNeural"}
         )
         processor = MultiVoiceProcessor(mapping)
         assert processor.mapping.default_voice == "en-US-JennyNeural"
@@ -123,8 +114,7 @@ class TestMultiVoiceProcessor:
         from epub2tts_edge.multi_voice import DialogueSegment, MultiVoiceProcessor, VoiceMapping
 
         mapping = VoiceMapping(
-            default_voice="en-US-AndrewNeural",
-            character_voices={"Harry": "en-GB-RyanNeural"}
+            default_voice="en-US-AndrewNeural", character_voices={"Harry": "en-GB-RyanNeural"}
         )
         processor = MultiVoiceProcessor(mapping)
 
@@ -137,8 +127,7 @@ class TestMultiVoiceProcessor:
         from epub2tts_edge.multi_voice import DialogueSegment, MultiVoiceProcessor, VoiceMapping
 
         mapping = VoiceMapping(
-            default_voice="en-US-AndrewNeural",
-            character_voices={"Harry": "en-GB-RyanNeural"}
+            default_voice="en-US-AndrewNeural", character_voices={"Harry": "en-GB-RyanNeural"}
         )
         processor = MultiVoiceProcessor(mapping)
 
@@ -150,10 +139,7 @@ class TestMultiVoiceProcessor:
         """Test getting voice for narration."""
         from epub2tts_edge.multi_voice import DialogueSegment, MultiVoiceProcessor, VoiceMapping
 
-        mapping = VoiceMapping(
-            default_voice="en-US-AndrewNeural",
-            narrator_voice="en-US-GuyNeural"
-        )
+        mapping = VoiceMapping(default_voice="en-US-AndrewNeural", narrator_voice="en-US-GuyNeural")
         processor = MultiVoiceProcessor(mapping)
 
         segment = DialogueSegment(text="He walked.", speaker=None, is_dialogue=False)
@@ -201,13 +187,10 @@ class TestVoiceMappingFile:
         mapping_data = {
             "default_voice": "en-US-JennyNeural",
             "narrator_voice": "en-US-GuyNeural",
-            "character_voices": {
-                "Harry": "en-GB-RyanNeural",
-                "Hermione": "en-GB-SoniaNeural"
-            }
+            "character_voices": {"Harry": "en-GB-RyanNeural", "Hermione": "en-GB-SoniaNeural"},
         }
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(mapping_data, f)
             temp_path = f.name
 
@@ -226,12 +209,11 @@ class TestVoiceMappingFile:
         from epub2tts_edge.multi_voice import MultiVoiceProcessor, VoiceMapping
 
         mapping = VoiceMapping(
-            default_voice="en-US-JennyNeural",
-            character_voices={"Harry": "en-GB-RyanNeural"}
+            default_voice="en-US-JennyNeural", character_voices={"Harry": "en-GB-RyanNeural"}
         )
         processor = MultiVoiceProcessor(mapping)
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_path = f.name
 
         try:
@@ -360,7 +342,7 @@ class TestMultiVoiceIntegration:
         mapping = VoiceMapping(
             default_voice="en-US-AndrewNeural",
             narrator_voice="en-US-GuyNeural",
-            character_voices={"Harry": "en-GB-RyanNeural"}
+            character_voices={"Harry": "en-GB-RyanNeural"},
         )
         processor = MultiVoiceProcessor(mapping)
 
@@ -378,10 +360,7 @@ class TestMultiVoiceIntegration:
         from epub2tts_edge.multi_voice import MultiVoiceProcessor, VoiceMapping
 
         mapping = VoiceMapping(
-            character_voices={
-                "Harry": "en-GB-RyanNeural",
-                "Hermione": "en-GB-SoniaNeural"
-            }
+            character_voices={"Harry": "en-GB-RyanNeural", "Hermione": "en-GB-SoniaNeural"}
         )
         processor = MultiVoiceProcessor(mapping)
 
@@ -394,10 +373,7 @@ class TestMultiVoiceIntegration:
         from epub2tts_edge.multi_voice import MultiVoiceProcessor, VoiceMapping
 
         mapping = VoiceMapping(
-            character_voices={
-                "Harry": "en-GB-RyanNeural",
-                "Ron": "en-US-GuyNeural"
-            }
+            character_voices={"Harry": "en-GB-RyanNeural", "Ron": "en-US-GuyNeural"}
         )
         processor = MultiVoiceProcessor(mapping)
 

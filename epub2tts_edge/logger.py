@@ -18,7 +18,7 @@ def setup_logging(
     level: int = logging.INFO,
     format_string: str | None = None,
     log_file: str | None = None,
-    simple: bool = True
+    simple: bool = True,
 ) -> None:
     """Configure the root logger for audiobookify.
 
@@ -49,7 +49,7 @@ def setup_logging(
 
     # File handler (optional)
     if log_file:
-        file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
         file_handler.setLevel(level)
         file_handler.setFormatter(logging.Formatter(DEFAULT_FORMAT))
         root_logger.addHandler(file_handler)

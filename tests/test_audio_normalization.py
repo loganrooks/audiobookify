@@ -31,11 +31,7 @@ class TestNormalizationConfig:
         """Test custom configuration values."""
         from epub2tts_edge.audio_normalization import NormalizationConfig
 
-        config = NormalizationConfig(
-            target_dbfs=-14.0,
-            method="rms",
-            enabled=True
-        )
+        config = NormalizationConfig(target_dbfs=-14.0, method="rms", enabled=True)
         assert config.target_dbfs == -14.0
         assert config.method == "rms"
         assert config.enabled is True
@@ -55,11 +51,7 @@ class TestAudioStats:
         """Test AudioStats creation."""
         from epub2tts_edge.audio_normalization import AudioStats
 
-        stats = AudioStats(
-            peak_dbfs=-3.5,
-            rms_dbfs=-18.2,
-            duration_ms=5000
-        )
+        stats = AudioStats(peak_dbfs=-3.5, rms_dbfs=-18.2, duration_ms=5000)
         assert stats.peak_dbfs == -3.5
         assert stats.rms_dbfs == -18.2
         assert stats.duration_ms == 5000
@@ -95,7 +87,7 @@ class TestAudioNormalizer:
         assert normalizer.config.target_dbfs == -14.0
         assert normalizer.config.method == "rms"
 
-    @patch('epub2tts_edge.audio_normalization.AudioSegment')
+    @patch("epub2tts_edge.audio_normalization.AudioSegment")
     def test_analyze_audio_file(self, mock_audio_segment):
         """Test analyzing an audio file for stats."""
         from epub2tts_edge.audio_normalization import AudioNormalizer
@@ -114,7 +106,7 @@ class TestAudioNormalizer:
         assert stats.rms_dbfs == -18.0
         assert stats.duration_ms == 5000
 
-    @patch('epub2tts_edge.audio_normalization.AudioSegment')
+    @patch("epub2tts_edge.audio_normalization.AudioSegment")
     def test_normalize_file_peak_method(self, mock_audio_segment):
         """Test normalizing a file using peak method."""
         from epub2tts_edge.audio_normalization import AudioNormalizer, NormalizationConfig
@@ -130,7 +122,7 @@ class TestAudioNormalizer:
         config = NormalizationConfig(target_dbfs=-16.0, method="peak")
         normalizer = AudioNormalizer(config)
 
-        with tempfile.NamedTemporaryFile(suffix='.flac', delete=False) as f:
+        with tempfile.NamedTemporaryFile(suffix=".flac", delete=False) as f:
             output_path = f.name
 
         try:
@@ -141,7 +133,7 @@ class TestAudioNormalizer:
             if os.path.exists(output_path):
                 os.unlink(output_path)
 
-    @patch('epub2tts_edge.audio_normalization.AudioSegment')
+    @patch("epub2tts_edge.audio_normalization.AudioSegment")
     def test_normalize_file_rms_method(self, mock_audio_segment):
         """Test normalizing a file using RMS method."""
         from epub2tts_edge.audio_normalization import AudioNormalizer, NormalizationConfig
@@ -157,7 +149,7 @@ class TestAudioNormalizer:
         config = NormalizationConfig(target_dbfs=-16.0, method="rms")
         normalizer = AudioNormalizer(config)
 
-        with tempfile.NamedTemporaryFile(suffix='.flac', delete=False) as f:
+        with tempfile.NamedTemporaryFile(suffix=".flac", delete=False) as f:
             output_path = f.name
 
         try:
@@ -168,7 +160,7 @@ class TestAudioNormalizer:
             if os.path.exists(output_path):
                 os.unlink(output_path)
 
-    @patch('epub2tts_edge.audio_normalization.AudioSegment')
+    @patch("epub2tts_edge.audio_normalization.AudioSegment")
     def test_normalize_file_disabled(self, mock_audio_segment):
         """Test that normalization is skipped when disabled."""
 
@@ -182,7 +174,7 @@ class TestAudioNormalizer:
         assert result is None  # Indicates no normalization performed
         mock_audio_segment.from_file.assert_not_called()
 
-    @patch('epub2tts_edge.audio_normalization.AudioSegment')
+    @patch("epub2tts_edge.audio_normalization.AudioSegment")
     def test_normalize_file_clipping_prevention(self, mock_audio_segment):
         """Test that normalization prevents clipping."""
         from epub2tts_edge.audio_normalization import AudioNormalizer, NormalizationConfig
@@ -200,7 +192,7 @@ class TestAudioNormalizer:
         config = NormalizationConfig(target_dbfs=-16.0, method="rms")
         normalizer = AudioNormalizer(config)
 
-        with tempfile.NamedTemporaryFile(suffix='.flac', delete=False) as f:
+        with tempfile.NamedTemporaryFile(suffix=".flac", delete=False) as f:
             output_path = f.name
 
         try:
@@ -212,7 +204,7 @@ class TestAudioNormalizer:
             if os.path.exists(output_path):
                 os.unlink(output_path)
 
-    @patch('epub2tts_edge.audio_normalization.AudioSegment')
+    @patch("epub2tts_edge.audio_normalization.AudioSegment")
     def test_analyze_multiple_files(self, mock_audio_segment):
         """Test analyzing multiple files for batch normalization."""
         from epub2tts_edge.audio_normalization import AudioNormalizer

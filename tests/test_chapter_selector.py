@@ -1,9 +1,10 @@
 """Tests for chapter selection functionality."""
+
 import os
 import sys
 import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from epub2tts_edge.chapter_selector import (
     ChapterRange,
@@ -162,10 +163,7 @@ class TestChapterSelector(unittest.TestCase):
 
     def test_filter_chapters_preserves_order(self):
         """Test that filtering preserves chapter order."""
-        chapters = [
-            {"title": f"Ch{i}", "paragraphs": [f"p{i}"]}
-            for i in range(1, 11)
-        ]
+        chapters = [{"title": f"Ch{i}", "paragraphs": [f"p{i}"]} for i in range(1, 11)]
         selector = ChapterSelector("5,2,8")
         filtered = selector.filter_chapters(chapters)
 
@@ -184,10 +182,7 @@ class TestChapterSelector(unittest.TestCase):
     def test_no_selection_selects_all(self):
         """Test that None selection selects all chapters."""
         selector = ChapterSelector(None)
-        chapters = [
-            {"title": f"Ch{i}", "paragraphs": [f"p{i}"]}
-            for i in range(1, 6)
-        ]
+        chapters = [{"title": f"Ch{i}", "paragraphs": [f"p{i}"]} for i in range(1, 6)]
         filtered = selector.filter_chapters(chapters)
         self.assertEqual(len(filtered), 5)
 

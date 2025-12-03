@@ -8,6 +8,7 @@ Features:
 - Resume from last completed chapter
 - Track intermediate files for cleanup
 """
+
 import json
 import os
 from dataclasses import dataclass, field
@@ -31,6 +32,7 @@ class ConversionState:
         intermediate_files: List of intermediate files created
         timestamp: When state was last updated
     """
+
     source_file: str
     total_chapters: int = 0
     completed_chapters: int = 0
@@ -85,7 +87,7 @@ class ConversionState:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> 'ConversionState':
+    def from_dict(cls, data: dict[str, Any]) -> "ConversionState":
         """Create state from dictionary.
 
         Args:
@@ -139,10 +141,11 @@ class StateManager:
             state: ConversionState to save
         """
         import time
+
         state.timestamp = time.time()
 
         os.makedirs(self.directory, exist_ok=True)
-        with open(self.state_path, 'w') as f:
+        with open(self.state_path, "w") as f:
             json.dump(state.to_dict(), f, indent=2)
 
     def load_state(self) -> ConversionState | None:
@@ -189,8 +192,9 @@ class StateManager:
         # Normalize paths for comparison
         return os.path.normpath(state.source_file) == os.path.normpath(source_file)
 
-    def update_progress(self, completed_chapters: int,
-                       intermediate_files: list[str] | None = None) -> None:
+    def update_progress(
+        self, completed_chapters: int, intermediate_files: list[str] | None = None
+    ) -> None:
         """Update progress in the saved state.
 
         Args:
@@ -248,7 +252,9 @@ def prompt_resume(source_file: str, state_dir: str) -> bool:
         return False
 
     print("\nFound incomplete conversion:")
-    print(f"  Progress: {info['progress']:.1f}% ({info['start_chapter']-1}/{info['total_chapters']} chapters)")
+    print(
+        f"  Progress: {info['progress']:.1f}% ({info['start_chapter'] - 1}/{info['total_chapters']} chapters)"
+    )
     print(f"  Voice: {info['speaker']}")
 
     # In non-interactive mode, default to resume

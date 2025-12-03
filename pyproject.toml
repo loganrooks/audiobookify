@@ -62,7 +62,9 @@ dev = [
     "pytest-cov>=4.1.0",
     "pytest-asyncio>=0.21.0",
     "mypy>=1.5.0",
-    "ruff>=0.1.0",
+    "ruff>=0.8.0",
+    "pre-commit>=3.6.0",
+    "bandit[toml]>=1.7.0",
 ]
 
 [project.scripts]
@@ -135,6 +137,8 @@ directory = "htmlcov"
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+
+[tool.ruff.lint]
 select = [
     "E",      # pycodestyle errors
     "W",      # pycodestyle warnings
@@ -150,12 +154,17 @@ ignore = [
     "C901",   # too complex
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # unused imports in __init__.py are fine
 "tests/*" = ["B011"]      # assert statements are fine in tests
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 known-first-party = ["epub2tts_edge"]
+
+# Bandit security checker configuration
+[tool.bandit]
+exclude_dirs = ["tests", "build", "dist"]
+skips = ["B101"]  # assert statements are fine
 
 # MyPy type checker configuration
 [tool.mypy]

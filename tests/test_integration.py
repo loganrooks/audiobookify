@@ -23,10 +23,7 @@ class TestEpubExport:
         """Test exporting an EPUB file to text format."""
         from epub2tts_edge.chapter_detector import ChapterDetector, DetectionMethod
 
-        detector = ChapterDetector(
-            str(sample_epub),
-            method=DetectionMethod.COMBINED
-        )
+        detector = ChapterDetector(str(sample_epub), method=DetectionMethod.COMBINED)
         detector.detect()
 
         # Verify chapters were detected
@@ -39,7 +36,7 @@ class TestEpubExport:
 
         assert output_file.exists(), "Output file should be created"
 
-        content = output_file.read_text(encoding='utf-8')
+        content = output_file.read_text(encoding="utf-8")
         assert "Test Book" in content, "Title should be in output"
         assert "Test Author" in content, "Author should be in output"
         assert "Chapter 1" in content, "Chapter 1 should be in output"
@@ -49,8 +46,12 @@ class TestEpubExport:
         """Test EPUB export with different chapter detection methods."""
         from epub2tts_edge.chapter_detector import ChapterDetector, DetectionMethod
 
-        for method in [DetectionMethod.TOC_ONLY, DetectionMethod.HEADINGS_ONLY,
-                      DetectionMethod.COMBINED, DetectionMethod.AUTO]:
+        for method in [
+            DetectionMethod.TOC_ONLY,
+            DetectionMethod.HEADINGS_ONLY,
+            DetectionMethod.COMBINED,
+            DetectionMethod.AUTO,
+        ]:
             detector = ChapterDetector(str(sample_epub), method=method)
             detector.detect()
 
@@ -67,7 +68,7 @@ class TestEpubExport:
         detector.detect()
 
         chapters = detector.get_flat_chapters()
-        total_paragraphs = sum(len(c['paragraphs']) for c in chapters)
+        total_paragraphs = sum(len(c["paragraphs"]) for c in chapters)
 
         assert total_paragraphs > 0, "Should extract paragraphs from chapters"
 
@@ -165,8 +166,7 @@ class TestMultiVoice:
         from epub2tts_edge.multi_voice import MultiVoiceProcessor, VoiceMapping
 
         mapping = VoiceMapping(
-            default_voice="en-US-AriaNeural",
-            character_voices={"Alice": "en-US-JennyNeural"}
+            default_voice="en-US-AriaNeural", character_voices={"Alice": "en-US-JennyNeural"}
         )
         processor = MultiVoiceProcessor(mapping)
 
@@ -249,7 +249,7 @@ class TestTextParsing:
     @pytest.mark.integration
     def test_parse_text_file(self, sample_text_file: Path):
         """Test parsing a text file in audiobookify format."""
-        content = sample_text_file.read_text(encoding='utf-8')
+        content = sample_text_file.read_text(encoding="utf-8")
 
         # Should have expected structure
         assert "Title:" in content
@@ -289,7 +289,7 @@ class TestStateManagement:
             source_file="/path/to/book.txt",
             total_chapters=10,
             completed_chapters=5,
-            speaker="en-US-AriaNeural"
+            speaker="en-US-AriaNeural",
         )
 
         state_manager.save_state(state)
@@ -307,9 +307,7 @@ class TestStateManagement:
 
         state_manager = StateManager(str(temp_dir))
 
-        state = ConversionState(
-            source_file="/path/to/book.txt"
-        )
+        state = ConversionState(source_file="/path/to/book.txt")
 
         state_manager.save_state(state)
         state_manager.clear_state()

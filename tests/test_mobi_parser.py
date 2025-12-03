@@ -134,7 +134,7 @@ class TestMobiParser:
 
     def test_parser_initialization(self):
         """Test parser initialization with file path."""
-        with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
+        with patch("epub2tts_edge.mobi_parser.os.path.exists", return_value=True):
             parser = MobiParser("test.mobi")
             assert parser.file_path == "test.mobi"
 
@@ -145,44 +145,60 @@ class TestMobiParser:
 
     def test_parser_invalid_extension(self):
         """Test parser raises error for invalid file type."""
-        with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
+        with patch("epub2tts_edge.mobi_parser.os.path.exists", return_value=True):
             with pytest.raises(ValueError, match="Unsupported file format"):
                 MobiParser("book.epub")
 
-    @patch('epub2tts_edge.mobi_parser.MOBI_AVAILABLE', True)
-    @patch('epub2tts_edge.mobi_parser.mobi')
-    @patch('epub2tts_edge.mobi_parser.shutil')
+    @patch("epub2tts_edge.mobi_parser.MOBI_AVAILABLE", True)
+    @patch("epub2tts_edge.mobi_parser.mobi")
+    @patch("epub2tts_edge.mobi_parser.shutil")
     def test_parse_mobi_file(self, mock_shutil, mock_mobi):
         """Test parsing a MOBI file."""
         # Setup mock for mobi.extract
         mock_mobi.extract.return_value = ("/tmp/mobi_extract", "/tmp/mobi_extract/book.html")
 
-        with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
+        with patch("epub2tts_edge.mobi_parser.os.path.exists", return_value=True):
             parser = MobiParser("test.mobi")
 
             # Mock internal methods
-            with patch.object(parser, '_read_extracted_html', return_value="<html><body><h1>Chapter 1</h1><p>Content</p></body></html>"):
-                with patch.object(parser, '_extract_metadata_from_opf', return_value=("Test Book", "Test Author", None, None)):
-                    with patch.object(parser, '_extract_cover_from_extracted', return_value=None):
+            with patch.object(
+                parser,
+                "_read_extracted_html",
+                return_value="<html><body><h1>Chapter 1</h1><p>Content</p></body></html>",
+            ):
+                with patch.object(
+                    parser,
+                    "_extract_metadata_from_opf",
+                    return_value=("Test Book", "Test Author", None, None),
+                ):
+                    with patch.object(parser, "_extract_cover_from_extracted", return_value=None):
                         book = parser.parse()
 
         assert book.title == "Test Book"
         assert book.author == "Test Author"
         assert len(book.chapters) >= 1
 
-    @patch('epub2tts_edge.mobi_parser.MOBI_AVAILABLE', True)
-    @patch('epub2tts_edge.mobi_parser.mobi')
-    @patch('epub2tts_edge.mobi_parser.shutil')
+    @patch("epub2tts_edge.mobi_parser.MOBI_AVAILABLE", True)
+    @patch("epub2tts_edge.mobi_parser.mobi")
+    @patch("epub2tts_edge.mobi_parser.shutil")
     def test_parse_azw3_file(self, mock_shutil, mock_mobi):
         """Test parsing an AZW3 file."""
         mock_mobi.extract.return_value = ("/tmp/mobi_extract", "/tmp/mobi_extract/book.html")
 
-        with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
+        with patch("epub2tts_edge.mobi_parser.os.path.exists", return_value=True):
             parser = MobiParser("test.azw3")
 
-            with patch.object(parser, '_read_extracted_html', return_value="<html><body><p>Content</p></body></html>"):
-                with patch.object(parser, '_extract_metadata_from_opf', return_value=("AZW3 Book", "Author", None, None)):
-                    with patch.object(parser, '_extract_cover_from_extracted', return_value=None):
+            with patch.object(
+                parser,
+                "_read_extracted_html",
+                return_value="<html><body><p>Content</p></body></html>",
+            ):
+                with patch.object(
+                    parser,
+                    "_extract_metadata_from_opf",
+                    return_value=("AZW3 Book", "Author", None, None),
+                ):
+                    with patch.object(parser, "_extract_cover_from_extracted", return_value=None):
                         book = parser.parse()
 
         assert book.title == "AZW3 Book"
@@ -193,7 +209,7 @@ class TestMobiParserHTMLExtraction:
 
     def test_extract_text_from_html(self):
         """Test extracting plain text from HTML content."""
-        with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
+        with patch("epub2tts_edge.mobi_parser.os.path.exists", return_value=True):
             parser = MobiParser.__new__(MobiParser)
             parser.file_path = "test.mobi"
 
@@ -205,7 +221,7 @@ class TestMobiParserHTMLExtraction:
 
     def test_extract_text_removes_scripts(self):
         """Test that script tags are removed from content."""
-        with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
+        with patch("epub2tts_edge.mobi_parser.os.path.exists", return_value=True):
             parser = MobiParser.__new__(MobiParser)
             parser.file_path = "test.mobi"
 
@@ -217,7 +233,7 @@ class TestMobiParserHTMLExtraction:
 
     def test_extract_text_removes_styles(self):
         """Test that style tags are removed from content."""
-        with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
+        with patch("epub2tts_edge.mobi_parser.os.path.exists", return_value=True):
             parser = MobiParser.__new__(MobiParser)
             parser.file_path = "test.mobi"
 
@@ -233,7 +249,7 @@ class TestMobiParserChapterDetection:
 
     def test_detect_chapters_from_headings(self):
         """Test detecting chapters from h1/h2 headings."""
-        with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
+        with patch("epub2tts_edge.mobi_parser.os.path.exists", return_value=True):
             parser = MobiParser.__new__(MobiParser)
             parser.file_path = "test.mobi"
 
@@ -254,7 +270,7 @@ class TestMobiParserChapterDetection:
 
     def test_detect_chapters_with_no_headings(self):
         """Test handling content with no chapter headings."""
-        with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
+        with patch("epub2tts_edge.mobi_parser.os.path.exists", return_value=True):
             parser = MobiParser.__new__(MobiParser)
             parser.file_path = "test.mobi"
 
@@ -269,14 +285,14 @@ class TestMobiParserChapterDetection:
 class TestMobiParserMetadata:
     """Tests for metadata extraction from MOBI files."""
 
-    @patch('epub2tts_edge.mobi_parser.mobi')
+    @patch("epub2tts_edge.mobi_parser.mobi")
     def test_extract_title_and_author(self, mock_mobi):
         """Test extracting title and author from MOBI metadata."""
         mock_book = MagicMock()
         mock_book.title = "The Great Book"
         mock_book.author = "Famous Author"
 
-        with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
+        with patch("epub2tts_edge.mobi_parser.os.path.exists", return_value=True):
             parser = MobiParser.__new__(MobiParser)
             parser.file_path = "test.mobi"
             parser._mobi_book = mock_book
@@ -292,7 +308,7 @@ class TestMobiParserMetadata:
         mock_book.title = None
         mock_book.author = None
 
-        with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
+        with patch("epub2tts_edge.mobi_parser.os.path.exists", return_value=True):
             parser = MobiParser.__new__(MobiParser)
             parser.file_path = "test.mobi"
             parser._mobi_book = mock_book
@@ -307,14 +323,14 @@ class TestMobiParserMetadata:
 class TestMobiParserCoverExtraction:
     """Tests for cover image extraction from MOBI files."""
 
-    @patch('epub2tts_edge.mobi_parser.mobi')
+    @patch("epub2tts_edge.mobi_parser.mobi")
     def test_extract_cover_image(self, mock_mobi):
         """Test extracting cover image from MOBI file."""
         mock_book = MagicMock()
-        fake_cover_data = b'\x89PNG\r\n\x1a\n'  # PNG header
+        fake_cover_data = b"\x89PNG\r\n\x1a\n"  # PNG header
         mock_book.get_cover.return_value = fake_cover_data
 
-        with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
+        with patch("epub2tts_edge.mobi_parser.os.path.exists", return_value=True):
             parser = MobiParser.__new__(MobiParser)
             parser.file_path = "test.mobi"
             parser._mobi_book = mock_book
@@ -328,7 +344,7 @@ class TestMobiParserCoverExtraction:
         mock_book = MagicMock()
         mock_book.get_cover.return_value = None
 
-        with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
+        with patch("epub2tts_edge.mobi_parser.os.path.exists", return_value=True):
             parser = MobiParser.__new__(MobiParser)
             parser.file_path = "test.mobi"
             parser._mobi_book = mock_book
@@ -382,9 +398,9 @@ class TestMobiParserErrorHandling:
 
     def test_parse_corrupted_file(self):
         """Test handling of corrupted MOBI file."""
-        with patch('epub2tts_edge.mobi_parser.MOBI_AVAILABLE', True):
-            with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
-                with patch('epub2tts_edge.mobi_parser.mobi') as mock_mobi:
+        with patch("epub2tts_edge.mobi_parser.MOBI_AVAILABLE", True):
+            with patch("epub2tts_edge.mobi_parser.os.path.exists", return_value=True):
+                with patch("epub2tts_edge.mobi_parser.mobi") as mock_mobi:
                     mock_mobi.extract.side_effect = Exception("Corrupted file")
 
                     parser = MobiParser("corrupted.mobi")
@@ -394,8 +410,8 @@ class TestMobiParserErrorHandling:
 
     def test_parse_drm_protected_file(self):
         """Test handling of DRM-protected file."""
-        with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
-            with patch('epub2tts_edge.mobi_parser.mobi') as mock_mobi:
+        with patch("epub2tts_edge.mobi_parser.os.path.exists", return_value=True):
+            with patch("epub2tts_edge.mobi_parser.mobi") as mock_mobi:
                 mock_mobi.extract.side_effect = Exception("DRM protected")
 
                 parser = MobiParser("drm.mobi")
@@ -407,14 +423,17 @@ class TestMobiParserErrorHandling:
 class TestMobiParserIntegration:
     """Integration tests for MobiParser."""
 
-    @patch('epub2tts_edge.mobi_parser.MOBI_AVAILABLE', True)
-    @patch('epub2tts_edge.mobi_parser.shutil')
+    @patch("epub2tts_edge.mobi_parser.MOBI_AVAILABLE", True)
+    @patch("epub2tts_edge.mobi_parser.shutil")
     def test_full_parse_workflow(self, mock_shutil):
         """Test complete parsing workflow with mocked MOBI file."""
-        with patch('epub2tts_edge.mobi_parser.os.path.exists', return_value=True):
-            with patch('epub2tts_edge.mobi_parser.mobi') as mock_mobi:
+        with patch("epub2tts_edge.mobi_parser.os.path.exists", return_value=True):
+            with patch("epub2tts_edge.mobi_parser.mobi") as mock_mobi:
                 # Setup mock for mobi.extract
-                mock_mobi.extract.return_value = ("/tmp/mobi_extract", "/tmp/mobi_extract/book.html")
+                mock_mobi.extract.return_value = (
+                    "/tmp/mobi_extract",
+                    "/tmp/mobi_extract/book.html",
+                )
 
                 # Mock HTML content
                 html_content = """
@@ -430,10 +449,15 @@ class TestMobiParserIntegration:
                 parser = MobiParser("test.mobi")
 
                 # Mock internal methods for clean test
-                with patch.object(parser, '_read_extracted_html', return_value=html_content):
-                    with patch.object(parser, '_extract_metadata_from_opf',
-                                    return_value=("Integration Test Book", "Test Author", None, None)):
-                        with patch.object(parser, '_extract_cover_from_extracted', return_value=None):
+                with patch.object(parser, "_read_extracted_html", return_value=html_content):
+                    with patch.object(
+                        parser,
+                        "_extract_metadata_from_opf",
+                        return_value=("Integration Test Book", "Test Author", None, None),
+                    ):
+                        with patch.object(
+                            parser, "_extract_cover_from_extracted", return_value=None
+                        ):
                             book = parser.parse()
 
                 assert book.title == "Integration Test Book"

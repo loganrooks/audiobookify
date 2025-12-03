@@ -1,4 +1,5 @@
 """Tests for voice preview functionality."""
+
 import os
 
 # Import the module we're testing
@@ -7,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from epub2tts_edge.voice_preview import (
     AVAILABLE_VOICES,
@@ -31,10 +32,7 @@ class TestVoicePreviewConfig(unittest.TestCase):
     def test_custom_config(self):
         """Test custom configuration values."""
         config = VoicePreviewConfig(
-            speaker="en-US-JennyNeural",
-            text="Custom preview text",
-            rate="+20%",
-            volume="-10%"
+            speaker="en-US-JennyNeural", text="Custom preview text", rate="+20%", volume="-10%"
         )
         self.assertEqual(config.speaker, "en-US-JennyNeural")
         self.assertEqual(config.text, "Custom preview text")
@@ -100,7 +98,7 @@ class TestVoicePreview(unittest.TestCase):
         preview.set_volume("-15%")
         self.assertEqual(preview.config.volume, "-15%")
 
-    @patch('epub2tts_edge.voice_preview.edge_tts')
+    @patch("epub2tts_edge.voice_preview.edge_tts")
     def test_generate_preview_creates_file(self, mock_edge_tts):
         """Test that generate_preview creates an audio file."""
         # Setup mock
@@ -120,18 +118,14 @@ class TestVoicePreview(unittest.TestCase):
             self.assertEqual(call_args[0][0], DEFAULT_PREVIEW_TEXT)
             self.assertEqual(call_args[0][1], "en-US-AndrewNeural")
 
-    @patch('epub2tts_edge.voice_preview.edge_tts')
+    @patch("epub2tts_edge.voice_preview.edge_tts")
     def test_generate_preview_with_rate_and_volume(self, mock_edge_tts):
         """Test that rate and volume are passed to edge_tts."""
         mock_communicate = MagicMock()
         mock_communicate.save = AsyncMock()
         mock_edge_tts.Communicate.return_value = mock_communicate
 
-        config = VoicePreviewConfig(
-            speaker="en-US-JennyNeural",
-            rate="+20%",
-            volume="-10%"
-        )
+        config = VoicePreviewConfig(speaker="en-US-JennyNeural", rate="+20%", volume="-10%")
         preview = VoicePreview(config)
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -142,7 +136,7 @@ class TestVoicePreview(unittest.TestCase):
             self.assertEqual(call_kwargs.get("rate"), "+20%")
             self.assertEqual(call_kwargs.get("volume"), "-10%")
 
-    @patch('epub2tts_edge.voice_preview.edge_tts')
+    @patch("epub2tts_edge.voice_preview.edge_tts")
     def test_generate_preview_to_temp_file(self, mock_edge_tts):
         """Test generate_preview_temp creates a temp file."""
         mock_communicate = MagicMock()

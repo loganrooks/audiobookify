@@ -24,11 +24,7 @@ class TestPronunciationConfig:
         from epub2tts_edge.pronunciation import PronunciationConfig
 
         dictionary = {"Hermione": "Her-my-oh-nee", "Gandalf": "Gan-dalf"}
-        config = PronunciationConfig(
-            dictionary=dictionary,
-            case_sensitive=True,
-            enabled=True
-        )
+        config = PronunciationConfig(dictionary=dictionary, case_sensitive=True, enabled=True)
         assert config.dictionary == dictionary
         assert config.case_sensitive is True
 
@@ -47,10 +43,7 @@ class TestPronunciationEntry:
         """Test basic entry creation."""
         from epub2tts_edge.pronunciation import PronunciationEntry
 
-        entry = PronunciationEntry(
-            original="Hermione",
-            replacement="Her-my-oh-nee"
-        )
+        entry = PronunciationEntry(original="Hermione", replacement="Her-my-oh-nee")
         assert entry.original == "Hermione"
         assert entry.replacement == "Her-my-oh-nee"
 
@@ -59,9 +52,7 @@ class TestPronunciationEntry:
         from epub2tts_edge.pronunciation import PronunciationEntry
 
         entry = PronunciationEntry(
-            original="Nguyen",
-            replacement="Win",
-            description="Vietnamese surname"
+            original="Nguyen", replacement="Win", description="Vietnamese surname"
         )
         assert entry.description == "Vietnamese surname"
 
@@ -81,10 +72,7 @@ class TestPronunciationProcessor:
         """Test initializer with custom config."""
         from epub2tts_edge.pronunciation import PronunciationConfig, PronunciationProcessor
 
-        config = PronunciationConfig(
-            dictionary={"test": "replacement"},
-            case_sensitive=True
-        )
+        config = PronunciationConfig(dictionary={"test": "replacement"}, case_sensitive=True)
         processor = PronunciationProcessor(config)
         assert processor.config.dictionary == {"test": "replacement"}
 
@@ -102,10 +90,9 @@ class TestPronunciationProcessor:
         """Test multiple replacements in one text."""
         from epub2tts_edge.pronunciation import PronunciationConfig, PronunciationProcessor
 
-        config = PronunciationConfig(dictionary={
-            "Hermione": "Her-my-oh-nee",
-            "Voldemort": "Vol-de-mor"
-        })
+        config = PronunciationConfig(
+            dictionary={"Hermione": "Her-my-oh-nee", "Voldemort": "Vol-de-mor"}
+        )
         processor = PronunciationProcessor(config)
 
         result = processor.process_text("Hermione faced Voldemort.")
@@ -115,10 +102,7 @@ class TestPronunciationProcessor:
         """Test case-insensitive replacement (default)."""
         from epub2tts_edge.pronunciation import PronunciationConfig, PronunciationProcessor
 
-        config = PronunciationConfig(
-            dictionary={"hermione": "Her-my-oh-nee"},
-            case_sensitive=False
-        )
+        config = PronunciationConfig(dictionary={"hermione": "Her-my-oh-nee"}, case_sensitive=False)
         processor = PronunciationProcessor(config)
 
         result = processor.process_text("HERMIONE cast a spell.")
@@ -128,10 +112,7 @@ class TestPronunciationProcessor:
         """Test case-sensitive replacement."""
         from epub2tts_edge.pronunciation import PronunciationConfig, PronunciationProcessor
 
-        config = PronunciationConfig(
-            dictionary={"Hermione": "Her-my-oh-nee"},
-            case_sensitive=True
-        )
+        config = PronunciationConfig(dictionary={"Hermione": "Her-my-oh-nee"}, case_sensitive=True)
         processor = PronunciationProcessor(config)
 
         # Should NOT replace lowercase version
@@ -146,10 +127,7 @@ class TestPronunciationProcessor:
         """Test that processing is skipped when disabled."""
         from epub2tts_edge.pronunciation import PronunciationConfig, PronunciationProcessor
 
-        config = PronunciationConfig(
-            dictionary={"Hermione": "Her-my-oh-nee"},
-            enabled=False
-        )
+        config = PronunciationConfig(dictionary={"Hermione": "Her-my-oh-nee"}, enabled=False)
         processor = PronunciationProcessor(config)
 
         result = processor.process_text("Hermione cast a spell.")
@@ -206,12 +184,9 @@ class TestPronunciationDictionary:
         """Test loading dictionary from JSON file."""
         from epub2tts_edge.pronunciation import PronunciationProcessor
 
-        dictionary = {
-            "Hermione": "Her-my-oh-nee",
-            "Gandalf": "Gan-dalf"
-        }
+        dictionary = {"Hermione": "Her-my-oh-nee", "Gandalf": "Gan-dalf"}
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(dictionary, f)
             temp_path = f.name
 
@@ -234,7 +209,7 @@ Gandalf = Gan-dalf
 # Another comment
 Voldemort = Vol-de-mor
 """
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write(content)
             temp_path = f.name
 
@@ -252,13 +227,12 @@ Voldemort = Vol-de-mor
         """Test saving dictionary to file."""
         from epub2tts_edge.pronunciation import PronunciationConfig, PronunciationProcessor
 
-        config = PronunciationConfig(dictionary={
-            "Hermione": "Her-my-oh-nee",
-            "Gandalf": "Gan-dalf"
-        })
+        config = PronunciationConfig(
+            dictionary={"Hermione": "Her-my-oh-nee", "Gandalf": "Gan-dalf"}
+        )
         processor = PronunciationProcessor(config)
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_path = f.name
 
         try:
@@ -289,11 +263,13 @@ class TestPronunciationIntegration:
         """Test processing a full paragraph."""
         from epub2tts_edge.pronunciation import PronunciationConfig, PronunciationProcessor
 
-        config = PronunciationConfig(dictionary={
-            "Hermione": "Her-my-oh-nee",
-            "Voldemort": "Vol-de-mor",
-            "Hogwarts": "Hog-warts"
-        })
+        config = PronunciationConfig(
+            dictionary={
+                "Hermione": "Her-my-oh-nee",
+                "Voldemort": "Vol-de-mor",
+                "Hogwarts": "Hog-warts",
+            }
+        )
         processor = PronunciationProcessor(config)
 
         text = "Hermione studied at Hogwarts while Voldemort plotted his return."
@@ -307,10 +283,7 @@ class TestPronunciationIntegration:
         """Test getting dictionary entry count."""
         from epub2tts_edge.pronunciation import PronunciationConfig, PronunciationProcessor
 
-        config = PronunciationConfig(dictionary={
-            "word1": "replacement1",
-            "word2": "replacement2"
-        })
+        config = PronunciationConfig(dictionary={"word1": "replacement1", "word2": "replacement2"})
         processor = PronunciationProcessor(config)
 
         assert processor.entry_count == 2
@@ -319,10 +292,9 @@ class TestPronunciationIntegration:
         """Test listing all dictionary entries."""
         from epub2tts_edge.pronunciation import PronunciationConfig, PronunciationProcessor
 
-        config = PronunciationConfig(dictionary={
-            "Hermione": "Her-my-oh-nee",
-            "Gandalf": "Gan-dalf"
-        })
+        config = PronunciationConfig(
+            dictionary={"Hermione": "Her-my-oh-nee", "Gandalf": "Gan-dalf"}
+        )
         processor = PronunciationProcessor(config)
 
         entries = processor.list_entries()

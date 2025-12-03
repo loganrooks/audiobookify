@@ -1,11 +1,12 @@
 """Tests for pause/resume functionality."""
+
 import json
 import os
 import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from epub2tts_edge.pause_resume import (
     STATE_FILE_NAME,
@@ -20,9 +21,7 @@ class TestConversionState(unittest.TestCase):
     def test_create_state(self):
         """Test creating a conversion state."""
         state = ConversionState(
-            source_file="/path/to/book.txt",
-            total_chapters=10,
-            completed_chapters=3
+            source_file="/path/to/book.txt", total_chapters=10, completed_chapters=3
         )
         self.assertEqual(state.source_file, "/path/to/book.txt")
         self.assertEqual(state.total_chapters, 10)
@@ -41,39 +40,29 @@ class TestConversionState(unittest.TestCase):
     def test_is_resumable(self):
         """Test is_resumable property."""
         state = ConversionState(
-            source_file="/path/to/book.txt",
-            total_chapters=10,
-            completed_chapters=5
+            source_file="/path/to/book.txt", total_chapters=10, completed_chapters=5
         )
         self.assertTrue(state.is_resumable)
 
         state2 = ConversionState(
-            source_file="/path/to/book.txt",
-            total_chapters=10,
-            completed_chapters=0
+            source_file="/path/to/book.txt", total_chapters=10, completed_chapters=0
         )
         self.assertFalse(state2.is_resumable)
 
         state3 = ConversionState(
-            source_file="/path/to/book.txt",
-            total_chapters=10,
-            completed_chapters=10
+            source_file="/path/to/book.txt", total_chapters=10, completed_chapters=10
         )
         self.assertFalse(state3.is_resumable)  # Already complete
 
     def test_progress_percentage(self):
         """Test progress percentage calculation."""
         state = ConversionState(
-            source_file="/path/to/book.txt",
-            total_chapters=10,
-            completed_chapters=5
+            source_file="/path/to/book.txt", total_chapters=10, completed_chapters=5
         )
         self.assertEqual(state.progress_percentage, 50.0)
 
         state2 = ConversionState(
-            source_file="/path/to/book.txt",
-            total_chapters=0,
-            completed_chapters=0
+            source_file="/path/to/book.txt", total_chapters=0, completed_chapters=0
         )
         self.assertEqual(state2.progress_percentage, 0.0)
 
@@ -85,7 +74,7 @@ class TestConversionState(unittest.TestCase):
             completed_chapters=3,
             speaker="en-US-JennyNeural",
             rate="+20%",
-            intermediate_files=["part1.flac", "part2.flac"]
+            intermediate_files=["part1.flac", "part2.flac"],
         )
         d = state.to_dict()
         self.assertEqual(d["source_file"], "/path/to/book.txt")
@@ -104,7 +93,7 @@ class TestConversionState(unittest.TestCase):
             "speaker": "en-US-GuyNeural",
             "rate": "-10%",
             "volume": "+20%",
-            "intermediate_files": ["part1.flac"]
+            "intermediate_files": ["part1.flac"],
         }
         state = ConversionState.from_dict(d)
         self.assertEqual(state.source_file, "/path/to/book.txt")
@@ -121,9 +110,7 @@ class TestStateManager(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = StateManager(tmpdir)
             state = ConversionState(
-                source_file="/path/to/book.txt",
-                total_chapters=10,
-                completed_chapters=3
+                source_file="/path/to/book.txt", total_chapters=10, completed_chapters=3
             )
             manager.save_state(state)
 
@@ -144,9 +131,7 @@ class TestStateManager(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = StateManager(tmpdir)
             state = ConversionState(
-                source_file="/path/to/book.txt",
-                total_chapters=10,
-                completed_chapters=3
+                source_file="/path/to/book.txt", total_chapters=10, completed_chapters=3
             )
             manager.save_state(state)
 
@@ -175,9 +160,7 @@ class TestStateManager(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = StateManager(tmpdir)
             state = ConversionState(
-                source_file="/path/to/book.txt",
-                total_chapters=10,
-                completed_chapters=0
+                source_file="/path/to/book.txt", total_chapters=10, completed_chapters=0
             )
             manager.save_state(state)
 
@@ -193,9 +176,7 @@ class TestStateManager(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = StateManager(tmpdir)
             state = ConversionState(
-                source_file="/path/to/book.txt",
-                total_chapters=10,
-                completed_chapters=3
+                source_file="/path/to/book.txt", total_chapters=10, completed_chapters=3
             )
             manager.save_state(state)
 
@@ -213,7 +194,7 @@ class TestStateManagerEdgeCases(unittest.TestCase):
 
             # Write corrupted JSON
             state_path = os.path.join(tmpdir, STATE_FILE_NAME)
-            with open(state_path, 'w') as f:
+            with open(state_path, "w") as f:
                 f.write("not valid json{")
 
             # Should return None and not crash
@@ -227,7 +208,7 @@ class TestStateManagerEdgeCases(unittest.TestCase):
 
             # Write partial state
             state_path = os.path.join(tmpdir, STATE_FILE_NAME)
-            with open(state_path, 'w') as f:
+            with open(state_path, "w") as f:
                 json.dump({"source_file": "/path/to/book.txt"}, f)
 
             # Should load with defaults for missing fields

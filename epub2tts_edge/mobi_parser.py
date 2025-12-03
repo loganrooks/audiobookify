@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 
 try:
     import mobi
+
     MOBI_AVAILABLE = True
 except ImportError:
     mobi = None  # Allows tests to mock this attribute
@@ -21,6 +22,7 @@ except ImportError:
 
 class MobiParseError(Exception):
     """Exception raised when MOBI parsing fails."""
+
     pass
 
 
@@ -34,6 +36,7 @@ class MobiChapter:
         index: The chapter index/position
         is_html: Whether the content is HTML (default False)
     """
+
     title: str
     content: str
     index: int
@@ -46,16 +49,16 @@ class MobiChapter:
             List of paragraph strings
         """
         if self.is_html:
-            soup = BeautifulSoup(self.content, 'html.parser')
+            soup = BeautifulSoup(self.content, "html.parser")
             paragraphs = []
-            for p in soup.find_all(['p', 'div']):
+            for p in soup.find_all(["p", "div"]):
                 text = p.get_text(strip=True)
                 if text:
                     paragraphs.append(text)
             return paragraphs
         else:
             # Split on double newlines for plain text
-            paragraphs = re.split(r'\n\s*\n', self.content)
+            paragraphs = re.split(r"\n\s*\n", self.content)
             return [p.strip() for p in paragraphs if p.strip()]
 
 
@@ -71,6 +74,7 @@ class MobiBook:
         publisher: Publisher name (optional)
         cover_image: Cover image data as bytes (optional)
     """
+
     title: str
     author: str
     chapters: list[MobiChapter]
@@ -89,10 +93,12 @@ class MobiBook:
             paragraphs = chapter.get_paragraphs()
             # Filter out empty paragraphs
             paragraphs = [p for p in paragraphs if p.strip()]
-            contents.append({
-                "title": chapter.title,
-                "paragraphs": paragraphs,
-            })
+            contents.append(
+                {
+                    "title": chapter.title,
+                    "paragraphs": paragraphs,
+                }
+            )
         return contents
 
 
@@ -105,7 +111,7 @@ def is_mobi_file(file_path: str) -> bool:
     Returns:
         True if the file has a .mobi extension
     """
-    return file_path.lower().endswith('.mobi')
+    return file_path.lower().endswith(".mobi")
 
 
 def is_azw_file(file_path: str) -> bool:
@@ -118,7 +124,7 @@ def is_azw_file(file_path: str) -> bool:
         True if the file has a .azw or .azw3 extension
     """
     lower_path = file_path.lower()
-    return lower_path.endswith('.azw') or lower_path.endswith('.azw3')
+    return lower_path.endswith(".azw") or lower_path.endswith(".azw3")
 
 
 def is_kindle_file(file_path: str) -> bool:
@@ -140,7 +146,7 @@ class MobiParser:
     MOBI and AZW format ebooks.
     """
 
-    SUPPORTED_EXTENSIONS = {'.mobi', '.azw', '.azw3'}
+    SUPPORTED_EXTENSIONS = {".mobi", ".azw", ".azw3"}
 
     def __init__(self, file_path: str):
         """Initialize the MOBI parser.
@@ -157,8 +163,10 @@ class MobiParser:
 
         ext = os.path.splitext(file_path)[1].lower()
         if ext not in self.SUPPORTED_EXTENSIONS:
-            raise ValueError(f"Unsupported file format: {ext}. "
-                           f"Supported formats: {', '.join(self.SUPPORTED_EXTENSIONS)}")
+            raise ValueError(
+                f"Unsupported file format: {ext}. "
+                f"Supported formats: {', '.join(self.SUPPORTED_EXTENSIONS)}"
+            )
 
         self.file_path = file_path
         self._mobi_book = None
@@ -175,8 +183,7 @@ class MobiParser:
         """
         if not MOBI_AVAILABLE:
             raise MobiParseError(
-                "The 'mobi' library is not installed. "
-                "Install it with: pip install mobi"
+                "The 'mobi' library is not installed. Install it with: pip install mobi"
             )
 
         try:
@@ -232,7 +239,7 @@ class MobiParser:
         html_files = []
         for root, _dirs, files in os.walk(tempdir):
             for f in files:
-                if f.endswith(('.html', '.htm', '.xhtml')):
+                if f.endswith((".html", ".htm", ".xhtml")):
                     html_files.append(os.path.join(root, f))
 
         if not html_files:
@@ -241,12 +248,14 @@ class MobiParser:
         # Read and concatenate all HTML files
         content_parts = []
         for html_file in sorted(html_files):
-            with open(html_file, encoding='utf-8', errors='ignore') as f:
+            with open(html_file, encoding="utf-8", errors="ignore") as f:
                 content_parts.append(f.read())
 
-        return '\n'.join(content_parts)
+        return "\n".join(content_parts)
 
-    def _extract_metadata_from_opf(self, tempdir: str) -> tuple[str | None, str | None, str | None, str | None]:
+    def _extract_metadata_from_opf(
+        self, tempdir: str
+    ) -> tuple[str | None, str | None, str | None, str | None]:
         """Extract metadata from OPF file in extracted content.
 
         Args:
@@ -263,28 +272,28 @@ class MobiParser:
         # Find OPF file
         for root, _dirs, files in os.walk(tempdir):
             for f in files:
-                if f.endswith('.opf'):
+                if f.endswith(".opf"):
                     opf_path = os.path.join(root, f)
-                    with open(opf_path, encoding='utf-8', errors='ignore') as opf_file:
-                        soup = BeautifulSoup(opf_file.read(), 'html.parser')
+                    with open(opf_path, encoding="utf-8", errors="ignore") as opf_file:
+                        soup = BeautifulSoup(opf_file.read(), "html.parser")
 
                         # Extract title
-                        title_tag = soup.find('dc:title') or soup.find('title')
+                        title_tag = soup.find("dc:title") or soup.find("title")
                         if title_tag:
                             title = title_tag.get_text(strip=True)
 
                         # Extract author
-                        author_tag = soup.find('dc:creator') or soup.find('creator')
+                        author_tag = soup.find("dc:creator") or soup.find("creator")
                         if author_tag:
                             author = author_tag.get_text(strip=True)
 
                         # Extract language
-                        lang_tag = soup.find('dc:language') or soup.find('language')
+                        lang_tag = soup.find("dc:language") or soup.find("language")
                         if lang_tag:
                             language = lang_tag.get_text(strip=True)
 
                         # Extract publisher
-                        pub_tag = soup.find('dc:publisher') or soup.find('publisher')
+                        pub_tag = soup.find("dc:publisher") or soup.find("publisher")
                         if pub_tag:
                             publisher = pub_tag.get_text(strip=True)
 
@@ -304,10 +313,10 @@ class MobiParser:
         publisher = None
 
         if self._mobi_book:
-            title = getattr(self._mobi_book, 'title', None)
-            author = getattr(self._mobi_book, 'author', None)
-            language = getattr(self._mobi_book, 'language', None)
-            publisher = getattr(self._mobi_book, 'publisher', None)
+            title = getattr(self._mobi_book, "title", None)
+            author = getattr(self._mobi_book, "author", None)
+            language = getattr(self._mobi_book, "language", None)
+            publisher = getattr(self._mobi_book, "publisher", None)
 
         # Fallback to filename if no title
         if not title:
@@ -323,7 +332,7 @@ class MobiParser:
         Returns:
             Cover image data as bytes, or None if not found
         """
-        if self._mobi_book and hasattr(self._mobi_book, 'get_cover'):
+        if self._mobi_book and hasattr(self._mobi_book, "get_cover"):
             try:
                 return self._mobi_book.get_cover()
             except Exception:
@@ -340,14 +349,14 @@ class MobiParser:
             Cover image data as bytes, or None if not found
         """
         # Look for common cover image names
-        cover_names = ['cover.jpg', 'cover.jpeg', 'cover.png', 'cover.gif']
+        cover_names = ["cover.jpg", "cover.jpeg", "cover.png", "cover.gif"]
 
         for root, _dirs, files in os.walk(tempdir):
             for f in files:
-                if f.lower() in cover_names or 'cover' in f.lower():
-                    if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
+                if f.lower() in cover_names or "cover" in f.lower():
+                    if f.lower().endswith((".jpg", ".jpeg", ".png", ".gif")):
                         try:
-                            with open(os.path.join(root, f), 'rb') as img_file:
+                            with open(os.path.join(root, f), "rb") as img_file:
                                 return img_file.read()
                         except Exception:
                             pass
@@ -372,20 +381,20 @@ class MobiParser:
         Returns:
             Plain text extracted from HTML
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
 
         # Remove script and style elements
-        for element in soup.find_all(['script', 'style', 'head', 'meta', 'link']):
+        for element in soup.find_all(["script", "style", "head", "meta", "link"]):
             element.decompose()
 
         # Get text with paragraph separation
         text_parts = []
-        for element in soup.find_all(['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
+        for element in soup.find_all(["p", "div", "h1", "h2", "h3", "h4", "h5", "h6"]):
             text = element.get_text(strip=True)
             if text:
                 text_parts.append(text)
 
-        return '\n\n'.join(text_parts)
+        return "\n\n".join(text_parts)
 
     def _detect_chapters_from_html(self, html: str) -> list[MobiChapter]:
         """Detect chapters from HTML content.
@@ -396,16 +405,16 @@ class MobiParser:
         Returns:
             List of MobiChapter objects
         """
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
 
         # Remove script and style elements first
-        for element in soup.find_all(['script', 'style']):
+        for element in soup.find_all(["script", "style"]):
             element.decompose()
 
         chapters = []
 
         # Try to find chapters by headings
-        headings = soup.find_all(['h1', 'h2'])
+        headings = soup.find_all(["h1", "h2"])
 
         if headings:
             for i, heading in enumerate(headings):
@@ -416,29 +425,33 @@ class MobiParser:
                 # Get content until next heading
                 content_parts = []
                 for sibling in heading.find_next_siblings():
-                    if sibling.name in ['h1', 'h2']:
+                    if sibling.name in ["h1", "h2"]:
                         break
                     text = sibling.get_text(strip=True)
                     if text:
                         content_parts.append(text)
 
-                content = '\n\n'.join(content_parts)
+                content = "\n\n".join(content_parts)
 
-                chapters.append(MobiChapter(
-                    title=title,
-                    content=content,
-                    index=i,
-                    is_html=False,
-                ))
+                chapters.append(
+                    MobiChapter(
+                        title=title,
+                        content=content,
+                        index=i,
+                        is_html=False,
+                    )
+                )
         else:
             # No headings found - treat entire content as one chapter
             text = self._html_to_text(html)
-            chapters.append(MobiChapter(
-                title="Content",
-                content=text,
-                index=0,
-                is_html=False,
-            ))
+            chapters.append(
+                MobiChapter(
+                    title="Content",
+                    content=text,
+                    index=0,
+                    is_html=False,
+                )
+            )
 
         return chapters
 

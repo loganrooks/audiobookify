@@ -17,8 +17,7 @@ sys.path.insert(0, parent_dir)
 # Import directly from the module file to avoid __init__.py dependency issues
 
 spec = importlib.util.spec_from_file_location(
-    "batch_processor",
-    os.path.join(parent_dir, "epub2tts_edge", "batch_processor.py")
+    "batch_processor", os.path.join(parent_dir, "epub2tts_edge", "batch_processor.py")
 )
 batch_processor = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(batch_processor)
@@ -246,7 +245,7 @@ class TestBatchProcessor:
         """Test discovering a single EPUB file."""
         with tempfile.TemporaryDirectory() as tmpdir:
             epub_path = os.path.join(tmpdir, "test.epub")
-            open(epub_path, 'w').close()
+            open(epub_path, "w").close()
 
             config = BatchConfig(input_path=epub_path)
             processor = BatchProcessor(config)
@@ -263,9 +262,9 @@ class TestBatchProcessor:
             epub2 = os.path.join(tmpdir, "book2.epub")
             txt_file = os.path.join(tmpdir, "notes.txt")
 
-            open(epub1, 'w').close()
-            open(epub2, 'w').close()
-            open(txt_file, 'w').close()
+            open(epub1, "w").close()
+            open(epub2, "w").close()
+            open(txt_file, "w").close()
 
             config = BatchConfig(input_path=tmpdir)
             processor = BatchProcessor(config)
@@ -285,8 +284,8 @@ class TestBatchProcessor:
             epub1 = os.path.join(tmpdir, "book1.epub")
             epub2 = os.path.join(subdir, "book2.epub")
 
-            open(epub1, 'w').close()
-            open(epub2, 'w').close()
+            open(epub1, "w").close()
+            open(epub2, "w").close()
 
             # Non-recursive should only find 1
             config = BatchConfig(input_path=tmpdir, recursive=False)
@@ -306,7 +305,7 @@ class TestBatchProcessor:
             epub_path = os.path.join(tmpdir, "book.epub")
             m4b_path = os.path.join(tmpdir, "book (en-US-AndrewNeural).m4b")
 
-            open(epub_path, 'w').close()
+            open(epub_path, "w").close()
 
             # Without M4B, should not skip
             config = BatchConfig(input_path=tmpdir, skip_existing=True)
@@ -314,7 +313,7 @@ class TestBatchProcessor:
             assert not processor.should_skip(epub_path)
 
             # With M4B, should skip
-            open(m4b_path, 'w').close()
+            open(m4b_path, "w").close()
             assert processor.should_skip(epub_path)
 
             # With skip_existing=False, should not skip
@@ -329,9 +328,9 @@ class TestBatchProcessor:
             epub2 = os.path.join(tmpdir, "book2.epub")
             m4b = os.path.join(tmpdir, "book2 (en-US-AndrewNeural).m4b")
 
-            open(epub1, 'w').close()
-            open(epub2, 'w').close()
-            open(m4b, 'w').close()
+            open(epub1, "w").close()
+            open(epub2, "w").close()
+            open(m4b, "w").close()
 
             config = BatchConfig(input_path=tmpdir, skip_existing=True)
             processor = BatchProcessor(config)

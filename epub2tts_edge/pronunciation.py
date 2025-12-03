@@ -19,6 +19,7 @@ class PronunciationConfig:
         case_sensitive: Whether replacements are case-sensitive
         enabled: Whether pronunciation processing is enabled
     """
+
     dictionary: dict[str, str] = field(default_factory=dict)
     case_sensitive: bool = False
     enabled: bool = True
@@ -33,6 +34,7 @@ class PronunciationEntry:
         replacement: The pronunciation replacement
         description: Optional description/notes
     """
+
     original: str
     replacement: str
     description: str | None = None
@@ -66,7 +68,7 @@ class PronunciationProcessor:
 
         for original in self.config.dictionary:
             # Use word boundaries to avoid partial word matches
-            pattern = r'\b' + re.escape(original) + r'\b'
+            pattern = r"\b" + re.escape(original) + r"\b"
             self._compiled_patterns[original] = re.compile(pattern, flags)
 
     def process_text(self, text: str) -> str:
@@ -136,12 +138,13 @@ class PronunciationProcessor:
             raise ValueError("Invalid file path")
 
         import os
+
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Dictionary file not found: {file_path}")
 
-        ext = file_path.rsplit('.', 1)[-1].lower()
+        ext = file_path.rsplit(".", 1)[-1].lower()
 
-        if ext == 'json':
+        if ext == "json":
             self._load_json(file_path)
         else:
             self._load_text(file_path)
@@ -150,7 +153,7 @@ class PronunciationProcessor:
 
     def _load_json(self, file_path: str) -> None:
         """Load dictionary from JSON file."""
-        with open(file_path, encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
 
         if isinstance(data, dict):
@@ -160,17 +163,17 @@ class PronunciationProcessor:
 
     def _load_text(self, file_path: str) -> None:
         """Load dictionary from text file."""
-        with open(file_path, encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
 
                 # Skip empty lines and comments
-                if not line or line.startswith('#'):
+                if not line or line.startswith("#"):
                     continue
 
                 # Parse "word = pronunciation" format
-                if '=' in line:
-                    parts = line.split('=', 1)
+                if "=" in line:
+                    parts = line.split("=", 1)
                     if len(parts) == 2:
                         original = parts[0].strip()
                         replacement = parts[1].strip()
@@ -183,7 +186,7 @@ class PronunciationProcessor:
         Args:
             file_path: Path for the output file (JSON format)
         """
-        with open(file_path, 'w', encoding='utf-8') as f:
+        with open(file_path, "w", encoding="utf-8") as f:
             json.dump(self.config.dictionary, f, indent=2, ensure_ascii=False)
 
     @property

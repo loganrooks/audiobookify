@@ -40,7 +40,7 @@ def sort_key(s: str) -> int:
     Returns:
         Integer extracted from the filename
     """
-    return int(re.findall(r'\d+', s)[0])
+    return int(re.findall(r"\d+", s)[0])
 
 
 def append_silence(tempfile_path: str, duration: int = 1200) -> None:
@@ -69,12 +69,7 @@ def get_duration(file_path: str) -> int:
     return len(audio)
 
 
-def generate_metadata(
-    files: list[str],
-    author: str,
-    title: str,
-    chapter_titles: list[str]
-) -> None:
+def generate_metadata(files: list[str], author: str, title: str, chapter_titles: list[str]) -> None:
     """Generate FFmpeg metadata file for M4B chapters.
 
     Args:
@@ -119,7 +114,7 @@ def run_edgespeak(
     rate: str | None = None,
     volume: str | None = None,
     retry_count: int = DEFAULT_RETRY_COUNT,
-    retry_delay: int = DEFAULT_RETRY_DELAY
+    retry_delay: int = DEFAULT_RETRY_DELAY,
 ) -> None:
     """Generate speech for a sentence using edge-tts.
 
@@ -151,15 +146,15 @@ def run_edgespeak(
         except Exception as e:
             logger.warning(
                 "Attempt %d/%d failed for '%s...': %s",
-                speakattempt + 1, retry_count, sentence[:50], e
+                speakattempt + 1,
+                retry_count,
+                sentence[:50],
+                e,
             )
             if speakattempt < retry_count - 1:
                 time.sleep(retry_delay)
     else:
-        logger.error(
-            "Giving up on sentence after %d attempts: '%s...'",
-            retry_count, sentence[:50]
-        )
+        logger.error("Giving up on sentence after %d attempts: '%s...'", retry_count, sentence[:50])
         sys.exit(1)
 
 
@@ -171,7 +166,7 @@ async def parallel_edgespeak(
     volume: str | None = None,
     max_concurrent: int = DEFAULT_CONCURRENT_TASKS,
     retry_count: int = DEFAULT_RETRY_COUNT,
-    retry_delay: int = DEFAULT_RETRY_DELAY
+    retry_delay: int = DEFAULT_RETRY_DELAY,
 ) -> None:
     """Generate speech for multiple sentences in parallel.
 
@@ -193,11 +188,18 @@ async def parallel_edgespeak(
             async with semaphore:
                 loop = asyncio.get_running_loop()
                 # Clean up excessive punctuation
-                sentence = re.sub(r'[!]+', '!', sentence)
-                sentence = re.sub(r'[?]+', '?', sentence)
+                sentence = re.sub(r"[!]+", "!", sentence)
+                sentence = re.sub(r"[?]+", "?", sentence)
                 task = loop.run_in_executor(
-                    executor, run_edgespeak, sentence, speaker, filename,
-                    rate, volume, retry_count, retry_delay
+                    executor,
+                    run_edgespeak,
+                    sentence,
+                    speaker,
+                    filename,
+                    rate,
+                    volume,
+                    retry_count,
+                    retry_delay,
                 )
                 tasks.append(task)
         await asyncio.gather(*tasks)
@@ -213,7 +215,7 @@ def read_book(
     pronunciation_processor=None,
     multi_voice_processor=None,
     retry_count: int = DEFAULT_RETRY_COUNT,
-    retry_delay: int = DEFAULT_RETRY_DELAY
+    retry_delay: int = DEFAULT_RETRY_DELAY,
 ) -> list[str]:
     """Generate audio for all chapters in a book.
 
@@ -233,7 +235,7 @@ def read_book(
         List of generated FLAC segment filenames
     """
     segments = []
-    title_names_to_skip_reading = ['Title', 'blank']
+    title_names_to_skip_reading = ["Title", "blank"]
 
     for i, chapter in enumerate(book_contents, start=1):
         files = []
@@ -244,9 +246,9 @@ def read_book(
             segments.append(partname)
         else:
             if chapter["title"] in title_names_to_skip_reading:
-                logger.debug("Chapter name: '%s' - will not be read into audio", chapter['title'])
+                logger.debug("Chapter name: '%s' - will not be read into audio", chapter["title"])
             else:
-                logger.info("Processing chapter: '%s'", chapter['title'])
+                logger.info("Processing chapter: '%s'", chapter["title"])
 
             if chapter["title"] == "":
                 chapter["title"] = "blank"
@@ -256,14 +258,19 @@ def read_book(
                     title_text = pronunciation_processor.process_text(title_text)
                 asyncio.run(
                     parallel_edgespeak(
-                        [title_text], [speaker], ["sntnc0.mp3"],
-                        rate, volume, retry_count=retry_count, retry_delay=retry_delay
+                        [title_text],
+                        [speaker],
+                        ["sntnc0.mp3"],
+                        rate,
+                        volume,
+                        retry_count=retry_count,
+                        retry_delay=retry_delay,
                     )
                 )
                 append_silence("sntnc0.mp3", 1200)
 
             for pindex, paragraph in enumerate(
-                tqdm(chapter["paragraphs"], desc="Generating audio: ", unit='pg')
+                tqdm(chapter["paragraphs"], desc="Generating audio: ", unit="pg")
             ):
                 ptemp = f"pgraphs{pindex}.flac"
                 if os.path.isfile(ptemp):
@@ -274,7 +281,9 @@ def read_book(
                         processed_paragraph = pronunciation_processor.process_text(paragraph)
 
                     if multi_voice_processor:
-                        voice_text_pairs = multi_voice_processor.process_paragraph(processed_paragraph)
+                        voice_text_pairs = multi_voice_processor.process_paragraph(
+                            processed_paragraph
+                        )
                         sentences = [text for _, text in voice_text_pairs]
                         speakers = [voice for voice, _ in voice_text_pairs]
                     else:
@@ -284,8 +293,13 @@ def read_book(
                     filenames = [f"sntnc{z + 1}.mp3" for z in range(len(sentences))]
                     asyncio.run(
                         parallel_edgespeak(
-                            sentences, speakers, filenames,
-                            rate, volume, retry_count=retry_count, retry_delay=retry_delay
+                            sentences,
+                            speakers,
+                            filenames,
+                            rate,
+                            volume,
+                            retry_count=retry_count,
+                            retry_delay=retry_delay,
                         )
                     )
                     append_silence(filenames[-1], paragraphpause)
@@ -313,11 +327,7 @@ def read_book(
 
 
 def make_m4b(
-    files: list[str],
-    sourcefile: str,
-    speaker: str,
-    normalizer=None,
-    silence_detector=None
+    files: list[str], sourcefile: str, speaker: str, normalizer=None, silence_detector=None
 ) -> str:
     """Create M4B audiobook from chapter files.
 
@@ -363,16 +373,35 @@ def make_m4b(
 
     # Concatenate audio files
     ffmpeg_command = [
-        "ffmpeg", "-f", "concat", "-safe", "0",
-        "-i", filelist, "-codec:a", "flac",
-        "-f", "mp4", "-strict", "-2", outputm4a,
+        "ffmpeg",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        filelist,
+        "-codec:a",
+        "flac",
+        "-f",
+        "mp4",
+        "-strict",
+        "-2",
+        outputm4a,
     ]
     subprocess.run(ffmpeg_command, check=True)
 
     # Add metadata and convert to AAC
     ffmpeg_command = [
-        "ffmpeg", "-i", outputm4a, "-i", "FFMETADATAFILE",
-        "-map_metadata", "1", "-codec", "aac", outputm4b,
+        "ffmpeg",
+        "-i",
+        outputm4a,
+        "-i",
+        "FFMETADATAFILE",
+        "-map_metadata",
+        "1",
+        "-codec",
+        "aac",
+        outputm4b,
     ]
     subprocess.run(ffmpeg_command, check=True)
 

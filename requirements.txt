@@ -10,3 +10,5 @@ pydub
 setuptools
 textual>=0.40.0
 tqdm
+# audioop backport for Python 3.13+
+audioop-lts; python_version >= "3.13"

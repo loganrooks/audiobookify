@@ -37,8 +37,9 @@ Forked from [epub2tts-edge](https://github.com/aedocw/epub2tts-edge) with enhanc
 ## Quick Start
 
 ```bash
-# Install
-pip install git+https://github.com/loganrooks/audiobookify.git
+# Install (use pipx for isolated environment)
+pipx install audiobookify
+# Or: pip install audiobookify
 
 # Convert a single EPUB
 audiobookify mybook.epub              # Export to text
@@ -339,18 +340,34 @@ List available voices: `audiobookify --list-voices` or `edge-tts --list-voices`
 
 **Requirements:** Python 3.11+, FFmpeg, espeak-ng
 
+### Quick Install (PyPI)
+
+```bash
+# Recommended: use pipx for isolated CLI installation
+pipx install audiobookify
+
+# Or with pip in a virtual environment
+pip install audiobookify
+```
+
+### Platform-Specific Setup
+
 <details>
 <summary><b>Linux</b></summary>
 
 ```bash
-# Install dependencies
-sudo apt install espeak-ng ffmpeg python3-venv
+# Install system dependencies
+sudo apt install espeak-ng ffmpeg python3-venv pipx
 
-# Clone and install
+# Option 1: pipx (recommended for CLI tools)
+pipx install audiobookify
+
+# Option 2: Virtual environment
 git clone https://github.com/loganrooks/audiobookify
 cd audiobookify
-python3 -m venv .venv && source .venv/bin/activate
-pip install .
+python3 -m venv .venv
+source .venv/bin/activate
+pip install ".[tui]"
 ```
 </details>
 
@@ -358,32 +375,39 @@ pip install .
 <summary><b>macOS</b></summary>
 
 ```bash
-# Install dependencies
-brew install espeak pyenv ffmpeg
+# Install system dependencies
+brew install espeak ffmpeg pipx
 
-# Clone and install
+# Option 1: pipx (recommended for CLI tools)
+pipx install audiobookify
+
+# Option 2: Virtual environment
 git clone https://github.com/loganrooks/audiobookify
 cd audiobookify
-pyenv install 3.11
-pyenv local 3.11
-python -m venv .venv && source .venv/bin/activate
-pip install .
+python3 -m venv .venv
+source .venv/bin/activate
+pip install ".[tui]"
 ```
 </details>
 
 <details>
 <summary><b>Windows</b></summary>
 
-1. Install [Python 3.11](https://www.python.org/downloads/release/python-3117/)
+1. Install [Python 3.11+](https://www.python.org/downloads/)
 2. Install [espeak-ng](https://github.com/espeak-ng/espeak-ng/releases) (x64 msi)
 3. Install [FFmpeg](https://github.com/BtbN/FFmpeg-Builds/releases) and add to PATH
 
 ```powershell
+# Option 1: pipx (recommended)
+pip install pipx
+pipx install audiobookify
+
+# Option 2: Virtual environment
 git clone https://github.com/loganrooks/audiobookify
 cd audiobookify
 py -m venv .venv
-.venv\scripts\activate
-pip install .
+.venv\Scripts\activate
+pip install ".[tui]"
 ```
 </details>
 
@@ -400,6 +424,16 @@ docker run --rm -v ~/Books:/files audiobookify "/files/mybook.epub"
 docker run --rm -v ~/Books:/files audiobookify "/files/mybook.txt"
 ```
 </details>
+
+### Development Install
+
+```bash
+git clone https://github.com/loganrooks/audiobookify
+cd audiobookify
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[all]"  # Editable install with all dependencies
+```
 
 ## Documentation
 

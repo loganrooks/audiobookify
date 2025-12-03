@@ -17,78 +17,93 @@ DEFAULT_PREVIEW_TEXT = (
     "You can use this to hear how your audiobook will sound."
 )
 
-# Available voices with metadata
+# Available voices with metadata - organized by language
 AVAILABLE_VOICES: list[dict[str, str]] = [
-    {
-        "id": "en-US-AndrewNeural",
-        "name": "Andrew",
-        "gender": "Male",
-        "locale": "en-US",
-        "description": "American English, Male"
-    },
-    {
-        "id": "en-US-JennyNeural",
-        "name": "Jenny",
-        "gender": "Female",
-        "locale": "en-US",
-        "description": "American English, Female"
-    },
-    {
-        "id": "en-US-GuyNeural",
-        "name": "Guy",
-        "gender": "Male",
-        "locale": "en-US",
-        "description": "American English, Male"
-    },
-    {
-        "id": "en-GB-SoniaNeural",
-        "name": "Sonia",
-        "gender": "Female",
-        "locale": "en-GB",
-        "description": "British English, Female"
-    },
-    {
-        "id": "en-GB-RyanNeural",
-        "name": "Ryan",
-        "gender": "Male",
-        "locale": "en-GB",
-        "description": "British English, Male"
-    },
-    {
-        "id": "en-AU-NatashaNeural",
-        "name": "Natasha",
-        "gender": "Female",
-        "locale": "en-AU",
-        "description": "Australian English, Female"
-    },
-    {
-        "id": "en-AU-WilliamNeural",
-        "name": "William",
-        "gender": "Male",
-        "locale": "en-AU",
-        "description": "Australian English, Male"
-    },
-    {
-        "id": "en-US-AriaNeural",
-        "name": "Aria",
-        "gender": "Female",
-        "locale": "en-US",
-        "description": "American English, Female"
-    },
-    {
-        "id": "en-US-DavisNeural",
-        "name": "Davis",
-        "gender": "Male",
-        "locale": "en-US",
-        "description": "American English, Male"
-    },
-    {
-        "id": "en-US-JaneNeural",
-        "name": "Jane",
-        "gender": "Female",
-        "locale": "en-US",
-        "description": "American English, Female"
-    },
+    # === MULTILINGUAL VOICES (can speak multiple languages) ===
+    {"id": "en-US-AndrewMultilingualNeural", "name": "Andrew (Multilingual)", "gender": "Male", "locale": "en-US", "description": "Multilingual - Confident, Casual, Warm"},
+    {"id": "en-US-AvaMultilingualNeural", "name": "Ava (Multilingual)", "gender": "Female", "locale": "en-US", "description": "Multilingual - Pleasant, Friendly, Caring"},
+    {"id": "en-US-BrianMultilingualNeural", "name": "Brian (Multilingual)", "gender": "Male", "locale": "en-US", "description": "Multilingual - Sincere, Calm, Approachable"},
+    {"id": "en-US-EmmaMultilingualNeural", "name": "Emma (Multilingual)", "gender": "Female", "locale": "en-US", "description": "Multilingual - Cheerful, Light-Hearted"},
+    {"id": "en-US-JennyMultilingualNeural", "name": "Jenny (Multilingual)", "gender": "Female", "locale": "en-US", "description": "Multilingual - Sincere, Pleasant"},
+    {"id": "en-GB-AdaMultilingualNeural", "name": "Ada (Multilingual)", "gender": "Female", "locale": "en-GB", "description": "Multilingual - Cheerful, Warm, Gentle"},
+    {"id": "de-DE-FlorianMultilingualNeural", "name": "Florian (Multilingual)", "gender": "Male", "locale": "de-DE", "description": "Multilingual German - Cheerful, Warm"},
+    {"id": "de-DE-SeraphinaMultilingualNeural", "name": "Seraphina (Multilingual)", "gender": "Female", "locale": "de-DE", "description": "Multilingual German - Casual"},
+    {"id": "fr-FR-RemyMultilingualNeural", "name": "Remy (Multilingual)", "gender": "Male", "locale": "fr-FR", "description": "Multilingual French - Bright, Cheerful"},
+    {"id": "fr-FR-VivienneMultilingualNeural", "name": "Vivienne (Multilingual)", "gender": "Female", "locale": "fr-FR", "description": "Multilingual French - Warm, Casual"},
+    {"id": "es-ES-ArabellaMultilingualNeural", "name": "Arabella (Multilingual)", "gender": "Female", "locale": "es-ES", "description": "Multilingual Spanish - Cheerful, Friendly"},
+    {"id": "it-IT-IsabellaMultilingualNeural", "name": "Isabella (Multilingual)", "gender": "Female", "locale": "it-IT", "description": "Multilingual Italian - Warm, Cheerful"},
+    {"id": "it-IT-GiuseppeMultilingualNeural", "name": "Giuseppe (Multilingual)", "gender": "Male", "locale": "it-IT", "description": "Multilingual Italian - Expressive, Upbeat"},
+    {"id": "pt-BR-ThalitaMultilingualNeural", "name": "Thalita (Multilingual)", "gender": "Female", "locale": "pt-BR", "description": "Multilingual Portuguese - Confident, Warm"},
+    {"id": "ja-JP-MasaruMultilingualNeural", "name": "Masaru (Multilingual)", "gender": "Male", "locale": "ja-JP", "description": "Multilingual Japanese - Bright, Warm"},
+    {"id": "ko-KR-HyunsuMultilingualNeural", "name": "Hyunsu (Multilingual)", "gender": "Male", "locale": "ko-KR", "description": "Multilingual Korean - Formal, Clear"},
+    {"id": "zh-CN-XiaoxiaoMultilingualNeural", "name": "Xiaoxiao (Multilingual)", "gender": "Female", "locale": "zh-CN", "description": "Multilingual Chinese - Warm, Animated"},
+
+    # === ENGLISH - US ===
+    {"id": "en-US-AndrewNeural", "name": "Andrew", "gender": "Male", "locale": "en-US", "description": "American - Confident, Authentic, Warm"},
+    {"id": "en-US-AvaNeural", "name": "Ava", "gender": "Female", "locale": "en-US", "description": "American - Pleasant, Caring, Friendly"},
+    {"id": "en-US-BrianNeural", "name": "Brian", "gender": "Male", "locale": "en-US", "description": "American - Sincere, Calm, Approachable"},
+    {"id": "en-US-EmmaNeural", "name": "Emma", "gender": "Female", "locale": "en-US", "description": "American - Cheerful, Light-Hearted"},
+    {"id": "en-US-JennyNeural", "name": "Jenny", "gender": "Female", "locale": "en-US", "description": "American - Sincere, Pleasant, Approachable"},
+    {"id": "en-US-GuyNeural", "name": "Guy", "gender": "Male", "locale": "en-US", "description": "American - Light-Hearted, Friendly"},
+    {"id": "en-US-AriaNeural", "name": "Aria", "gender": "Female", "locale": "en-US", "description": "American - Crisp, Bright, Clear"},
+    {"id": "en-US-DavisNeural", "name": "Davis", "gender": "Male", "locale": "en-US", "description": "American - Soothing, Calm, Smooth"},
+    {"id": "en-US-ChristopherNeural", "name": "Christopher", "gender": "Male", "locale": "en-US", "description": "American - Deep, Warm"},
+    {"id": "en-US-MichelleNeural", "name": "Michelle", "gender": "Female", "locale": "en-US", "description": "American - Confident, Authentic, Warm"},
+    {"id": "en-US-SteffanNeural", "name": "Steffan", "gender": "Male", "locale": "en-US", "description": "American - Mature, Authentic, Warm"},
+    {"id": "en-US-EricNeural", "name": "Eric", "gender": "Male", "locale": "en-US", "description": "American - Confident, Sincere, Warm"},
+    {"id": "en-US-RogerNeural", "name": "Roger", "gender": "Male", "locale": "en-US", "description": "American - Serious, Formal, Confident"},
+    {"id": "en-US-JaneNeural", "name": "Jane", "gender": "Female", "locale": "en-US", "description": "American - Serious, Approachable, Upbeat"},
+
+    # === ENGLISH - UK ===
+    {"id": "en-GB-SoniaNeural", "name": "Sonia", "gender": "Female", "locale": "en-GB", "description": "British - Gentle, Soft"},
+    {"id": "en-GB-RyanNeural", "name": "Ryan", "gender": "Male", "locale": "en-GB", "description": "British - Bright, Engaging"},
+    {"id": "en-GB-LibbyNeural", "name": "Libby", "gender": "Female", "locale": "en-GB", "description": "British - Crisp, Bright, Clear"},
+    {"id": "en-GB-ThomasNeural", "name": "Thomas", "gender": "Male", "locale": "en-GB", "description": "British - Classic British Male"},
+    {"id": "en-GB-MaisieNeural", "name": "Maisie", "gender": "Female", "locale": "en-GB", "description": "British - Crisp, Cheerful, Bright"},
+
+    # === ENGLISH - Australia ===
+    {"id": "en-AU-NatashaNeural", "name": "Natasha", "gender": "Female", "locale": "en-AU", "description": "Australian - Crisp, Bright, Clear"},
+    {"id": "en-AU-WilliamNeural", "name": "William", "gender": "Male", "locale": "en-AU", "description": "Australian - Engaging, Strong"},
+
+    # === GERMAN ===
+    {"id": "de-DE-ConradNeural", "name": "Conrad", "gender": "Male", "locale": "de-DE", "description": "German - Engaging, Friendly"},
+    {"id": "de-DE-KatjaNeural", "name": "Katja", "gender": "Female", "locale": "de-DE", "description": "German - Calm, Pleasant"},
+    {"id": "de-DE-AmalaNeural", "name": "Amala", "gender": "Female", "locale": "de-DE", "description": "German - Well-Rounded, Animated"},
+    {"id": "de-DE-KillianNeural", "name": "Killian", "gender": "Male", "locale": "de-DE", "description": "German - Male Voice"},
+
+    # === FRENCH ===
+    {"id": "fr-FR-HenriNeural", "name": "Henri", "gender": "Male", "locale": "fr-FR", "description": "French - Strong, Calm"},
+    {"id": "fr-FR-DeniseNeural", "name": "Denise", "gender": "Female", "locale": "fr-FR", "description": "French - Bright, Engaging"},
+    {"id": "fr-FR-YvetteNeural", "name": "Yvette", "gender": "Female", "locale": "fr-FR", "description": "French - Animated, Bright"},
+
+    # === SPANISH ===
+    {"id": "es-ES-AlvaroNeural", "name": "Alvaro", "gender": "Male", "locale": "es-ES", "description": "Spanish - Confident, Animated"},
+    {"id": "es-ES-ElviraNeural", "name": "Elvira", "gender": "Female", "locale": "es-ES", "description": "Spanish - Bright, Clear"},
+    {"id": "es-MX-JorgeMultilingualNeural", "name": "Jorge (Multilingual)", "gender": "Male", "locale": "es-MX", "description": "Mexican Spanish - Warm, Friendly"},
+    {"id": "es-MX-DaliaMultilingualNeural", "name": "Dalia (Multilingual)", "gender": "Female", "locale": "es-MX", "description": "Mexican Spanish - Warm, Cheerful"},
+
+    # === ITALIAN ===
+    {"id": "it-IT-DiegoNeural", "name": "Diego", "gender": "Male", "locale": "it-IT", "description": "Italian - Animated, Upbeat"},
+    {"id": "it-IT-ElsaNeural", "name": "Elsa", "gender": "Female", "locale": "it-IT", "description": "Italian - Confident, Crisp"},
+    {"id": "it-IT-IsabellaNeural", "name": "Isabella", "gender": "Female", "locale": "it-IT", "description": "Italian - Upbeat, Bright"},
+
+    # === PORTUGUESE ===
+    {"id": "pt-BR-AntonioNeural", "name": "Antonio", "gender": "Male", "locale": "pt-BR", "description": "Brazilian - Bright, Upbeat"},
+    {"id": "pt-BR-FranciscaNeural", "name": "Francisca", "gender": "Female", "locale": "pt-BR", "description": "Brazilian - Cheerful, Crisp"},
+    {"id": "pt-BR-ThalitaNeural", "name": "Thalita", "gender": "Female", "locale": "pt-BR", "description": "Brazilian - Confident, Formal"},
+
+    # === JAPANESE ===
+    {"id": "ja-JP-NanamiNeural", "name": "Nanami", "gender": "Female", "locale": "ja-JP", "description": "Japanese - Bright, Cheerful"},
+    {"id": "ja-JP-KeitaNeural", "name": "Keita", "gender": "Male", "locale": "ja-JP", "description": "Japanese - Casual, Engaging"},
+
+    # === KOREAN ===
+    {"id": "ko-KR-SunHiNeural", "name": "SunHi", "gender": "Female", "locale": "ko-KR", "description": "Korean - Confident, Formal"},
+    {"id": "ko-KR-InJoonNeural", "name": "InJoon", "gender": "Male", "locale": "ko-KR", "description": "Korean - Casual, Friendly"},
+
+    # === CHINESE ===
+    {"id": "zh-CN-XiaoxiaoNeural", "name": "Xiaoxiao", "gender": "Female", "locale": "zh-CN", "description": "Chinese - Warm, Well-Rounded"},
+    {"id": "zh-CN-YunxiNeural", "name": "Yunxi", "gender": "Male", "locale": "zh-CN", "description": "Chinese - Bright, Animated"},
+    {"id": "zh-CN-YunyangNeural", "name": "Yunyang", "gender": "Male", "locale": "zh-CN", "description": "Chinese - Formal, Deep, Calm"},
 ]
 
 

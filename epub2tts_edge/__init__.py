@@ -66,6 +66,13 @@ from .errors import (
     format_error_for_user,
 )
 
+# Job management
+from .job_manager import (
+    Job,
+    JobManager,
+    JobStatus,
+)
+
 # Logging utilities
 from .logger import (
     enable_debug,
@@ -167,6 +174,10 @@ __all__ = [
     "ConversionState",
     "StateManager",
     "STATE_FILE_NAME",
+    # Job management
+    "Job",
+    "JobManager",
+    "JobStatus",
     # Audio normalization
     "AudioNormalizer",
     "NormalizationConfig",

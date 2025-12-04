@@ -265,43 +265,50 @@ class BatchProcessor:
 
     def discover_books(self) -> list[str]:
         """
-        Discover EPUB files to process based on configuration.
+        Discover ebook files (EPUB, MOBI, AZW) to process based on configuration.
 
         Returns:
-            List of EPUB file paths
+            List of ebook file paths
         """
-        epub_files = []
+        # Supported formats
+        supported_extensions = (".epub", ".mobi", ".azw", ".azw3")
+
+        book_files = []
         input_path = self.config.input_path
 
         if os.path.isfile(input_path):
             # Single file
-            if input_path.lower().endswith(".epub"):
-                epub_files.append(input_path)
+            if input_path.lower().endswith(supported_extensions):
+                book_files.append(input_path)
         elif os.path.isdir(input_path):
-            # Directory
-            if self.config.recursive:
-                pattern = os.path.join(input_path, "**", "*.epub")
-                epub_files = glob.glob(pattern, recursive=True)
-            else:
-                pattern = os.path.join(input_path, "*.epub")
-                epub_files = glob.glob(pattern)
+            # Directory - scan for all supported formats
+            for ext in supported_extensions:
+                if self.config.recursive:
+                    pattern = os.path.join(input_path, "**", f"*{ext}")
+                    book_files.extend(glob.glob(pattern, recursive=True))
+                else:
+                    pattern = os.path.join(input_path, f"*{ext}")
+                    book_files.extend(glob.glob(pattern))
+
+            # Remove duplicates (in case of overlapping patterns)
+            book_files = list(set(book_files))
 
             # Apply include pattern
             if self.config.include_pattern:
                 include_pattern = os.path.join(input_path, self.config.include_pattern)
                 included = set(glob.glob(include_pattern, recursive=self.config.recursive))
-                epub_files = [f for f in epub_files if f in included]
+                book_files = [f for f in book_files if f in included]
 
             # Apply exclude pattern
             if self.config.exclude_pattern:
                 exclude_pattern = os.path.join(input_path, self.config.exclude_pattern)
                 excluded = set(glob.glob(exclude_pattern, recursive=self.config.recursive))
-                epub_files = [f for f in epub_files if f not in excluded]
+                book_files = [f for f in book_files if f not in excluded]
 
         # Sort for consistent ordering
-        epub_files.sort()
+        book_files.sort()
 
-        return epub_files
+        return book_files
 
     def should_skip(self, epub_path: str) -> bool:
         """Check if a book should be skipped (already processed)."""

@@ -15,7 +15,7 @@ from pathlib import Path
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import (
     Button,
     DataTable,
@@ -29,6 +29,7 @@ from textual.widgets import (
     ProgressBar,
     Rule,
     Select,
+    Static,
     Switch,
     TabbedContent,
     TabPane,
@@ -40,22 +41,93 @@ from .batch_processor import BatchConfig, BatchProcessor, BookTask, ProcessingSt
 from .voice_preview import AVAILABLE_VOICES, VoicePreview, VoicePreviewConfig
 
 
+class VoicePreviewStatus(Static):
+    """Widget to show voice preview generation and playback status."""
+
+    DEFAULT_CSS = """
+    VoicePreviewStatus {
+        height: auto;
+        padding: 0 1;
+        margin-bottom: 1;
+    }
+
+    VoicePreviewStatus.idle {
+        display: none;
+    }
+
+    VoicePreviewStatus.generating {
+        color: $warning;
+    }
+
+    VoicePreviewStatus.playing {
+        color: $success;
+    }
+
+    VoicePreviewStatus.done {
+        color: $text-muted;
+    }
+
+    VoicePreviewStatus.error {
+        color: $error;
+    }
+    """
+
+    def __init__(self) -> None:
+        super().__init__("")
+        self.add_class("idle")
+
+    def set_generating(self) -> None:
+        """Show generating status."""
+        self.remove_class("idle", "playing", "done", "error")
+        self.add_class("generating")
+        self.update("⏳ Generating preview...")
+
+    def set_playing(self) -> None:
+        """Show playing status."""
+        self.remove_class("idle", "generating", "done", "error")
+        self.add_class("playing")
+        self.update("🔊 Playing...")
+
+    def set_done(self) -> None:
+        """Show done status briefly, then hide."""
+        self.remove_class("idle", "generating", "playing", "error")
+        self.add_class("done")
+        self.update("✅ Done")
+
+    def set_error(self, msg: str = "Error") -> None:
+        """Show error status."""
+        self.remove_class("idle", "generating", "playing", "done")
+        self.add_class("error")
+        self.update(f"❌ {msg}")
+
+    def set_idle(self) -> None:
+        """Hide the status widget."""
+        self.remove_class("generating", "playing", "done", "error")
+        self.add_class("idle")
+        self.update("")
+
+
 class EPUBFileItem(ListItem):
     """A list item representing an EPUB file."""
 
-    def __init__(self, path: Path, selected: bool = True) -> None:
+    def __init__(
+        self, path: Path, selected: bool = True, has_resumable_session: bool = False
+    ) -> None:
         super().__init__()
         self.path = path
         self.is_selected = selected
+        self.has_resumable_session = has_resumable_session
 
     def compose(self) -> ComposeResult:
         checkbox = "☑" if self.is_selected else "☐"
-        yield Label(f"{checkbox} {self.path.name}")
+        resume_indicator = " 🔄" if self.has_resumable_session else ""
+        yield Label(f"{checkbox} {self.path.name}{resume_indicator}")
 
     def toggle(self) -> None:
         self.is_selected = not self.is_selected
         checkbox = "☑" if self.is_selected else "☐"
-        self.query_one(Label).update(f"{checkbox} {self.path.name}")
+        resume_indicator = " 🔄" if self.has_resumable_session else ""
+        self.query_one(Label).update(f"{checkbox} {self.path.name}{resume_indicator}")
 
 
 class FilePanel(Vertical):
@@ -129,6 +201,7 @@ class FilePanel(Vertical):
         file_list.clear()
 
         self.epub_files = []
+        resumable_count = 0
 
         if self.current_path.exists() and self.current_path.is_dir():
             # Scan for all supported formats
@@ -139,12 +212,23 @@ class FilePanel(Vertical):
 
             for book_path in sorted(set(all_files)):
                 self.epub_files.append(book_path)
-                file_list.append(EPUBFileItem(book_path))
 
-        # Update file count
+                # Check for resumable session:
+                # .txt file exists but no .m4b file
+                txt_path = book_path.with_suffix(".txt")
+                m4b_path = book_path.with_suffix(".m4b")
+                has_resumable = txt_path.exists() and not m4b_path.exists()
+
+                if has_resumable:
+                    resumable_count += 1
+
+                file_list.append(EPUBFileItem(book_path, has_resumable_session=has_resumable))
+
+        # Update file count with resumable indicator
         count_label = self.query_one("#file-count", Label)
         count = len(self.epub_files)
-        count_label.update(f"{count} file{'s' if count != 1 else ''} found")
+        resume_text = f" (🔄 {resumable_count} resumable)" if resumable_count > 0 else ""
+        count_label.update(f"{count} file{'s' if count != 1 else ''} found{resume_text}")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "path-input":
@@ -176,8 +260,8 @@ class FilePanel(Vertical):
         return [item.path for item in self.query(EPUBFileItem) if item.is_selected]
 
 
-class SettingsPanel(Vertical):
-    """Panel for configuring conversion settings."""
+class SettingsPanel(VerticalScroll):
+    """Panel for configuring conversion settings (scrollable)."""
 
     DEFAULT_CSS = """
     SettingsPanel {
@@ -186,7 +270,6 @@ class SettingsPanel(Vertical):
         border: round $secondary;
         border-title-color: $secondary;
         padding: 1;
-        overflow-y: auto;
         background: $surface;
     }
 
@@ -270,6 +353,15 @@ class SettingsPanel(Vertical):
         ("-50%", "-50% Quieter"),
     ]
 
+    PAUSE_OPTIONS = [
+        (500, "0.5s - Short"),
+        (800, "0.8s - Quick"),
+        (1200, "1.2s - Default"),
+        (1500, "1.5s - Medium"),
+        (2000, "2.0s - Long"),
+        (3000, "3.0s - Very Long"),
+    ]
+
     def compose(self) -> ComposeResult:
         yield Label("⚙️ Settings", classes="title")
 
@@ -281,6 +373,7 @@ class SettingsPanel(Vertical):
             )
 
         yield Button("🔊 Preview Voice", id="preview-voice-btn", variant="default")
+        yield VoicePreviewStatus()
 
         # v2.1.0: Rate and Volume controls
         yield Label("Voice Adjustments", classes="section-title")
@@ -292,6 +385,25 @@ class SettingsPanel(Vertical):
         with Horizontal(classes="setting-row"):
             yield Label("Volume:")
             yield Select([(v[1], v[0]) for v in self.VOLUME_OPTIONS], value="", id="volume-select")
+
+        # Pause settings
+        yield Label("Pause Timing", classes="section-title")
+
+        with Horizontal(classes="setting-row"):
+            yield Label("Sentence:")
+            yield Select(
+                [(p[1], p[0]) for p in self.PAUSE_OPTIONS],
+                value=1200,
+                id="sentence-pause-select",
+            )
+
+        with Horizontal(classes="setting-row"):
+            yield Label("Paragraph:")
+            yield Select(
+                [(p[1], p[0]) for p in self.PAUSE_OPTIONS],
+                value=1200,
+                id="paragraph-pause-select",
+            )
 
         yield Rule()
 
@@ -361,6 +473,8 @@ class SettingsPanel(Vertical):
         chapters_val = self.query_one("#chapters-input", Input).value.strip()
         pronunciation_val = self.query_one("#pronunciation-input", Input).value.strip()
         voice_mapping_val = self.query_one("#voice-mapping-input", Input).value.strip()
+        sentence_pause_val = self.query_one("#sentence-pause-select", Select).value
+        paragraph_pause_val = self.query_one("#paragraph-pause-select", Select).value
 
         return {
             "speaker": self.query_one("#voice-select", Select).value,
@@ -373,6 +487,9 @@ class SettingsPanel(Vertical):
             "tts_rate": rate_val if rate_val else None,
             "tts_volume": volume_val if volume_val else None,
             "chapters": chapters_val if chapters_val else None,
+            # Pause settings
+            "sentence_pause": sentence_pause_val,
+            "paragraph_pause": paragraph_pause_val,
             # v2.2.0 options
             "normalize": self.query_one("#normalize-switch", Switch).value,
             "trim_silence": self.query_one("#trim-silence-switch", Switch).value,
@@ -533,6 +650,7 @@ class LogPanel(Vertical):
     DEFAULT_CSS = """
     LogPanel {
         height: 1fr;
+        min-height: 10;
         border: round $primary-darken-1;
         border-title-color: $primary-darken-1;
         padding: 1;
@@ -547,14 +665,16 @@ class LogPanel(Vertical):
 
     LogPanel > #log-output {
         height: 1fr;
+        min-height: 8;
         background: $surface-darken-1;
         border: round $primary-darken-2;
+        scrollbar-gutter: stable;
     }
     """
 
     def compose(self) -> ComposeResult:
         yield Label("📜 Log", classes="title")
-        yield Log(id="log-output", auto_scroll=True)
+        yield Log(id="log-output", auto_scroll=True, max_lines=1000)
 
     def write(self, message: str) -> None:
         """Write a message to the log."""
@@ -678,6 +798,10 @@ class AudiobookifyApp(App):
         rate = config["tts_rate"]
         volume = config["tts_volume"]
 
+        # Show generating status
+        status_widget = self.query_one(VoicePreviewStatus)
+        status_widget.set_generating()
+
         self.log_message(f"🔊 Previewing voice: {speaker}")
         if rate:
             self.log_message(f"   Rate: {rate}")
@@ -692,6 +816,18 @@ class AudiobookifyApp(App):
         """Generate voice preview in background thread."""
         import shutil
         import subprocess
+
+        def set_status_generating() -> None:
+            self.query_one(VoicePreviewStatus).set_generating()
+
+        def set_status_playing() -> None:
+            self.query_one(VoicePreviewStatus).set_playing()
+
+        def set_status_done() -> None:
+            self.query_one(VoicePreviewStatus).set_done()
+
+        def set_status_error(msg: str) -> None:
+            self.query_one(VoicePreviewStatus).set_error(msg)
 
         try:
             preview_config = VoicePreviewConfig(speaker=speaker)
@@ -716,17 +852,24 @@ class AudiobookifyApp(App):
                 ("aplay", []),  # ALSA
                 ("afplay", []),  # macOS
             ]
+            played = False
             for player, args in players:
                 if shutil.which(player):
+                    self.call_from_thread(set_status_playing)
                     self.call_from_thread(self.log_message, f"   Playing with {player}...")
                     try:
                         subprocess.run(
                             [player] + args + [output_path], capture_output=True, timeout=30
                         )
+                        played = True
                         break
                     except Exception:
                         continue
+
+            if played:
+                self.call_from_thread(set_status_done)
             else:
+                self.call_from_thread(set_status_error, "No player")
                 self.call_from_thread(
                     self.log_message, "   No audio player found. File saved for manual playback."
                 )
@@ -735,6 +878,7 @@ class AudiobookifyApp(App):
                 )
 
         except Exception as e:
+            self.call_from_thread(set_status_error, str(e)[:20])
             self.call_from_thread(self.log_message, f"   ❌ Preview failed: {e}")
 
     def action_start(self) -> None:
@@ -804,10 +948,18 @@ class AudiobookifyApp(App):
 
             self.call_from_thread(self.log_message, f"Processing: {epub_path.name}")
 
+            # Log export_only setting for debugging
+            export_only = config_dict["export_only"]
+            self.call_from_thread(
+                self.log_message,
+                f"  Mode: {'Text export only' if export_only else 'Full audiobook conversion'}",
+            )
+
             # Process the book
             try:
                 task.status = ProcessingStatus.EXPORTING
                 self.call_from_thread(self.query_one(QueuePanel).update_task, task)
+                self.call_from_thread(self.log_message, "  📝 Exporting to text...")
 
                 # Create config for single file
                 config = BatchConfig(
@@ -821,6 +973,9 @@ class AudiobookifyApp(App):
                     tts_rate=config_dict.get("tts_rate"),
                     tts_volume=config_dict.get("tts_volume"),
                     chapters=config_dict.get("chapters"),
+                    # Pause settings
+                    sentence_pause=config_dict.get("sentence_pause", 1200),
+                    paragraph_pause=config_dict.get("paragraph_pause", 1200),
                 )
 
                 processor = BatchProcessor(config)
@@ -828,6 +983,13 @@ class AudiobookifyApp(App):
 
                 if processor.result.tasks:
                     book_task = processor.result.tasks[0]
+
+                    # Update status in real-time during processing
+                    if not export_only:
+                        self.call_from_thread(self.log_message, "  🔊 Converting to audio...")
+                        task.status = ProcessingStatus.CONVERTING
+                        self.call_from_thread(self.query_one(QueuePanel).update_task, task)
+
                     success = processor.process_book(book_task)
 
                     task.status = book_task.status
@@ -836,7 +998,11 @@ class AudiobookifyApp(App):
                     task.end_time = book_task.end_time
 
                     if success:
-                        self.call_from_thread(self.log_message, f"✅ Completed: {epub_path.name}")
+                        duration = task.duration
+                        time_str = f" ({int(duration)}s)" if duration else ""
+                        self.call_from_thread(
+                            self.log_message, f"✅ Completed: {epub_path.name}{time_str}"
+                        )
                     else:
                         self.call_from_thread(
                             self.log_message,
@@ -844,7 +1010,9 @@ class AudiobookifyApp(App):
                         )
                 else:
                     task.status = ProcessingStatus.SKIPPED
-                    self.call_from_thread(self.log_message, f"⏭️ Skipped: {epub_path.name}")
+                    self.call_from_thread(
+                        self.log_message, f"⏭️ Skipped: {epub_path.name} (no tasks created)"
+                    )
 
             except Exception as e:
                 task.status = ProcessingStatus.FAILED

@@ -180,12 +180,13 @@ class FilePanel(Vertical):
     FilePanel > #file-actions {
         height: 3;
         min-height: 3;
-        margin-top: 1;
+        margin-top: 0;
+        width: 100%;
     }
 
     FilePanel > #file-actions > Button {
-        margin-right: 1;
-        min-width: 8;
+        min-width: 10;
+        margin: 0 1 0 0;
     }
     """
 
@@ -826,6 +827,7 @@ class AudiobookifyApp(App):
     def on_mount(self) -> None:
         self.log_message("Audiobookify TUI started")
         self.log_message("Select EPUB files and press Start (or 's')")
+        self.log_message("💡 Press ? for help | Ctrl+/-: font size")
 
     def log_message(self, message: str) -> None:
         """Log a message to the log panel."""
@@ -1138,6 +1140,11 @@ class AudiobookifyApp(App):
         self.log_message("  q     - Quit")
         self.log_message("  ?     - Show this help")
         self.log_message("─" * 40)
+        self.log_message("")
+        self.log_message("💡 Tip: Font Size")
+        self.log_message("  Font size is controlled by your terminal:")
+        self.log_message("  - Ctrl/Cmd + Plus  → Increase font size")
+        self.log_message("  - Ctrl/Cmd + Minus → Decrease font size")
         self.log_message("")
         self.log_message("v2.1.0 Features:")
         self.log_message("  - Rate/Volume: Adjust TTS speed and volume")

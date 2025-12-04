@@ -220,6 +220,9 @@ class FilePanel(Vertical):
         self.epub_files = []
         resumable_count = 0
 
+        # Get job manager from app if available
+        job_manager = getattr(self.app, "job_manager", None)
+
         if self.current_path.exists() and self.current_path.is_dir():
             # Scan for all supported formats
             patterns = ["*.epub", "*.mobi", "*.azw", "*.azw3"]
@@ -230,11 +233,11 @@ class FilePanel(Vertical):
             for book_path in sorted(set(all_files)):
                 self.epub_files.append(book_path)
 
-                # Check for resumable session:
-                # .txt file exists but no .m4b file
-                txt_path = book_path.with_suffix(".txt")
-                m4b_path = book_path.with_suffix(".m4b")
-                has_resumable = txt_path.exists() and not m4b_path.exists()
+                # Check for resumable job via JobManager
+                has_resumable = False
+                if job_manager:
+                    resumable_job = job_manager.find_job_for_source(str(book_path))
+                    has_resumable = resumable_job is not None
 
                 if has_resumable:
                     resumable_count += 1
@@ -436,6 +439,8 @@ class SettingsPanel(VerticalScroll):
             yield Select(
                 [(h[1], h[0]) for h in self.HIERARCHY_STYLES], value="flat", id="hierarchy-select"
             )
+
+        yield Button("📋 Preview Chapters", id="preview-chapters-btn", variant="default")
 
         # v2.1.0: Chapter selection
         yield Label("Chapter Selection", classes="section-title")
@@ -999,6 +1004,8 @@ class AudiobookifyApp(App):
             self.action_delete_job()
         elif event.button.id == "job-refresh":
             self.action_refresh_jobs()
+        elif event.button.id == "preview-chapters-btn":
+            self.action_preview_chapters()
 
     def action_preview_voice(self) -> None:
         """Preview the currently selected voice."""
@@ -1264,6 +1271,10 @@ class AudiobookifyApp(App):
         progress_panel.set_progress(total, total, "", "Complete!")
         progress_panel.clear_chapter_progress()
 
+        # Refresh Jobs panel and file list to show updated state
+        self.query_one(JobsPanel).refresh_jobs()
+        self.query_one(FilePanel).scan_directory()
+
         self.log_message("Processing complete!")
 
     @work(exclusive=True, thread=True)
@@ -1448,6 +1459,80 @@ class AudiobookifyApp(App):
             else:
                 self.log_message(f"Failed to delete job: {job_name}")
                 self.notify(f"Failed to delete: {job_name}", severity="error")
+
+    def action_preview_chapters(self) -> None:
+        """Preview chapters for the first selected file."""
+        # Get selected files
+        selected = [item.path for item in self.query(EPUBFileItem) if item.is_selected]
+
+        if not selected:
+            self.notify("Select a file first", severity="warning")
+            return
+
+        # Only preview first file
+        epub_path = selected[0]
+        settings_panel = self.query_one(SettingsPanel)
+        config = settings_panel.get_config()
+
+        self.log_message("─" * 40)
+        self.log_message(f"📋 Chapter Preview: {epub_path.name}")
+        self.log_message(f"   Detection: {config['detection_method']}")
+        self.log_message("─" * 40)
+
+        # Switch to Log tab to show results
+        tabs = self.query_one("#bottom-tabs", TabbedContent)
+        tabs.active = "log-tab"
+
+        # Run preview in background
+        self.preview_chapters_async(
+            epub_path, config["detection_method"], config["hierarchy_style"]
+        )
+
+    @work(exclusive=False, thread=True)
+    def preview_chapters_async(
+        self, epub_path: Path, detection_method: str, hierarchy_style: str
+    ) -> None:
+        """Preview chapters in background thread."""
+        from .chapter_detector import ChapterDetector
+
+        try:
+            detector = ChapterDetector(
+                str(epub_path),
+                method=detection_method,
+                hierarchy_style=hierarchy_style,
+            )
+            chapters = detector.detect()
+
+            if not chapters:
+                self.call_from_thread(self.log_message, "   ⚠️ No chapters detected!")
+                self.call_from_thread(self.log_message, "   Try a different detection method.")
+                return
+
+            self.call_from_thread(self.log_message, f"   Found {len(chapters)} chapter(s):")
+            self.call_from_thread(self.log_message, "")
+
+            for i, chapter in enumerate(chapters, 1):
+                title = chapter.title[:60] + "..." if len(chapter.title) > 60 else chapter.title
+                # Show word count if content is available
+                word_count = ""
+                if hasattr(chapter, "content") and chapter.content:
+                    words = len(chapter.content.split())
+                    word_count = f" ({words:,} words)"
+                self.call_from_thread(self.log_message, f"   {i:3}. {title}{word_count}")
+
+            self.call_from_thread(self.log_message, "")
+            self.call_from_thread(self.log_message, "─" * 40)
+            self.call_from_thread(
+                self.log_message,
+                "💡 Tip: If chapters look wrong, try 'TOC Only' or 'Headings Only' detection",
+            )
+            self.call_from_thread(
+                self.log_message,
+                "   Or use 'Export Only' to edit the .txt file before converting",
+            )
+
+        except Exception as e:
+            self.call_from_thread(self.log_message, f"   ❌ Error: {e}")
 
     def action_help(self) -> None:
         """Show help."""

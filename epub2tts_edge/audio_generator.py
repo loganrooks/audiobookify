@@ -235,6 +235,7 @@ def read_book(
     retry_count: int = DEFAULT_RETRY_COUNT,
     retry_delay: int = DEFAULT_RETRY_DELAY,
     progress_callback: ProgressCallback | None = None,
+    cancellation_check: Callable | None = None,
 ) -> list[str]:
     """Generate audio for all chapters in a book.
 
@@ -250,15 +251,20 @@ def read_book(
         retry_count: Number of retry attempts for TTS (default 3)
         retry_delay: Delay between retries in seconds (default 3)
         progress_callback: Optional callback for progress updates
+        cancellation_check: Optional callable that returns True if processing should stop
 
     Returns:
-        List of generated FLAC segment filenames
+        List of generated FLAC segment filenames (may be partial if cancelled)
     """
     segments = []
     title_names_to_skip_reading = ["Title", "blank"]
     total_chapters = len(book_contents)
 
     for i, chapter in enumerate(book_contents, start=1):
+        # Check for cancellation at chapter start
+        if cancellation_check and cancellation_check():
+            logger.info("Processing cancelled by user at chapter %d", i)
+            return segments
         files = []
         partname = f"part{i}.flac"
         total_paragraphs = len(chapter.get("paragraphs", []))
@@ -307,6 +313,15 @@ def read_book(
             for pindex, paragraph in enumerate(
                 tqdm(chapter["paragraphs"], desc="Generating audio: ", unit="pg")
             ):
+                # Check for cancellation at paragraph start
+                if cancellation_check and cancellation_check():
+                    logger.info(
+                        "Processing cancelled by user at chapter %d, paragraph %d",
+                        i,
+                        pindex + 1,
+                    )
+                    return segments
+
                 # Report paragraph progress
                 if progress_callback:
                     progress_callback(

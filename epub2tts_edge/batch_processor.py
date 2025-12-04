@@ -442,13 +442,19 @@ class BatchProcessor:
 
         return [t for t in self.result.tasks if t.status == ProcessingStatus.PENDING]
 
-    def process_book(self, task: BookTask, progress_callback: Callable | None = None) -> bool:
+    def process_book(
+        self,
+        task: BookTask,
+        progress_callback: Callable | None = None,
+        cancellation_check: Callable | None = None,
+    ) -> bool:
         """
         Process a single book.
 
         Args:
             task: The BookTask to process
             progress_callback: Optional callback for progress updates (receives ProgressInfo)
+            cancellation_check: Optional callable that returns True if processing should stop
 
         Returns:
             True if successful, False otherwise
@@ -596,7 +602,17 @@ class BatchProcessor:
                     rate=self.config.tts_rate,
                     volume=self.config.tts_volume,
                     progress_callback=job_progress_callback,
+                    cancellation_check=cancellation_check,
                 )
+
+                # Check if cancelled
+                if cancellation_check and cancellation_check():
+                    task.status = ProcessingStatus.FAILED
+                    task.error_message = "Cancelled by user"
+                    task.end_time = time.time()
+                    if job and self._job_manager:
+                        self._job_manager.set_error(job.job_id, "Cancelled by user")
+                    return False
                 generate_metadata(files, book_author, book_title, chapter_titles)
                 m4b_filename = make_m4b(files, txt_path, self.config.speaker)
 

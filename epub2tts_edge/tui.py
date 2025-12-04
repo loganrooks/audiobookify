@@ -441,6 +441,14 @@ class SettingsPanel(VerticalScroll):
             )
 
         yield Button("📋 Preview Chapters", id="preview-chapters-btn", variant="default")
+        yield Button("📝 Export Text", id="export-text-btn", variant="default")
+
+        # Text file conversion (for editing workflow)
+        yield Label("Convert from Text", classes="section-title")
+        with Horizontal(classes="setting-row"):
+            yield Label("Text File:")
+            yield Input(placeholder="Path to edited .txt file", id="text-file-input")
+        yield Button("🔊 Convert Text to Audio", id="convert-text-btn", variant="default")
 
         # v2.1.0: Chapter selection
         yield Label("Chapter Selection", classes="section-title")
@@ -921,8 +929,8 @@ class AudiobookifyApp(App):
     }
 
     #bottom-tabs {
-        height: 1fr;
-        min-height: 15;
+        height: 2fr;
+        min-height: 20;
     }
 
     ProgressPanel {
@@ -1006,6 +1014,10 @@ class AudiobookifyApp(App):
             self.action_refresh_jobs()
         elif event.button.id == "preview-chapters-btn":
             self.action_preview_chapters()
+        elif event.button.id == "export-text-btn":
+            self.action_export_text()
+        elif event.button.id == "convert-text-btn":
+            self.action_convert_text()
 
     def action_preview_voice(self) -> None:
         """Preview the currently selected voice."""
@@ -1131,7 +1143,7 @@ class AudiobookifyApp(App):
             return
 
         self.should_stop = True
-        self.log_message("Stopping... (will finish current book)")
+        self.log_message("⏹️ Stopping... (will stop after current paragraph)")
 
         if self.current_worker:
             self.current_worker.cancel()
@@ -1226,7 +1238,15 @@ class AudiobookifyApp(App):
                                 f"  📖 Chapter {info.chapter_num}/{info.total_chapters}: {info.chapter_title[:50]}",
                             )
 
-                    success = processor.process_book(book_task, progress_callback=progress_callback)
+                    # Create cancellation check
+                    def check_cancelled():
+                        return self.should_stop
+
+                    success = processor.process_book(
+                        book_task,
+                        progress_callback=progress_callback,
+                        cancellation_check=check_cancelled,
+                    )
 
                     task.status = book_task.status
                     task.chapter_count = book_task.chapter_count
@@ -1534,6 +1554,244 @@ class AudiobookifyApp(App):
         except Exception as e:
             self.call_from_thread(self.log_message, f"   ❌ Error: {e}")
 
+    def action_export_text(self) -> None:
+        """Export selected EPUB to text file for editing."""
+        selected = [item.path for item in self.query(EPUBFileItem) if item.is_selected]
+
+        if not selected:
+            self.notify("Select a file first", severity="warning")
+            return
+
+        epub_path = selected[0]
+        settings_panel = self.query_one(SettingsPanel)
+        config = settings_panel.get_config()
+
+        # Switch to Log tab
+        tabs = self.query_one("#bottom-tabs", TabbedContent)
+        tabs.active = "log-tab"
+
+        self.log_message("─" * 50)
+        self.log_message("📝 EXPORT & EDIT WORKFLOW")
+        self.log_message("─" * 50)
+
+        # Run export in background
+        self.export_text_async(epub_path, config["detection_method"], config["hierarchy_style"])
+
+    @work(exclusive=False, thread=True)
+    def export_text_async(
+        self, epub_path: Path, detection_method: str, hierarchy_style: str
+    ) -> None:
+        """Export EPUB to text file in background thread."""
+        from .chapter_detector import ChapterDetector
+
+        try:
+            # Create output path next to EPUB
+            txt_path = epub_path.with_suffix(".txt")
+
+            self.call_from_thread(self.log_message, f"   Exporting: {epub_path.name}")
+
+            # Detect chapters and export
+            detector = ChapterDetector(
+                str(epub_path), method=detection_method, hierarchy_style=hierarchy_style
+            )
+            detector.detect()
+            detector.export_to_text(str(txt_path), include_metadata=True, level_markers=True)
+
+            chapters = detector.get_flat_chapters()
+
+            self.call_from_thread(self.log_message, "")
+            self.call_from_thread(self.log_message, f"✅ Exported {len(chapters)} chapters to:")
+            self.call_from_thread(self.log_message, f"   {txt_path}")
+            self.call_from_thread(self.log_message, "")
+            self.call_from_thread(self.log_message, "─" * 50)
+            self.call_from_thread(self.log_message, "📋 EDITING INSTRUCTIONS:")
+            self.call_from_thread(self.log_message, "─" * 50)
+            self.call_from_thread(self.log_message, "")
+            self.call_from_thread(self.log_message, "1. Open the .txt file in your text editor")
+            self.call_from_thread(self.log_message, "")
+            self.call_from_thread(self.log_message, "2. Chapter markers use # symbols:")
+            self.call_from_thread(self.log_message, "   # Chapter 1    → Main chapter")
+            self.call_from_thread(self.log_message, "   ## Section 1.1 → Sub-section")
+            self.call_from_thread(self.log_message, "")
+            self.call_from_thread(self.log_message, "3. To fix split chapter titles:")
+            self.call_from_thread(self.log_message, "   BEFORE:")
+            self.call_from_thread(self.log_message, "     # 1")
+            self.call_from_thread(self.log_message, "     # The Beginning")
+            self.call_from_thread(self.log_message, "   AFTER:")
+            self.call_from_thread(self.log_message, "     # 1 - The Beginning")
+            self.call_from_thread(self.log_message, "")
+            self.call_from_thread(self.log_message, "4. To merge chapters, delete the # line")
+            self.call_from_thread(self.log_message, "   and the content will join the previous")
+            self.call_from_thread(self.log_message, "")
+            self.call_from_thread(self.log_message, "5. Delete any unwanted sections entirely")
+            self.call_from_thread(self.log_message, "")
+            self.call_from_thread(self.log_message, "─" * 50)
+            self.call_from_thread(self.log_message, "📌 NEXT STEPS:")
+            self.call_from_thread(self.log_message, "─" * 50)
+            self.call_from_thread(self.log_message, "")
+            self.call_from_thread(
+                self.log_message,
+                "After editing, paste the file path in 'Text File' and",
+            )
+            self.call_from_thread(
+                self.log_message, "click 'Convert Text to Audio' to create your audiobook."
+            )
+            self.call_from_thread(self.log_message, "")
+            self.call_from_thread(self.log_message, f"Path to copy: {txt_path}")
+            self.call_from_thread(self.log_message, "─" * 50)
+
+            # Update the text file input with the path
+            self.call_from_thread(self._set_text_file_input, str(txt_path))
+
+        except Exception as e:
+            self.call_from_thread(self.log_message, f"❌ Export failed: {e}")
+
+    def _set_text_file_input(self, path: str) -> None:
+        """Set the text file input value."""
+        text_input = self.query_one("#text-file-input", Input)
+        text_input.value = path
+
+    def action_convert_text(self) -> None:
+        """Convert a text file to audiobook."""
+        settings_panel = self.query_one(SettingsPanel)
+        text_path = self.query_one("#text-file-input", Input).value.strip()
+
+        if not text_path:
+            self.notify("Enter a text file path first", severity="warning")
+            return
+
+        if not Path(text_path).exists():
+            self.notify(f"File not found: {text_path}", severity="error")
+            return
+
+        if self.is_processing:
+            self.notify("Already processing", severity="warning")
+            return
+
+        self.is_processing = True
+        self.should_stop = False
+
+        # Switch to Log tab
+        tabs = self.query_one("#bottom-tabs", TabbedContent)
+        tabs.active = "log-tab"
+
+        self.log_message("─" * 40)
+        self.log_message("🔊 Converting text file to audiobook")
+        self.log_message(f"   {text_path}")
+        self.log_message("─" * 40)
+
+        config = settings_panel.get_config()
+        self.current_worker = self.convert_text_async(Path(text_path), config)
+
+    @work(exclusive=True, thread=True)
+    def convert_text_async(self, txt_path: Path, config: dict) -> None:
+        """Convert text file to audiobook in background."""
+        import os
+
+        from .epub2tts_edge import add_cover, generate_metadata, get_book, make_m4b
+
+        original_dir = os.getcwd()
+        working_dir = txt_path.parent
+
+        try:
+            os.chdir(working_dir)
+
+            self.call_from_thread(self.log_message, "   📖 Reading text file...")
+
+            book_contents, book_title, book_author, chapter_titles = get_book(str(txt_path))
+
+            total_chapters = len(book_contents)
+            self.call_from_thread(self.log_message, f"   Found {total_chapters} chapters")
+
+            # Check for cancellation
+            if self.should_stop:
+                self.call_from_thread(self.log_message, "⏹️ Stopped by user")
+                return
+
+            # Apply chapter selection if specified
+            chapters_selection = config.get("chapters")
+            if chapters_selection:
+                from .chapter_selector import ChapterSelector
+
+                selector = ChapterSelector(chapters_selection)
+                selected_indices = selector.get_selected_indices(len(book_contents))
+                book_contents = [book_contents[i] for i in selected_indices]
+                chapter_titles = [chapter_titles[i] for i in selected_indices]
+                self.call_from_thread(
+                    self.log_message,
+                    f"   {selector.get_summary()} ({len(book_contents)} chapters)",
+                )
+
+            self.call_from_thread(self.log_message, "   🔊 Generating audio...")
+
+            # Progress callback
+            def progress_callback(info):
+                self.call_from_thread(
+                    self.query_one(ProgressPanel).set_chapter_progress,
+                    info.chapter_num,
+                    info.total_chapters,
+                    info.chapter_title,
+                    info.paragraph_num,
+                    info.total_paragraphs,
+                )
+                if info.status == "chapter_start":
+                    self.call_from_thread(
+                        self.log_message,
+                        f"   📖 Chapter {info.chapter_num}/{info.total_chapters}: {info.chapter_title[:50]}",
+                    )
+
+            # Cancellation check
+            def check_cancelled():
+                return self.should_stop
+
+            from .audio_generator import read_book
+
+            files = read_book(
+                book_contents,
+                config["speaker"],
+                config.get("paragraph_pause", 1200),
+                config.get("sentence_pause", 1200),
+                rate=config.get("tts_rate"),
+                volume=config.get("tts_volume"),
+                progress_callback=progress_callback,
+                cancellation_check=check_cancelled,
+            )
+
+            if self.should_stop:
+                self.call_from_thread(self.log_message, "⏹️ Stopped by user")
+                return
+
+            if not files:
+                self.call_from_thread(self.log_message, "❌ No audio files generated")
+                return
+
+            self.call_from_thread(self.log_message, "   📦 Creating M4B file...")
+
+            generate_metadata(files, book_author, book_title, chapter_titles)
+            m4b_filename = make_m4b(files, str(txt_path), config["speaker"])
+
+            # Check for cover image
+            cover_path = txt_path.with_suffix(".png")
+            if cover_path.exists():
+                add_cover(str(cover_path), m4b_filename)
+                self.call_from_thread(self.log_message, "   🖼️ Added cover image")
+
+            self.call_from_thread(self.log_message, "")
+            self.call_from_thread(self.log_message, f"✅ Audiobook created: {m4b_filename}")
+
+        except Exception as e:
+            self.call_from_thread(self.log_message, f"❌ Error: {e}")
+
+        finally:
+            os.chdir(original_dir)
+            self.call_from_thread(self._text_convert_complete)
+
+    def _text_convert_complete(self) -> None:
+        """Called when text conversion is complete."""
+        self.is_processing = False
+        self.current_worker = None
+        self.query_one(ProgressPanel).set_progress(0, 0, "", "Ready")
+
     def action_help(self) -> None:
         """Show help."""
         self.log_message("─" * 40)
@@ -1563,6 +1821,12 @@ class AudiobookifyApp(App):
         self.log_message("  - Trim Silence: Remove excessive pauses")
         self.log_message("  - Pronunciation: Custom word pronunciations")
         self.log_message("  - Voice Mapping: Different voices for characters")
+        self.log_message("")
+        self.log_message("📝 Export & Edit Workflow:")
+        self.log_message("  1. Select a file and click 'Preview Chapters'")
+        self.log_message("  2. If chapters are wrong, click 'Export Text'")
+        self.log_message("  3. Edit the .txt file to fix chapter markers")
+        self.log_message("  4. Click 'Convert Text to Audio' to finish")
         self.log_message("─" * 40)
 
 

@@ -689,6 +689,9 @@ class ChapterDetector:
                 # Also map by basename
                 content_map[os.path.basename(item.get_name())] = item.get_content()
 
+        # Track which files have been fully processed (to avoid duplicate content)
+        files_fully_processed: set[str] = set()
+
         for chapter in root.flatten():
             if chapter.paragraphs:  # Already has content
                 continue
@@ -705,6 +708,9 @@ class ChapterDetector:
             if not content:
                 continue
 
+            # Normalize href for tracking
+            href_key = os.path.basename(href) if href else ""
+
             # Extract paragraphs
             soup = BeautifulSoup(content, "html.parser")
 
@@ -713,10 +719,24 @@ class ChapterDetector:
             if chapter.anchor:
                 start_elem = soup.find(id=chapter.anchor)
 
+            # If no anchor, try to find a heading that matches the chapter title
+            if not start_elem and chapter.title:
+                # Look for a heading that matches this chapter's title
+                for heading in soup.find_all(HeadingDetector.HEADING_TAGS):
+                    heading_text = heading.get_text(strip=True)
+                    # Check for exact or partial match
+                    if heading_text and (
+                        heading_text.lower() == chapter.title.lower()
+                        or chapter.title.lower() in heading_text.lower()
+                        or heading_text.lower() in chapter.title.lower()
+                    ):
+                        start_elem = heading
+                        break
+
             paragraphs = []
 
             if start_elem:
-                # Get content after the anchor element
+                # Get content after the anchor/heading element
                 for sibling in start_elem.find_all_next():
                     if sibling.name in HeadingDetector.HEADING_TAGS:
                         # Stop at next heading
@@ -726,6 +746,13 @@ class ChapterDetector:
                         if text:
                             paragraphs.append(text)
             else:
+                # No anchor and no matching heading found
+                # Only process if this file hasn't been fully processed yet
+                if href_key in files_fully_processed:
+                    # This file's content was already assigned to another chapter
+                    # Skip to avoid duplicate content
+                    continue
+
                 # Get all paragraphs from the file
                 # Remove link-only text (footnotes)
                 for a in soup.find_all("a", href=True):
@@ -743,6 +770,10 @@ class ChapterDetector:
                         text = div.get_text(strip=True)
                         if text and len(text) > 20:  # Skip short divs
                             paragraphs.append(text)
+
+                # Mark this file as fully processed
+                if paragraphs:
+                    files_fully_processed.add(href_key)
 
             chapter.paragraphs = paragraphs
 

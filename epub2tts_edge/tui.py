@@ -111,7 +111,7 @@ class EPUBFileItem(ListItem):
     """A list item representing an EPUB file."""
 
     def __init__(
-        self, path: Path, selected: bool = True, has_resumable_session: bool = False
+        self, path: Path, selected: bool = False, has_resumable_session: bool = False
     ) -> None:
         super().__init__()
         self.path = path
@@ -139,7 +139,7 @@ class FilePanel(Vertical):
         height: 100%;
         border: round $primary;
         border-title-color: $primary;
-        padding: 1;
+        padding: 0 1;
         background: $surface;
     }
 
@@ -161,27 +161,31 @@ class FilePanel(Vertical):
 
     FilePanel > #file-list {
         height: 1fr;
+        max-height: 80%;
         min-height: 5;
         border: round $primary-darken-2;
         background: $surface-darken-1;
     }
 
     FilePanel > #file-list > EPUBFileItem {
-        height: auto;
-        padding: 0 1;
+        height: 1;
+        padding: 0;
     }
 
     FilePanel > #file-list > EPUBFileItem > Label {
         width: 100%;
+        padding: 0 1;
     }
 
     FilePanel > #file-actions {
-        height: auto;
+        height: 3;
+        min-height: 3;
         margin-top: 1;
     }
 
     FilePanel > #file-actions > Button {
         margin-right: 1;
+        min-width: 8;
     }
     """
 

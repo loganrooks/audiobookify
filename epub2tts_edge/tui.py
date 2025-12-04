@@ -731,75 +731,41 @@ class AudiobookifyApp(App):
     SUB_TITLE = "EPUB to Audiobook Converter"
 
     CSS = """
-    Screen {
-        layout: grid;
-        grid-size: 2 2;
-        grid-columns: 3fr 2fr;
-        grid-rows: 1fr 1fr;
-    }
-
-    #main-area {
-        column-span: 1;
-        row-span: 1;
-    }
-
-    #settings-area {
-        column-span: 1;
-        row-span: 2;
-        min-width: 44;
-    }
-
-    #bottom-area {
-        column-span: 1;
-        row-span: 1;
-    }
-
-    #left-panels {
-        height: 100%;
+    #app-container {
         width: 100%;
+        height: 100%;
+    }
+
+    #left-column {
+        width: 2fr;
+        height: 100%;
+    }
+
+    #right-column {
+        width: 1fr;
+        height: 100%;
+        min-width: 40;
     }
 
     FilePanel {
-        height: 100%;
-    }
-
-    FilePanel #file-list {
         height: 1fr;
     }
 
-    TabbedContent {
-        height: 100%;
-        width: 100%;
-    }
-
-    TabPane {
-        padding: 0;
-    }
-
-    TabPane > VerticalScroll {
-        height: 100%;
-    }
-
-    #progress-content {
-        height: 100%;
-        width: 100%;
+    #bottom-tabs {
+        height: 1fr;
     }
 
     ProgressPanel {
         height: auto;
-        max-height: 50%;
     }
 
     QueuePanel {
         height: 1fr;
+        min-height: 5;
     }
 
     LogPanel {
         height: 100%;
-    }
-
-    LogPanel #log-output {
-        height: 1fr;
     }
     """
 
@@ -824,21 +790,18 @@ class AudiobookifyApp(App):
     def compose(self) -> ComposeResult:
         yield Header()
 
-        with Horizontal(id="main-area"):
-            with Vertical(id="left-panels"):
+        with Horizontal(id="app-container"):
+            with Vertical(id="left-column"):
                 yield FilePanel(self.initial_path)
-
-        with Vertical(id="settings-area"):
-            yield SettingsPanel()
-
-        with Horizontal(id="bottom-area"):
-            with TabbedContent():
-                with TabPane("Progress", id="progress-tab"):
-                    with VerticalScroll(id="progress-content"):
+                with TabbedContent(id="bottom-tabs"):
+                    with TabPane("Progress", id="progress-tab"):
                         yield ProgressPanel()
                         yield QueuePanel()
-                with TabPane("Log", id="log-tab"):
-                    yield LogPanel()
+                    with TabPane("Log", id="log-tab"):
+                        yield LogPanel()
+
+            with Vertical(id="right-column"):
+                yield SettingsPanel()
 
         yield Footer()
 

@@ -734,28 +734,24 @@ class AudiobookifyApp(App):
     Screen {
         layout: grid;
         grid-size: 2 2;
-        grid-columns: 2fr 1fr;
+        grid-columns: 3fr 2fr;
         grid-rows: 1fr 1fr;
     }
 
     #main-area {
         column-span: 1;
         row-span: 1;
-        min-height: 12;
     }
 
     #settings-area {
         column-span: 1;
         row-span: 2;
-        min-width: 42;
-        overflow-y: auto;
+        min-width: 44;
     }
 
     #bottom-area {
         column-span: 1;
         row-span: 1;
-        min-height: 16;
-        height: 100%;
     }
 
     #left-panels {
@@ -764,20 +760,46 @@ class AudiobookifyApp(App):
     }
 
     FilePanel {
-        min-height: 10;
+        height: 100%;
     }
 
     FilePanel #file-list {
-        min-height: 5;
+        height: 1fr;
     }
 
     TabbedContent {
         height: 100%;
+        width: 100%;
     }
 
     TabPane {
+        padding: 0;
+    }
+
+    TabPane > VerticalScroll {
         height: 100%;
-        overflow-y: auto;
+    }
+
+    #progress-content {
+        height: 100%;
+        width: 100%;
+    }
+
+    ProgressPanel {
+        height: auto;
+        max-height: 50%;
+    }
+
+    QueuePanel {
+        height: 1fr;
+    }
+
+    LogPanel {
+        height: 100%;
+    }
+
+    LogPanel #log-output {
+        height: 1fr;
     }
     """
 
@@ -812,8 +834,9 @@ class AudiobookifyApp(App):
         with Horizontal(id="bottom-area"):
             with TabbedContent():
                 with TabPane("Progress", id="progress-tab"):
-                    yield ProgressPanel()
-                    yield QueuePanel()
+                    with VerticalScroll(id="progress-content"):
+                        yield ProgressPanel()
+                        yield QueuePanel()
                 with TabPane("Log", id="log-tab"):
                     yield LogPanel()
 

@@ -110,6 +110,26 @@ class VoicePreviewStatus(Static):
 class EPUBFileItem(ListItem):
     """A list item representing an EPUB file."""
 
+    DEFAULT_CSS = """
+    EPUBFileItem {
+        height: auto;
+        padding: 0 1;
+    }
+
+    EPUBFileItem > Label {
+        width: 100%;
+        color: $text;
+    }
+
+    EPUBFileItem:hover > Label {
+        color: $text;
+    }
+
+    EPUBFileItem.-selected > Label {
+        color: $text;
+    }
+    """
+
     def __init__(
         self, path: Path, selected: bool = True, has_resumable_session: bool = False
     ) -> None:
@@ -739,20 +759,29 @@ class AudiobookifyApp(App):
     #left-column {
         width: 2fr;
         height: 100%;
+        min-width: 30;
     }
 
     #right-column {
         width: 1fr;
         height: 100%;
-        min-width: 40;
+        min-width: 35;
+        max-width: 50;
     }
 
     FilePanel {
         height: 1fr;
+        min-height: 8;
     }
 
     #bottom-tabs {
         height: 1fr;
+        min-height: 12;
+    }
+
+    #progress-tab {
+        height: 100%;
+        overflow-y: auto;
     }
 
     ProgressPanel {
@@ -760,11 +789,15 @@ class AudiobookifyApp(App):
     }
 
     QueuePanel {
-        height: 1fr;
-        min-height: 5;
+        height: auto;
+        min-height: 4;
     }
 
     LogPanel {
+        height: 100%;
+    }
+
+    #log-tab {
         height: 100%;
     }
     """
@@ -795,8 +828,9 @@ class AudiobookifyApp(App):
                 yield FilePanel(self.initial_path)
                 with TabbedContent(id="bottom-tabs"):
                     with TabPane("Progress", id="progress-tab"):
-                        yield ProgressPanel()
-                        yield QueuePanel()
+                        with VerticalScroll():
+                            yield ProgressPanel()
+                            yield QueuePanel()
                     with TabPane("Log", id="log-tab"):
                         yield LogPanel()
 

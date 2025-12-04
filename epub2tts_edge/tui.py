@@ -113,12 +113,15 @@ class EPUBFileItem(ListItem):
     def __init__(
         self, path: Path, selected: bool = True, has_resumable_session: bool = False
     ) -> None:
-        checkbox = "☑" if selected else "☐"
-        resume_indicator = " 🔄" if has_resumable_session else ""
-        super().__init__(Label(f"{checkbox} {path.name}{resume_indicator}"))
+        super().__init__()
         self.path = path
         self.is_selected = selected
         self.has_resumable_session = has_resumable_session
+
+    def compose(self) -> ComposeResult:
+        checkbox = "☑" if self.is_selected else "☐"
+        resume_indicator = " 🔄" if self.has_resumable_session else ""
+        yield Label(f"{checkbox} {self.path.name}{resume_indicator}")
 
     def toggle(self) -> None:
         self.is_selected = not self.is_selected
@@ -158,8 +161,18 @@ class FilePanel(Vertical):
 
     FilePanel > #file-list {
         height: 1fr;
+        min-height: 5;
         border: round $primary-darken-2;
         background: $surface-darken-1;
+    }
+
+    FilePanel > #file-list > EPUBFileItem {
+        height: auto;
+        padding: 0 1;
+    }
+
+    FilePanel > #file-list > EPUBFileItem > Label {
+        width: 100%;
     }
 
     FilePanel > #file-actions {

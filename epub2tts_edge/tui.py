@@ -110,26 +110,6 @@ class VoicePreviewStatus(Static):
 class EPUBFileItem(ListItem):
     """A list item representing an EPUB file."""
 
-    DEFAULT_CSS = """
-    EPUBFileItem {
-        height: auto;
-        padding: 0 1;
-    }
-
-    EPUBFileItem > Label {
-        width: 100%;
-        color: $text;
-    }
-
-    EPUBFileItem:hover > Label {
-        color: $text;
-    }
-
-    EPUBFileItem.-selected > Label {
-        color: $text;
-    }
-    """
-
     def __init__(
         self, path: Path, selected: bool = True, has_resumable_session: bool = False
     ) -> None:
@@ -141,13 +121,13 @@ class EPUBFileItem(ListItem):
     def compose(self) -> ComposeResult:
         checkbox = "☑" if self.is_selected else "☐"
         resume_indicator = " 🔄" if self.has_resumable_session else ""
-        yield Label(f"{checkbox} {self.path.name}{resume_indicator}")
+        yield Static(f"{checkbox} {self.path.name}{resume_indicator}")
 
     def toggle(self) -> None:
         self.is_selected = not self.is_selected
         checkbox = "☑" if self.is_selected else "☐"
         resume_indicator = " 🔄" if self.has_resumable_session else ""
-        self.query_one(Label).update(f"{checkbox} {self.path.name}{resume_indicator}")
+        self.query_one(Static).update(f"{checkbox} {self.path.name}{resume_indicator}")
 
 
 class FilePanel(Vertical):
@@ -774,6 +754,43 @@ class AudiobookifyApp(App):
         min-height: 8;
     }
 
+    /* Ensure ListView items have visible text */
+    ListView {
+        background: $surface-darken-1;
+    }
+
+    ListView > ListItem {
+        background: $surface-darken-1;
+        height: auto;
+        padding: 0 1;
+    }
+
+    ListView > ListItem:hover {
+        background: $primary-darken-2;
+    }
+
+    ListView > ListItem.-selected {
+        background: $primary;
+    }
+
+    /* File list item text styling */
+    EPUBFileItem {
+        height: auto;
+    }
+
+    EPUBFileItem > Static {
+        color: white;
+        width: 100%;
+    }
+
+    EPUBFileItem:hover > Static {
+        color: white;
+    }
+
+    EPUBFileItem.-selected > Static {
+        color: white;
+    }
+
     #bottom-tabs {
         height: 1fr;
         min-height: 12;
@@ -781,16 +798,21 @@ class AudiobookifyApp(App):
 
     #progress-tab {
         height: 100%;
+    }
+
+    #progress-content {
+        height: 100%;
         overflow-y: auto;
     }
 
     ProgressPanel {
         height: auto;
+        min-height: 12;
     }
 
     QueuePanel {
-        height: auto;
-        min-height: 4;
+        height: 1fr;
+        min-height: 6;
     }
 
     LogPanel {
@@ -828,7 +850,7 @@ class AudiobookifyApp(App):
                 yield FilePanel(self.initial_path)
                 with TabbedContent(id="bottom-tabs"):
                     with TabPane("Progress", id="progress-tab"):
-                        with VerticalScroll():
+                        with Vertical(id="progress-content"):
                             yield ProgressPanel()
                             yield QueuePanel()
                     with TabPane("Log", id="log-tab"):

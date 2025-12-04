@@ -765,12 +765,13 @@ class JobsPanel(Vertical):
     }
 
     JobsPanel > Horizontal {
-        height: auto;
+        height: 3;
         margin-top: 1;
     }
 
     JobsPanel Button {
-        min-width: 12;
+        min-width: 10;
+        height: 1;
         margin-right: 1;
     }
 

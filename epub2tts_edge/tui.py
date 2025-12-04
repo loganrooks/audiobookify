@@ -772,6 +772,7 @@ class JobsPanel(Vertical):
     JobsPanel Button {
         min-width: 10;
         height: 1;
+        padding: 0 1;
         margin-right: 1;
     }
 

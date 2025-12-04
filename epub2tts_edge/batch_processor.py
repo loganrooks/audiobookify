@@ -426,12 +426,13 @@ class BatchProcessor:
 
         return [t for t in self.result.tasks if t.status == ProcessingStatus.PENDING]
 
-    def process_book(self, task: BookTask) -> bool:
+    def process_book(self, task: BookTask, progress_callback: Callable | None = None) -> bool:
         """
         Process a single book.
 
         Args:
             task: The BookTask to process
+            progress_callback: Optional callback for progress updates (receives ProgressInfo)
 
         Returns:
             True if successful, False otherwise
@@ -526,6 +527,7 @@ class BatchProcessor:
                     self.config.sentence_pause,
                     rate=self.config.tts_rate,
                     volume=self.config.tts_volume,
+                    progress_callback=progress_callback,
                 )
                 generate_metadata(files, book_author, book_title, chapter_titles)
                 m4b_filename = make_m4b(files, txt_path, self.config.speaker)

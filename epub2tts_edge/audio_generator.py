@@ -13,6 +13,8 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 
 import edge_tts
 from mutagen import mp4
@@ -29,6 +31,22 @@ logger = get_logger(__name__)
 DEFAULT_RETRY_COUNT = 3
 DEFAULT_RETRY_DELAY = 3  # seconds
 DEFAULT_CONCURRENT_TASKS = 10
+
+
+@dataclass
+class ProgressInfo:
+    """Progress information for callbacks."""
+
+    chapter_num: int
+    total_chapters: int
+    chapter_title: str
+    paragraph_num: int
+    total_paragraphs: int
+    status: str  # "chapter_start", "paragraph", "chapter_done"
+
+
+# Type alias for progress callback
+ProgressCallback = Callable[[ProgressInfo], None]
 
 
 def sort_key(s: str) -> int:
@@ -216,6 +234,7 @@ def read_book(
     multi_voice_processor=None,
     retry_count: int = DEFAULT_RETRY_COUNT,
     retry_delay: int = DEFAULT_RETRY_DELAY,
+    progress_callback: ProgressCallback | None = None,
 ) -> list[str]:
     """Generate audio for all chapters in a book.
 
@@ -230,16 +249,32 @@ def read_book(
         multi_voice_processor: Optional MultiVoiceProcessor for different character voices
         retry_count: Number of retry attempts for TTS (default 3)
         retry_delay: Delay between retries in seconds (default 3)
+        progress_callback: Optional callback for progress updates
 
     Returns:
         List of generated FLAC segment filenames
     """
     segments = []
     title_names_to_skip_reading = ["Title", "blank"]
+    total_chapters = len(book_contents)
 
     for i, chapter in enumerate(book_contents, start=1):
         files = []
         partname = f"part{i}.flac"
+        total_paragraphs = len(chapter.get("paragraphs", []))
+
+        # Report chapter start
+        if progress_callback:
+            progress_callback(
+                ProgressInfo(
+                    chapter_num=i,
+                    total_chapters=total_chapters,
+                    chapter_title=chapter.get("title", ""),
+                    paragraph_num=0,
+                    total_paragraphs=total_paragraphs,
+                    status="chapter_start",
+                )
+            )
 
         if os.path.isfile(partname):
             logger.info("%s exists, skipping to next chapter", partname)
@@ -272,6 +307,19 @@ def read_book(
             for pindex, paragraph in enumerate(
                 tqdm(chapter["paragraphs"], desc="Generating audio: ", unit="pg")
             ):
+                # Report paragraph progress
+                if progress_callback:
+                    progress_callback(
+                        ProgressInfo(
+                            chapter_num=i,
+                            total_chapters=total_chapters,
+                            chapter_title=chapter.get("title", ""),
+                            paragraph_num=pindex + 1,
+                            total_paragraphs=total_paragraphs,
+                            status="paragraph",
+                        )
+                    )
+
                 ptemp = f"pgraphs{pindex}.flac"
                 if os.path.isfile(ptemp):
                     logger.debug("%s exists, skipping to next paragraph", ptemp)
@@ -323,6 +371,19 @@ def read_book(
             for file in files:
                 os.remove(file)
             segments.append(partname)
+
+        # Report chapter completion
+        if progress_callback:
+            progress_callback(
+                ProgressInfo(
+                    chapter_num=i,
+                    total_chapters=total_chapters,
+                    chapter_title=chapter.get("title", ""),
+                    paragraph_num=total_paragraphs,
+                    total_paragraphs=total_paragraphs,
+                    status="chapter_done",
+                )
+            )
     return segments
 
 

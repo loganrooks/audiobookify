@@ -504,7 +504,7 @@ class ProgressPanel(Vertical):
     DEFAULT_CSS = """
     ProgressPanel {
         height: auto;
-        min-height: 12;
+        min-height: 14;
         border: round $success;
         border-title-color: $success;
         padding: 1;
@@ -518,6 +518,16 @@ class ProgressPanel(Vertical):
     }
 
     ProgressPanel > #current-book {
+        margin-bottom: 1;
+    }
+
+    ProgressPanel > #chapter-progress {
+        color: $primary;
+        margin-bottom: 0;
+    }
+
+    ProgressPanel > #paragraph-progress {
+        color: $text-muted;
         margin-bottom: 1;
     }
 
@@ -541,6 +551,8 @@ class ProgressPanel(Vertical):
     def compose(self) -> ComposeResult:
         yield Label("📊 Progress", classes="title")
         yield Label("Ready to convert", id="current-book")
+        yield Label("", id="chapter-progress")
+        yield Label("", id="paragraph-progress")
         yield ProgressBar(total=100, show_eta=False, id="progress-bar")
         yield Label("Select files and press Start", id="status-text")
         with Horizontal(id="action-buttons"):
@@ -555,6 +567,33 @@ class ProgressPanel(Vertical):
             f"Processing: {book_name}" if book_name else "Ready to convert"
         )
         self.query_one("#status-text", Label).update(status or f"{current}/{total} books processed")
+
+    def set_chapter_progress(
+        self,
+        chapter_num: int,
+        total_chapters: int,
+        chapter_title: str,
+        paragraph_num: int,
+        total_paragraphs: int,
+    ) -> None:
+        """Update chapter/paragraph progress display."""
+        # Calculate overall progress based on chapters and paragraphs
+        chapter_progress = (chapter_num - 1) / total_chapters if total_chapters > 0 else 0
+        paragraph_progress = paragraph_num / total_paragraphs if total_paragraphs > 0 else 0
+        overall = (chapter_progress + (paragraph_progress / total_chapters)) * 100
+
+        self.query_one("#progress-bar", ProgressBar).update(progress=overall)
+        self.query_one("#chapter-progress", Label).update(
+            f"📖 Chapter {chapter_num}/{total_chapters}: {chapter_title[:40]}"
+        )
+        self.query_one("#paragraph-progress", Label).update(
+            f"   Paragraph {paragraph_num}/{total_paragraphs}"
+        )
+
+    def clear_chapter_progress(self) -> None:
+        """Clear chapter/paragraph progress display."""
+        self.query_one("#chapter-progress", Label).update("")
+        self.query_one("#paragraph-progress", Label).update("")
 
     def set_running(self, running: bool) -> None:
         """Update button states based on running status."""
@@ -696,25 +735,27 @@ class AudiobookifyApp(App):
         layout: grid;
         grid-size: 2 2;
         grid-columns: 2fr 1fr;
-        grid-rows: 2fr 1fr;
+        grid-rows: 1fr 1fr;
     }
 
     #main-area {
         column-span: 1;
         row-span: 1;
-        min-height: 15;
+        min-height: 12;
     }
 
     #settings-area {
         column-span: 1;
         row-span: 2;
         min-width: 42;
+        overflow-y: auto;
     }
 
     #bottom-area {
         column-span: 1;
         row-span: 1;
-        min-height: 10;
+        min-height: 16;
+        height: 100%;
     }
 
     #left-panels {
@@ -728,6 +769,15 @@ class AudiobookifyApp(App):
 
     FilePanel #file-list {
         min-height: 5;
+    }
+
+    TabbedContent {
+        height: 100%;
+    }
+
+    TabPane {
+        height: 100%;
+        overflow-y: auto;
     }
     """
 
@@ -990,7 +1040,25 @@ class AudiobookifyApp(App):
                         task.status = ProcessingStatus.CONVERTING
                         self.call_from_thread(self.query_one(QueuePanel).update_task, task)
 
-                    success = processor.process_book(book_task)
+                    # Create progress callback for chapter/paragraph updates
+                    def progress_callback(info):
+                        """Handle progress updates from audio generation."""
+                        self.call_from_thread(
+                            self.query_one(ProgressPanel).set_chapter_progress,
+                            info.chapter_num,
+                            info.total_chapters,
+                            info.chapter_title,
+                            info.paragraph_num,
+                            info.total_paragraphs,
+                        )
+                        # Also log chapter starts
+                        if info.status == "chapter_start":
+                            self.call_from_thread(
+                                self.log_message,
+                                f"  📖 Chapter {info.chapter_num}/{info.total_chapters}: {info.chapter_title[:50]}",
+                            )
+
+                    success = processor.process_book(book_task, progress_callback=progress_callback)
 
                     task.status = book_task.status
                     task.chapter_count = book_task.chapter_count
@@ -1033,6 +1101,7 @@ class AudiobookifyApp(App):
         progress_panel = self.query_one(ProgressPanel)
         progress_panel.set_running(False)
         progress_panel.set_progress(total, total, "", "Complete!")
+        progress_panel.clear_chapter_progress()
 
         self.log_message("Processing complete!")
 

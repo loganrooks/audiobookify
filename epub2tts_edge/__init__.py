@@ -3,6 +3,8 @@ from .audio_generator import (
     DEFAULT_CONCURRENT_TASKS,
     DEFAULT_RETRY_COUNT,
     DEFAULT_RETRY_DELAY,
+    ProgressCallback,
+    ProgressInfo,
     add_cover,
     append_silence,
     generate_metadata,
@@ -208,6 +210,8 @@ __all__ = [
     "DEFAULT_RETRY_COUNT",
     "DEFAULT_RETRY_DELAY",
     "DEFAULT_CONCURRENT_TASKS",
+    "ProgressInfo",
+    "ProgressCallback",
     # Custom errors
     "AudiobookifyError",
     "TTSError",

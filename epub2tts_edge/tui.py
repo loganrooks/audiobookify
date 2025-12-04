@@ -133,7 +133,7 @@ class EPUBFileItem(ListItem):
 
 
 class FilePanel(Vertical):
-    """Panel for browsing and selecting EPUB/MOBI files."""
+    """Panel for browsing and selecting files (EPUB/MOBI or TXT)."""
 
     DEFAULT_CSS = """
     FilePanel {
@@ -149,6 +149,21 @@ class FilePanel(Vertical):
         text-style: bold;
         margin-bottom: 1;
         color: $primary-lighten-2;
+    }
+
+    FilePanel > #mode-toggle {
+        height: 3;
+        margin-bottom: 1;
+    }
+
+    FilePanel > #mode-toggle > Button {
+        min-width: 12;
+        margin: 0 1 0 0;
+    }
+
+    FilePanel > #mode-toggle > Button.active {
+        background: $primary;
+        color: $text;
     }
 
     FilePanel > Label.file-count {
@@ -195,10 +210,14 @@ class FilePanel(Vertical):
     def __init__(self, initial_path: str = ".") -> None:
         super().__init__()
         self.current_path = Path(initial_path).resolve()
-        self.epub_files: list[Path] = []
+        self.files: list[Path] = []
+        self.file_mode = "books"  # "books" or "text"
 
     def compose(self) -> ComposeResult:
-        yield Label("📁 Select Books (EPUB/MOBI/AZW)", classes="title")
+        yield Label("📁 Select Files", classes="title", id="panel-title")
+        with Horizontal(id="mode-toggle"):
+            yield Button("📚 Books", id="mode-books", classes="active")
+            yield Button("📝 Text", id="mode-text")
         yield Label("0 files found", classes="file-count", id="file-count")
         yield Input(
             placeholder="Enter folder path...", value=str(self.current_path), id="path-input"
@@ -212,41 +231,73 @@ class FilePanel(Vertical):
     def on_mount(self) -> None:
         self.scan_directory()
 
+    def set_mode(self, mode: str) -> None:
+        """Set the file selection mode."""
+        if mode == self.file_mode:
+            return
+
+        self.file_mode = mode
+
+        # Update button states
+        books_btn = self.query_one("#mode-books", Button)
+        text_btn = self.query_one("#mode-text", Button)
+
+        if mode == "books":
+            books_btn.add_class("active")
+            text_btn.remove_class("active")
+        else:
+            books_btn.remove_class("active")
+            text_btn.add_class("active")
+
+        # Update title
+        title = self.query_one("#panel-title", Label)
+        if mode == "books":
+            title.update("📁 Select Books (EPUB/MOBI/AZW)")
+        else:
+            title.update("📁 Select Text Files")
+
+        # Rescan directory
+        self.scan_directory()
+
     def scan_directory(self) -> None:
-        """Scan current directory for EPUB, MOBI, and AZW files."""
+        """Scan current directory for files based on current mode."""
         file_list = self.query_one("#file-list", ListView)
         file_list.clear()
 
-        self.epub_files = []
+        self.files = []
         resumable_count = 0
 
         # Get job manager from app if available
         job_manager = getattr(self.app, "job_manager", None)
 
         if self.current_path.exists() and self.current_path.is_dir():
-            # Scan for all supported formats
-            patterns = ["*.epub", "*.mobi", "*.azw", "*.azw3"]
+            # Scan for files based on mode
+            if self.file_mode == "books":
+                patterns = ["*.epub", "*.mobi", "*.azw", "*.azw3"]
+            else:
+                patterns = ["*.txt"]
+
             all_files = []
             for pattern in patterns:
                 all_files.extend(self.current_path.glob(pattern))
 
-            for book_path in sorted(set(all_files)):
-                self.epub_files.append(book_path)
+            for file_path in sorted(set(all_files)):
+                self.files.append(file_path)
 
-                # Check for resumable job via JobManager
+                # Check for resumable job via JobManager (only for books)
                 has_resumable = False
-                if job_manager:
-                    resumable_job = job_manager.find_job_for_source(str(book_path))
+                if self.file_mode == "books" and job_manager:
+                    resumable_job = job_manager.find_job_for_source(str(file_path))
                     has_resumable = resumable_job is not None
 
                 if has_resumable:
                     resumable_count += 1
 
-                file_list.append(EPUBFileItem(book_path, has_resumable_session=has_resumable))
+                file_list.append(EPUBFileItem(file_path, has_resumable_session=has_resumable))
 
         # Update file count with resumable indicator
         count_label = self.query_one("#file-count", Label)
-        count = len(self.epub_files)
+        count = len(self.files)
         resume_text = f" (🔄 {resumable_count} resumable)" if resumable_count > 0 else ""
         count_label.update(f"{count} file{'s' if count != 1 else ''} found{resume_text}")
 
@@ -258,7 +309,11 @@ class FilePanel(Vertical):
                 self.scan_directory()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "select-all":
+        if event.button.id == "mode-books":
+            self.set_mode("books")
+        elif event.button.id == "mode-text":
+            self.set_mode("text")
+        elif event.button.id == "select-all":
             for item in self.query(EPUBFileItem):
                 if not item.is_selected:
                     item.toggle()
@@ -442,13 +497,6 @@ class SettingsPanel(VerticalScroll):
 
         yield Button("📋 Preview Chapters", id="preview-chapters-btn", variant="default")
         yield Button("📝 Export Text", id="export-text-btn", variant="default")
-
-        # Text file conversion (for editing workflow)
-        yield Label("Convert from Text", classes="section-title")
-        with Horizontal(classes="setting-row"):
-            yield Label("Text File:")
-            yield Input(placeholder="Path to edited .txt file", id="text-file-input")
-        yield Button("🔊 Convert Text to Audio", id="convert-text-btn", variant="default")
 
         # v2.1.0: Chapter selection
         yield Label("Chapter Selection", classes="section-title")
@@ -1015,8 +1063,6 @@ class AudiobookifyApp(App):
             self.action_preview_chapters()
         elif event.button.id == "export-text-btn":
             self.action_export_text()
-        elif event.button.id == "convert-text-btn":
-            self.action_convert_text()
 
     def action_preview_voice(self) -> None:
         """Preview the currently selected voice."""
@@ -1131,10 +1177,13 @@ class AudiobookifyApp(App):
         queue_panel = self.query_one(QueuePanel)
         queue_panel.clear_queue()
 
-        self.log_message(f"Starting processing of {len(selected_files)} files...")
-
-        # Start processing in background
-        self.current_worker = self.process_files(selected_files)
+        # Route to appropriate processor based on file mode
+        if file_panel.file_mode == "text":
+            self.log_message(f"Starting text conversion of {len(selected_files)} files...")
+            self.current_worker = self.process_text_files(selected_files)
+        else:
+            self.log_message(f"Starting processing of {len(selected_files)} files...")
+            self.current_worker = self.process_files(selected_files)
 
     def action_stop(self) -> None:
         """Stop processing."""
@@ -1276,6 +1325,141 @@ class AudiobookifyApp(App):
 
             # Update queue display
             self.call_from_thread(self.query_one(QueuePanel).update_task, task)
+
+        # Processing complete
+        self.call_from_thread(self._processing_complete, total)
+
+    @work(exclusive=True, thread=True)
+    def process_text_files(self, files: list[Path]) -> None:
+        """Process text files in background thread."""
+        import os
+
+        from .audio_generator import read_book
+        from .epub2tts_edge import add_cover, generate_metadata, get_book, make_m4b
+
+        settings_panel = self.query_one(SettingsPanel)
+        config = settings_panel.get_config()
+        total = len(files)
+
+        for i, txt_path in enumerate(files):
+            if self.should_stop:
+                self.call_from_thread(self.log_message, "Processing stopped by user")
+                break
+
+            # Create task for queue display
+            task = BookTask(epub_path=str(txt_path))
+            self.call_from_thread(self.query_one(QueuePanel).add_task, task)
+
+            # Update progress
+            self.call_from_thread(
+                self.query_one(ProgressPanel).set_progress,
+                i,
+                total,
+                txt_path.name,
+                "Processing...",
+            )
+
+            self.call_from_thread(self.log_message, f"Processing: {txt_path.name}")
+
+            original_dir = os.getcwd()
+            working_dir = txt_path.parent
+
+            try:
+                os.chdir(working_dir)
+                task.status = ProcessingStatus.EXPORTING
+                self.call_from_thread(self.query_one(QueuePanel).update_task, task)
+                self.call_from_thread(self.log_message, "  📖 Reading text file...")
+
+                book_contents, book_title, book_author, chapter_titles = get_book(str(txt_path))
+
+                total_chapters = len(book_contents)
+                self.call_from_thread(self.log_message, f"  Found {total_chapters} chapters")
+
+                if self.should_stop:
+                    self.call_from_thread(self.log_message, "⏹️ Stopped by user")
+                    break
+
+                # Apply chapter selection if specified
+                chapters_selection = config.get("chapters")
+                if chapters_selection:
+                    from .chapter_selector import ChapterSelector
+
+                    selector = ChapterSelector(chapters_selection)
+                    selected_indices = selector.get_selected_indices(len(book_contents))
+                    book_contents = [book_contents[j] for j in selected_indices]
+                    chapter_titles = [chapter_titles[j] for j in selected_indices]
+                    self.call_from_thread(
+                        self.log_message,
+                        f"  {selector.get_summary()} ({len(book_contents)} chapters)",
+                    )
+
+                task.status = ProcessingStatus.CONVERTING
+                self.call_from_thread(self.query_one(QueuePanel).update_task, task)
+                self.call_from_thread(self.log_message, "  🔊 Generating audio...")
+
+                # Progress callback
+                def progress_callback(info):
+                    self.call_from_thread(
+                        self.query_one(ProgressPanel).set_chapter_progress,
+                        info.chapter_num,
+                        info.total_chapters,
+                        info.chapter_title,
+                        info.paragraph_num,
+                        info.total_paragraphs,
+                    )
+                    if info.status == "chapter_start":
+                        self.call_from_thread(
+                            self.log_message,
+                            f"  📖 Chapter {info.chapter_num}/{info.total_chapters}: {info.chapter_title[:50]}",
+                        )
+
+                def check_cancelled():
+                    return self.should_stop
+
+                audio_files = read_book(
+                    book_contents,
+                    config["speaker"],
+                    config.get("paragraph_pause", 1200),
+                    config.get("sentence_pause", 1200),
+                    rate=config.get("tts_rate"),
+                    volume=config.get("tts_volume"),
+                    progress_callback=progress_callback,
+                    cancellation_check=check_cancelled,
+                )
+
+                if self.should_stop:
+                    self.call_from_thread(self.log_message, "⏹️ Stopped by user")
+                    break
+
+                if not audio_files:
+                    task.status = ProcessingStatus.FAILED
+                    task.error_message = "No audio files generated"
+                    self.call_from_thread(self.log_message, "❌ No audio files generated")
+                    continue
+
+                self.call_from_thread(self.log_message, "  📦 Creating M4B file...")
+
+                generate_metadata(audio_files, book_author, book_title, chapter_titles)
+                m4b_filename = make_m4b(audio_files, str(txt_path), config["speaker"])
+
+                # Check for cover image
+                cover_path = txt_path.with_suffix(".png")
+                if cover_path.exists():
+                    add_cover(str(cover_path), m4b_filename)
+                    self.call_from_thread(self.log_message, "  🖼️ Added cover image")
+
+                task.status = ProcessingStatus.COMPLETED
+                task.chapter_count = len(book_contents)
+                self.call_from_thread(self.log_message, f"✅ Completed: {txt_path.name}")
+
+            except Exception as e:
+                task.status = ProcessingStatus.FAILED
+                task.error_message = str(e)
+                self.call_from_thread(self.log_message, f"❌ Error: {txt_path.name} - {e}")
+
+            finally:
+                os.chdir(original_dir)
+                self.call_from_thread(self.query_one(QueuePanel).update_task, task)
 
         # Processing complete
         self.call_from_thread(self._processing_complete, total)
@@ -1619,166 +1803,17 @@ class AudiobookifyApp(App):
             self.call_from_thread(self.log_message, "")
             self.call_from_thread(
                 self.log_message,
-                "After editing, paste the file path in 'Text File' and",
+                "After editing, click '📝 Text' in the file panel to switch",
             )
             self.call_from_thread(
-                self.log_message, "click 'Convert Text to Audio' to create your audiobook."
+                self.log_message, "to text mode, select your .txt file, and press Start."
             )
             self.call_from_thread(self.log_message, "")
-            self.call_from_thread(self.log_message, f"Path to copy: {txt_path}")
+            self.call_from_thread(self.log_message, f"File location: {txt_path}")
             self.call_from_thread(self.log_message, "─" * 50)
-
-            # Update the text file input with the path
-            self.call_from_thread(self._set_text_file_input, str(txt_path))
 
         except Exception as e:
             self.call_from_thread(self.log_message, f"❌ Export failed: {e}")
-
-    def _set_text_file_input(self, path: str) -> None:
-        """Set the text file input value."""
-        text_input = self.query_one("#text-file-input", Input)
-        text_input.value = path
-
-    def action_convert_text(self) -> None:
-        """Convert a text file to audiobook."""
-        settings_panel = self.query_one(SettingsPanel)
-        text_path = self.query_one("#text-file-input", Input).value.strip()
-
-        if not text_path:
-            self.notify("Enter a text file path first", severity="warning")
-            return
-
-        if not Path(text_path).exists():
-            self.notify(f"File not found: {text_path}", severity="error")
-            return
-
-        if self.is_processing:
-            self.notify("Already processing", severity="warning")
-            return
-
-        self.is_processing = True
-        self.should_stop = False
-
-        # Switch to Log tab
-        tabs = self.query_one("#bottom-tabs", TabbedContent)
-        tabs.active = "log-tab"
-
-        self.log_message("─" * 40)
-        self.log_message("🔊 Converting text file to audiobook")
-        self.log_message(f"   {text_path}")
-        self.log_message("─" * 40)
-
-        config = settings_panel.get_config()
-        self.current_worker = self.convert_text_async(Path(text_path), config)
-
-    @work(exclusive=True, thread=True)
-    def convert_text_async(self, txt_path: Path, config: dict) -> None:
-        """Convert text file to audiobook in background."""
-        import os
-
-        from .epub2tts_edge import add_cover, generate_metadata, get_book, make_m4b
-
-        original_dir = os.getcwd()
-        working_dir = txt_path.parent
-
-        try:
-            os.chdir(working_dir)
-
-            self.call_from_thread(self.log_message, "   📖 Reading text file...")
-
-            book_contents, book_title, book_author, chapter_titles = get_book(str(txt_path))
-
-            total_chapters = len(book_contents)
-            self.call_from_thread(self.log_message, f"   Found {total_chapters} chapters")
-
-            # Check for cancellation
-            if self.should_stop:
-                self.call_from_thread(self.log_message, "⏹️ Stopped by user")
-                return
-
-            # Apply chapter selection if specified
-            chapters_selection = config.get("chapters")
-            if chapters_selection:
-                from .chapter_selector import ChapterSelector
-
-                selector = ChapterSelector(chapters_selection)
-                selected_indices = selector.get_selected_indices(len(book_contents))
-                book_contents = [book_contents[i] for i in selected_indices]
-                chapter_titles = [chapter_titles[i] for i in selected_indices]
-                self.call_from_thread(
-                    self.log_message,
-                    f"   {selector.get_summary()} ({len(book_contents)} chapters)",
-                )
-
-            self.call_from_thread(self.log_message, "   🔊 Generating audio...")
-
-            # Progress callback
-            def progress_callback(info):
-                self.call_from_thread(
-                    self.query_one(ProgressPanel).set_chapter_progress,
-                    info.chapter_num,
-                    info.total_chapters,
-                    info.chapter_title,
-                    info.paragraph_num,
-                    info.total_paragraphs,
-                )
-                if info.status == "chapter_start":
-                    self.call_from_thread(
-                        self.log_message,
-                        f"   📖 Chapter {info.chapter_num}/{info.total_chapters}: {info.chapter_title[:50]}",
-                    )
-
-            # Cancellation check
-            def check_cancelled():
-                return self.should_stop
-
-            from .audio_generator import read_book
-
-            files = read_book(
-                book_contents,
-                config["speaker"],
-                config.get("paragraph_pause", 1200),
-                config.get("sentence_pause", 1200),
-                rate=config.get("tts_rate"),
-                volume=config.get("tts_volume"),
-                progress_callback=progress_callback,
-                cancellation_check=check_cancelled,
-            )
-
-            if self.should_stop:
-                self.call_from_thread(self.log_message, "⏹️ Stopped by user")
-                return
-
-            if not files:
-                self.call_from_thread(self.log_message, "❌ No audio files generated")
-                return
-
-            self.call_from_thread(self.log_message, "   📦 Creating M4B file...")
-
-            generate_metadata(files, book_author, book_title, chapter_titles)
-            m4b_filename = make_m4b(files, str(txt_path), config["speaker"])
-
-            # Check for cover image
-            cover_path = txt_path.with_suffix(".png")
-            if cover_path.exists():
-                add_cover(str(cover_path), m4b_filename)
-                self.call_from_thread(self.log_message, "   🖼️ Added cover image")
-
-            self.call_from_thread(self.log_message, "")
-            self.call_from_thread(self.log_message, f"✅ Audiobook created: {m4b_filename}")
-
-        except Exception as e:
-            self.call_from_thread(self.log_message, f"❌ Error: {e}")
-
-        finally:
-            os.chdir(original_dir)
-            self.call_from_thread(self._text_convert_complete)
-
-    def _text_convert_complete(self) -> None:
-        """Called when text conversion is complete."""
-        self.is_processing = False
-        self.current_worker = None
-        self.query_one(ProgressPanel).set_progress(0, 0, "", "Ready")
 
     def action_help(self) -> None:
         """Show help."""

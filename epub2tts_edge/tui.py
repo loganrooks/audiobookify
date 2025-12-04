@@ -765,15 +765,17 @@ class JobsPanel(Vertical):
     }
 
     JobsPanel > Horizontal {
-        height: 3;
+        height: auto;
         margin-top: 1;
     }
 
     JobsPanel Button {
         min-width: 10;
         height: 1;
+        max-height: 1;
         padding: 0 1;
-        margin-right: 1;
+        margin: 0 1 0 0;
+        border: none;
     }
 
     JobsPanel Button.resume {

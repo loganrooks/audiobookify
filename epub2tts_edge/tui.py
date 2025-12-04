@@ -10,6 +10,7 @@ Usage:
     audiobookify-tui
 """
 
+from datetime import datetime
 from pathlib import Path
 
 from textual import work
@@ -38,6 +39,7 @@ from textual.worker import Worker
 
 # Import our modules
 from .batch_processor import BatchConfig, BatchProcessor, BookTask, ProcessingStatus
+from .job_manager import Job, JobManager, JobStatus
 from .voice_preview import AVAILABLE_VOICES, VoicePreview, VoicePreviewConfig
 
 
@@ -739,6 +741,146 @@ class LogPanel(Vertical):
         self.query_one("#log-output", Log).clear()
 
 
+class JobsPanel(Vertical):
+    """Panel showing saved jobs that can be resumed or deleted."""
+
+    DEFAULT_CSS = """
+    JobsPanel {
+        height: 1fr;
+        border: round $secondary;
+        border-title-color: $secondary;
+        padding: 1;
+        background: $surface;
+    }
+
+    JobsPanel > Label.title {
+        text-style: bold;
+        margin-bottom: 1;
+        color: $secondary-lighten-2;
+    }
+
+    JobsPanel > #jobs-table {
+        height: 1fr;
+        background: $surface-darken-1;
+    }
+
+    JobsPanel > Horizontal {
+        height: auto;
+        margin-top: 1;
+    }
+
+    JobsPanel Button {
+        min-width: 12;
+        margin-right: 1;
+    }
+
+    JobsPanel Button.resume {
+        background: $success-darken-1;
+    }
+
+    JobsPanel Button.delete {
+        background: $error-darken-1;
+    }
+    """
+
+    def __init__(self, job_manager: JobManager | None = None, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.job_manager = job_manager or JobManager()
+
+    def compose(self) -> ComposeResult:
+        yield Label("💼 Saved Jobs", classes="title")
+        yield DataTable(id="jobs-table")
+        with Horizontal():
+            yield Button("🔄 Resume", id="job-resume", classes="resume", disabled=True)
+            yield Button("🗑️ Delete", id="job-delete", classes="delete", disabled=True)
+            yield Button("🔃 Refresh", id="job-refresh")
+
+    def on_mount(self) -> None:
+        table = self.query_one("#jobs-table", DataTable)
+        table.add_columns("Status", "Book", "Progress", "Created")
+        table.cursor_type = "row"
+        self.refresh_jobs()
+
+    def refresh_jobs(self) -> None:
+        """Refresh the job list from disk."""
+        table = self.query_one("#jobs-table", DataTable)
+        table.clear()
+
+        jobs = self.job_manager.list_jobs(include_completed=True)
+        for job in jobs:
+            status_icon = self._get_status_icon(job.status)
+            book_name = Path(job.source_file).stem[:30]
+            progress = f"{job.completed_chapters}/{job.total_chapters}"
+            created = datetime.fromtimestamp(job.created_at).strftime("%m/%d %H:%M")
+            table.add_row(status_icon, book_name, progress, created, key=job.job_id)
+
+        # Update button states
+        self._update_button_states()
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Handle row selection to enable/disable buttons."""
+        self._update_button_states()
+
+    def _update_button_states(self) -> None:
+        """Update resume/delete button states based on selection."""
+        table = self.query_one("#jobs-table", DataTable)
+        resume_btn = self.query_one("#job-resume", Button)
+        delete_btn = self.query_one("#job-delete", Button)
+
+        if table.cursor_row is not None and table.row_count > 0:
+            try:
+                row_key = table.get_row_at(table.cursor_row)
+                job_id = str(row_key.key)
+                job = self.job_manager.load_job(job_id)
+
+                if job:
+                    # Enable resume only for resumable jobs
+                    resume_btn.disabled = not job.is_resumable
+                    delete_btn.disabled = False
+                else:
+                    resume_btn.disabled = True
+                    delete_btn.disabled = True
+            except Exception:
+                resume_btn.disabled = True
+                delete_btn.disabled = True
+        else:
+            resume_btn.disabled = True
+            delete_btn.disabled = True
+
+    def get_selected_job(self) -> Job | None:
+        """Get the currently selected job."""
+        table = self.query_one("#jobs-table", DataTable)
+        if table.cursor_row is not None and table.row_count > 0:
+            try:
+                row_key = table.get_row_at(table.cursor_row)
+                job_id = str(row_key.key)
+                return self.job_manager.load_job(job_id)
+            except Exception:
+                return None
+        return None
+
+    def delete_selected_job(self) -> bool:
+        """Delete the currently selected job."""
+        job = self.get_selected_job()
+        if job:
+            result = self.job_manager.delete_job(job.job_id)
+            self.refresh_jobs()
+            return result
+        return False
+
+    def _get_status_icon(self, status: JobStatus) -> str:
+        icons = {
+            JobStatus.PENDING: "⏳",
+            JobStatus.EXTRACTING: "📝",
+            JobStatus.CONVERTING: "🔊",
+            JobStatus.FINALIZING: "📦",
+            JobStatus.COMPLETED: "✅",
+            JobStatus.FAILED: "❌",
+            JobStatus.CANCELLED: "🚫",
+        }
+        return icons.get(status, "?")
+
+
 class AudiobookifyApp(App):
     """Main Audiobookify TUI Application."""
 
@@ -804,6 +946,7 @@ class AudiobookifyApp(App):
         self.is_processing = False
         self.should_stop = False
         self.current_worker: Worker | None = None
+        self.job_manager = JobManager()
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -816,6 +959,8 @@ class AudiobookifyApp(App):
                         yield ProgressPanel()
                     with TabPane("Queue", id="queue-tab"):
                         yield QueuePanel()
+                    with TabPane("Jobs", id="jobs-tab"):
+                        yield JobsPanel(self.job_manager)
                     with TabPane("Log", id="log-tab"):
                         yield LogPanel()
 
@@ -844,6 +989,12 @@ class AudiobookifyApp(App):
             self.action_stop()
         elif event.button.id == "preview-voice-btn":
             self.action_preview_voice()
+        elif event.button.id == "job-resume":
+            self.action_resume_job()
+        elif event.button.id == "job-delete":
+            self.action_delete_job()
+        elif event.button.id == "job-refresh":
+            self.action_refresh_jobs()
 
     def action_preview_voice(self) -> None:
         """Preview the currently selected voice."""
@@ -1111,6 +1262,106 @@ class AudiobookifyApp(App):
 
         self.log_message("Processing complete!")
 
+    @work(exclusive=True, thread=True)
+    def resume_job_async(self, job: Job) -> None:
+        """Resume a job in background thread.
+
+        Uses the job's saved settings (speaker, rate, volume) for consistency.
+        The BatchProcessor will find the existing job and resume from where it left off.
+        """
+        source_path = Path(job.source_file)
+        book_name = source_path.name
+
+        # Create task for the job
+        task = BookTask(epub_path=str(source_path))
+        task.job_id = job.job_id
+        task.job_dir = job.job_dir
+
+        # Add to queue display
+        self.call_from_thread(self.query_one(QueuePanel).add_task, task)
+
+        try:
+            task.status = ProcessingStatus.CONVERTING
+            self.call_from_thread(self.query_one(QueuePanel).update_task, task)
+            self.call_from_thread(
+                self.log_message,
+                f"   Skipping {job.completed_chapters} completed chapters...",
+            )
+
+            # Create config using job's saved settings for consistency
+            config = BatchConfig(
+                input_path=str(source_path),
+                speaker=job.speaker,
+                tts_rate=job.rate,
+                tts_volume=job.volume,
+                # Use defaults for other settings
+                detection_method="combined",
+                hierarchy_style="flat",
+                skip_existing=False,
+                export_only=False,
+            )
+
+            processor = BatchProcessor(config)
+            processor.prepare()
+
+            if processor.result.tasks:
+                book_task = processor.result.tasks[0]
+
+                # Create progress callback for chapter/paragraph updates
+                def progress_callback(info):
+                    """Handle progress updates from audio generation."""
+                    self.call_from_thread(
+                        self.query_one(ProgressPanel).set_chapter_progress,
+                        info.chapter_num,
+                        info.total_chapters,
+                        info.chapter_title,
+                        info.paragraph_num,
+                        info.total_paragraphs,
+                    )
+                    if info.status == "chapter_start":
+                        self.call_from_thread(
+                            self.log_message,
+                            f"  📖 Chapter {info.chapter_num}/{info.total_chapters}: {info.chapter_title[:50]}",
+                        )
+
+                success = processor.process_book(book_task, progress_callback=progress_callback)
+
+                task.status = book_task.status
+                task.chapter_count = book_task.chapter_count
+                task.start_time = book_task.start_time
+                task.end_time = book_task.end_time
+
+                if success:
+                    duration = task.duration
+                    time_str = f" ({int(duration)}s)" if duration else ""
+                    self.call_from_thread(
+                        self.log_message, f"✅ Resumed and completed: {book_name}{time_str}"
+                    )
+                else:
+                    self.call_from_thread(
+                        self.log_message,
+                        f"❌ Resume failed: {book_name} - {book_task.error_message}",
+                    )
+            else:
+                task.status = ProcessingStatus.SKIPPED
+                self.call_from_thread(
+                    self.log_message, f"⏭️ Skipped: {book_name} (no tasks created)"
+                )
+
+        except Exception as e:
+            task.status = ProcessingStatus.FAILED
+            task.error_message = str(e)
+            self.call_from_thread(self.log_message, f"❌ Resume error: {book_name} - {e}")
+
+        # Update queue display
+        self.call_from_thread(self.query_one(QueuePanel).update_task, task)
+
+        # Refresh jobs list to show updated status
+        self.call_from_thread(self.query_one(JobsPanel).refresh_jobs)
+
+        # Processing complete
+        self.call_from_thread(self._processing_complete, 1)
+
     def action_refresh(self) -> None:
         """Refresh file list."""
         self.query_one(FilePanel).scan_directory()
@@ -1126,6 +1377,73 @@ class AudiobookifyApp(App):
         for item in self.query(EPUBFileItem):
             if item.is_selected:
                 item.toggle()
+
+    def action_refresh_jobs(self) -> None:
+        """Refresh the jobs list."""
+        jobs_panel = self.query_one(JobsPanel)
+        jobs_panel.refresh_jobs()
+        self.log_message("Jobs list refreshed")
+
+    def action_resume_job(self) -> None:
+        """Resume the selected job."""
+        if self.is_processing:
+            self.notify("Already processing", severity="warning")
+            return
+
+        jobs_panel = self.query_one(JobsPanel)
+        job = jobs_panel.get_selected_job()
+        if not job:
+            self.notify("No job selected", severity="warning")
+            return
+
+        if not job.is_resumable:
+            self.notify("Job is not resumable", severity="warning")
+            return
+
+        # Check source file still exists
+        source_path = Path(job.source_file)
+        if not source_path.exists():
+            self.notify(f"Source file not found: {source_path.name}", severity="error")
+            self.log_message(f"❌ Source file missing: {job.source_file}")
+            return
+
+        # Log resume info
+        self.log_message(f"🔄 Resuming job: {job.job_id}")
+        self.log_message(
+            f"   {source_path.name} - {job.completed_chapters}/{job.total_chapters} chapters done"
+        )
+        self.notify(
+            f"Resuming: {source_path.name}",
+            title="Job Resume",
+            severity="information",
+        )
+
+        # Start processing - BatchProcessor will find the existing job
+        self.is_processing = True
+        self.should_stop = False
+        progress_panel = self.query_one(ProgressPanel)
+        progress_panel.set_running(True)
+        progress_panel.set_progress(0, 1, source_path.name, "Resuming...")
+
+        # Switch to Progress tab
+        tabs = self.query_one("#bottom-tabs", TabbedContent)
+        tabs.active = "progress-tab"
+
+        # Start the resume worker with job context
+        self.resume_job_async(job)
+
+    def action_delete_job(self) -> None:
+        """Delete the selected job."""
+        jobs_panel = self.query_one(JobsPanel)
+        job = jobs_panel.get_selected_job()
+        if job:
+            job_name = Path(job.source_file).name
+            if jobs_panel.delete_selected_job():
+                self.log_message(f"Deleted job: {job_name}")
+                self.notify(f"Deleted: {job_name}", title="Job Deleted")
+            else:
+                self.log_message(f"Failed to delete job: {job_name}")
+                self.notify(f"Failed to delete: {job_name}", severity="error")
 
     def action_help(self) -> None:
         """Show help."""

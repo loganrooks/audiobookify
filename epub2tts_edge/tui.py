@@ -1336,50 +1336,39 @@ class AudiobookifyApp(App):
             )
 
             processor = BatchProcessor(config)
-            processor.prepare()
+            # Don't call prepare() - we already have our task with job info
+            # prepare() would create a fresh task without job_id/job_dir
 
-            if processor.result.tasks:
-                book_task = processor.result.tasks[0]
-
-                # Create progress callback for chapter/paragraph updates
-                def progress_callback(info):
-                    """Handle progress updates from audio generation."""
-                    self.call_from_thread(
-                        self.query_one(ProgressPanel).set_chapter_progress,
-                        info.chapter_num,
-                        info.total_chapters,
-                        info.chapter_title,
-                        info.paragraph_num,
-                        info.total_paragraphs,
-                    )
-                    if info.status == "chapter_start":
-                        self.call_from_thread(
-                            self.log_message,
-                            f"  📖 Chapter {info.chapter_num}/{info.total_chapters}: {info.chapter_title[:50]}",
-                        )
-
-                success = processor.process_book(book_task, progress_callback=progress_callback)
-
-                task.status = book_task.status
-                task.chapter_count = book_task.chapter_count
-                task.start_time = book_task.start_time
-                task.end_time = book_task.end_time
-
-                if success:
-                    duration = task.duration
-                    time_str = f" ({int(duration)}s)" if duration else ""
-                    self.call_from_thread(
-                        self.log_message, f"✅ Resumed and completed: {book_name}{time_str}"
-                    )
-                else:
+            # Create progress callback for chapter/paragraph updates
+            def progress_callback(info):
+                """Handle progress updates from audio generation."""
+                self.call_from_thread(
+                    self.query_one(ProgressPanel).set_chapter_progress,
+                    info.chapter_num,
+                    info.total_chapters,
+                    info.chapter_title,
+                    info.paragraph_num,
+                    info.total_paragraphs,
+                )
+                if info.status == "chapter_start":
                     self.call_from_thread(
                         self.log_message,
-                        f"❌ Resume failed: {book_name} - {book_task.error_message}",
+                        f"  📖 Chapter {info.chapter_num}/{info.total_chapters}: {info.chapter_title[:50]}",
                     )
-            else:
-                task.status = ProcessingStatus.SKIPPED
+
+            # Use our pre-configured task with job info directly
+            success = processor.process_book(task, progress_callback=progress_callback)
+
+            if success:
+                duration = task.duration
+                time_str = f" ({int(duration)}s)" if duration else ""
                 self.call_from_thread(
-                    self.log_message, f"⏭️ Skipped: {book_name} (no tasks created)"
+                    self.log_message, f"✅ Resumed and completed: {book_name}{time_str}"
+                )
+            else:
+                self.call_from_thread(
+                    self.log_message,
+                    f"❌ Resume failed: {book_name} - {task.error_message}",
                 )
 
         except Exception as e:

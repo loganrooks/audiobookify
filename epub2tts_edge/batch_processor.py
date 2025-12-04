@@ -605,13 +605,13 @@ class BatchProcessor:
                     cancellation_check=cancellation_check,
                 )
 
-                # Check if cancelled
+                # Check if cancelled - keep job in CONVERTING state for resume
                 if cancellation_check and cancellation_check():
                     task.status = ProcessingStatus.FAILED
                     task.error_message = "Cancelled by user"
                     task.end_time = time.time()
-                    if job and self._job_manager:
-                        self._job_manager.set_error(job.job_id, "Cancelled by user")
+                    # Don't mark job as failed - leave it in CONVERTING state
+                    # so it can be resumed later. The progress is already saved.
                     return False
                 generate_metadata(files, book_author, book_title, chapter_titles)
                 m4b_filename = make_m4b(files, txt_path, self.config.speaker)

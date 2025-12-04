@@ -784,11 +784,9 @@ class JobsPanel(Vertical):
 
     JobsPanel Button {
         min-width: 10;
-        height: 1;
-        max-height: 1;
+        height: 3;
         padding: 0 1;
         margin: 0 1 0 0;
-        border: none;
     }
 
     JobsPanel Button.resume {
@@ -926,11 +924,12 @@ class AudiobookifyApp(App):
     FilePanel {
         height: 1fr;
         min-height: 8;
+        max-height: 40%;
     }
 
     #bottom-tabs {
-        height: 2fr;
-        min-height: 20;
+        height: 3fr;
+        min-height: 25;
     }
 
     ProgressPanel {

@@ -113,21 +113,18 @@ class EPUBFileItem(ListItem):
     def __init__(
         self, path: Path, selected: bool = True, has_resumable_session: bool = False
     ) -> None:
-        super().__init__()
+        checkbox = "☑" if selected else "☐"
+        resume_indicator = " 🔄" if has_resumable_session else ""
+        super().__init__(Label(f"{checkbox} {path.name}{resume_indicator}"))
         self.path = path
         self.is_selected = selected
         self.has_resumable_session = has_resumable_session
-
-    def compose(self) -> ComposeResult:
-        checkbox = "☑" if self.is_selected else "☐"
-        resume_indicator = " 🔄" if self.has_resumable_session else ""
-        yield Static(f"{checkbox} {self.path.name}{resume_indicator}")
 
     def toggle(self) -> None:
         self.is_selected = not self.is_selected
         checkbox = "☑" if self.is_selected else "☐"
         resume_indicator = " 🔄" if self.has_resumable_session else ""
-        self.query_one(Static).update(f"{checkbox} {self.path.name}{resume_indicator}")
+        self.query_one(Label).update(f"{checkbox} {self.path.name}{resume_indicator}")
 
 
 class FilePanel(Vertical):
@@ -754,72 +751,20 @@ class AudiobookifyApp(App):
         min-height: 8;
     }
 
-    /* Ensure ListView items have visible text */
-    ListView {
-        background: $surface-darken-1;
-    }
-
-    ListView > ListItem {
-        background: $surface-darken-1;
-        height: auto;
-        padding: 0 1;
-    }
-
-    ListView > ListItem:hover {
-        background: $primary-darken-2;
-    }
-
-    ListView > ListItem.-selected {
-        background: $primary;
-    }
-
-    /* File list item text styling */
-    EPUBFileItem {
-        height: auto;
-    }
-
-    EPUBFileItem > Static {
-        color: white;
-        width: 100%;
-    }
-
-    EPUBFileItem:hover > Static {
-        color: white;
-    }
-
-    EPUBFileItem.-selected > Static {
-        color: white;
-    }
-
     #bottom-tabs {
         height: 1fr;
-        min-height: 12;
-    }
-
-    #progress-tab {
-        height: 100%;
-    }
-
-    #progress-content {
-        height: 100%;
-        overflow-y: auto;
+        min-height: 15;
     }
 
     ProgressPanel {
-        height: auto;
-        min-height: 12;
-    }
-
-    QueuePanel {
-        height: 1fr;
-        min-height: 6;
-    }
-
-    LogPanel {
         height: 100%;
     }
 
-    #log-tab {
+    QueuePanel {
+        height: 100%;
+    }
+
+    LogPanel {
         height: 100%;
     }
     """
@@ -850,9 +795,9 @@ class AudiobookifyApp(App):
                 yield FilePanel(self.initial_path)
                 with TabbedContent(id="bottom-tabs"):
                     with TabPane("Progress", id="progress-tab"):
-                        with Vertical(id="progress-content"):
-                            yield ProgressPanel()
-                            yield QueuePanel()
+                        yield ProgressPanel()
+                    with TabPane("Queue", id="queue-tab"):
+                        yield QueuePanel()
                     with TabPane("Log", id="log-tab"):
                         yield LogPanel()
 

@@ -2637,20 +2637,29 @@ class AudiobookifyApp(App):
             # Convert to PreviewChapter objects
             preview_chapters: list[PreviewChapter] = []
             for chapter in chapter_list:
-                # Calculate stats
-                word_count = 0
-                paragraph_count = 0
-                content_preview = ""
-                original_content = ""
+                # Calculate stats from paragraphs (populated by _populate_content)
+                paragraphs = chapter.paragraphs if chapter.paragraphs else []
+                paragraph_count = len(paragraphs)
 
-                if hasattr(chapter, "content") and chapter.content:
-                    original_content = chapter.content
-                    word_count = len(chapter.content.split())
-                    paragraph_count = len(chapter.paragraphs) if chapter.paragraphs else 0
-                    # Create content preview (first 200 chars)
-                    content_preview = chapter.content[:200].strip()
-                    if len(chapter.content) > 200:
+                # Word count from all paragraphs
+                word_count = sum(len(p.split()) for p in paragraphs)
+
+                # Build content from paragraphs
+                original_content = "\n\n".join(paragraphs) if paragraphs else ""
+
+                # Create content preview (first 200 chars)
+                if original_content:
+                    content_preview = original_content[:200].strip()
+                    if len(original_content) > 200:
                         content_preview += "..."
+                else:
+                    content_preview = "(No content extracted)"
+
+                # Ensure at least 1 paragraph (the title itself) if no content found
+                if paragraph_count == 0:
+                    paragraph_count = 1  # Title counts as a paragraph
+                if word_count == 0:
+                    word_count = len(chapter.title.split())  # Count words in title
 
                 preview_chapters.append(
                     PreviewChapter(

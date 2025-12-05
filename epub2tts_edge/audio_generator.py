@@ -10,7 +10,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 from collections.abc import Callable
@@ -125,6 +124,12 @@ def run_save(communicate: edge_tts.Communicate, filename: str) -> None:
     asyncio.run(communicate.save(filename))
 
 
+class TTSGenerationError(Exception):
+    """Raised when TTS generation fails after all retry attempts."""
+
+    pass
+
+
 def run_edgespeak(
     sentence: str,
     speaker: str,
@@ -146,8 +151,9 @@ def run_edgespeak(
         retry_delay: Delay between retries in seconds (default 3)
 
     Raises:
-        SystemExit: If all retry attempts fail
+        TTSGenerationError: If all retry attempts fail
     """
+    last_error = None
     for speakattempt in range(retry_count):
         try:
             kwargs = {}
@@ -162,6 +168,7 @@ def run_edgespeak(
                 raise RuntimeError("Failed to save file from edge_tts - empty file")
             break
         except Exception as e:
+            last_error = e
             logger.warning(
                 "Attempt %d/%d failed for '%s...': %s",
                 speakattempt + 1,
@@ -173,7 +180,10 @@ def run_edgespeak(
                 time.sleep(retry_delay)
     else:
         logger.error("Giving up on sentence after %d attempts: '%s...'", retry_count, sentence[:50])
-        sys.exit(1)
+        raise TTSGenerationError(
+            f"Failed to generate TTS after {retry_count} attempts for: '{sentence[:50]}...'. "
+            f"Last error: {last_error}"
+        )
 
 
 async def parallel_edgespeak(

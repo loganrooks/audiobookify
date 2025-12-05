@@ -1162,9 +1162,10 @@ def process_with_preview(self) -> None:
 |---------|----------|--------|--------------|
 | **Preview Tab (Phase 1)** | HIGH | Medium | None ✅ DONE |
 | **Preview Tab (Phase 2)** | HIGH | Medium | Phase 1 ✅ DONE |
+| **Preview Tab (Phase 3)** | HIGH | Medium | Phase 2 ✅ DONE |
 | **Keyboard Navigation** | HIGH | Small | None ✅ DONE |
 | **Job Status Legend** | HIGH | Small | None |
-| **Preview Tab (Phase 3-4)** | HIGH | Large | Phase 2 |
+| **Preview Tab (Phase 4)** | MEDIUM | Medium | Phase 3 |
 | **tui.py split** | MEDIUM | Large | None |
 | **Path History** | MEDIUM | Medium | UserPreferences class |
 | **Path Autocomplete** | MEDIUM | Medium | PathInput widget |
@@ -1174,8 +1175,8 @@ def process_with_preview(self) -> None:
 1. ✅ **Keyboard Navigation** - DONE
 2. ✅ **Preview Tab Phase 1** - Basic interactive preview - DONE
 3. ✅ **Preview Tab Phase 2** - Include/exclude affects processing - DONE
-4. **Job Status Legend** - Quick win, helps users
-5. **Preview Tab Phase 3** - Chapter merging
+4. ✅ **Preview Tab Phase 3** - Chapter merging and deletion - DONE
+5. **Job Status Legend** - Quick win, helps users
 6. **Preview Tab Phase 4** - Content preview pane
 7. **Split tui.py** - Foundational for future work
 8. **User Preferences** - Enables path history
@@ -1191,3 +1192,4 @@ def process_with_preview(self) -> None:
 | 2024-12-04 | Claude | Initial design document |
 | 2024-12-05 | Claude | Added Preview Tab & Chapter Approval Workflow design |
 | 2024-12-05 | Claude | Marked Preview Tab Phases 1 & 2 as complete |
+| 2024-12-05 | Claude | Added Phase 3: merge/delete functionality with keyboard shortcuts |

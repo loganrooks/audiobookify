@@ -1136,20 +1136,25 @@ class ChapterPreviewItem(ListItem):
         super().__init__()
         self.chapter = chapter
         self.index = index
-        self.is_selected = False  # For multi-select operations
+        self.is_multi_selected = False  # For multi-select operations (merge/delete)
 
     def compose(self) -> ComposeResult:
         yield Label(self._build_label())
 
     def _build_label(self) -> str:
         """Build the display label for this chapter."""
+        # Include checkbox
         checkbox = "☑" if self.chapter.included else "☐"
+
+        # Multi-select indicator
+        select_marker = "▶" if self.is_multi_selected else " "
+
         indent = "  " * max(0, self.chapter.level - 1)
 
         # Truncate title if needed
         title = self.chapter.title
-        if len(title) > 45:
-            title = title[:42] + "..."
+        if len(title) > 40:
+            title = title[:37] + "..."
 
         # Stats
         stats = f"({self.chapter.word_count:,}w, {self.chapter.paragraph_count}¶)"
@@ -1157,14 +1162,24 @@ class ChapterPreviewItem(ListItem):
         # Status indicators
         status = ""
         if self.chapter.merged_into is not None:
-            status = " [merged]"
+            status = " [merged→" + str(self.chapter.merged_into + 1) + "]"
 
-        return f"{checkbox} {indent}{title} {stats}{status}"
+        return f"{select_marker}{checkbox} {indent}{title} {stats}{status}"
 
     def toggle_include(self) -> None:
         """Toggle chapter inclusion."""
         self.chapter.included = not self.chapter.included
-        self.query_one(Label).update(self._build_label())
+        self.refresh_display()
+
+    def toggle_multi_select(self) -> None:
+        """Toggle multi-selection for merge/delete."""
+        self.is_multi_selected = not self.is_multi_selected
+        self.refresh_display()
+        # Update CSS class for visual feedback
+        if self.is_multi_selected:
+            self.add_class("multi-selected")
+        else:
+            self.remove_class("multi-selected")
 
     def refresh_display(self) -> None:
         """Refresh the display."""
@@ -1249,6 +1264,15 @@ class PreviewPanel(Vertical):
         text-style: strike;
     }
 
+    ChapterPreviewItem.multi-selected {
+        background: $primary-darken-2;
+    }
+
+    ChapterPreviewItem.multi-selected Label {
+        color: $text;
+        text-style: bold;
+    }
+
     ChapterPreviewItem.merged Label {
         color: $warning;
         text-style: italic;
@@ -1277,10 +1301,12 @@ class PreviewPanel(Vertical):
         # Content preview pane (expandable)
         yield Static("", id="content-preview")
 
-        # Action buttons
+        # Action buttons - two rows
         with Horizontal(id="preview-actions"):
             yield Button("All", id="preview-select-all")
             yield Button("None", id="preview-select-none")
+            yield Button("🔀 Merge", id="preview-merge", disabled=True)
+            yield Button("🗑️ Del", id="preview-delete", disabled=True)
             yield Button("👁️", id="preview-content", disabled=True)
             yield Button("✅ Start", id="preview-approve", classes="approve", disabled=True)
 
@@ -1403,15 +1429,131 @@ class PreviewPanel(Vertical):
             self.select_none()
         elif event.button.id == "preview-content":
             self.toggle_content_preview()
+        elif event.button.id == "preview-merge":
+            self.merge_selected()
+        elif event.button.id == "preview-delete":
+            self.delete_selected()
         elif event.button.id == "preview-approve":
             # Bubble up to app
             self.post_message(self.ApproveAndStart())
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
-        """Handle chapter selection - toggle include."""
+        """Handle chapter selection - toggle include (normal click)."""
         if isinstance(event.item, ChapterPreviewItem):
             event.item.toggle_include()
             self._update_stats()
+            self._update_action_buttons()
+
+    def toggle_multi_select_current(self) -> None:
+        """Toggle multi-selection on the currently highlighted chapter."""
+        chapter_tree = self.query_one("#chapter-tree", ListView)
+        if chapter_tree.highlighted_child:
+            item = chapter_tree.highlighted_child
+            if isinstance(item, ChapterPreviewItem):
+                item.toggle_multi_select()
+                self._update_action_buttons()
+
+    def clear_multi_selection(self) -> None:
+        """Clear all multi-selections."""
+        for item in self.query(ChapterPreviewItem):
+            if item.is_multi_selected:
+                item.is_multi_selected = False
+                item.remove_class("multi-selected")
+                item.refresh_display()
+        self._update_action_buttons()
+
+    def get_multi_selected_items(self) -> list[ChapterPreviewItem]:
+        """Get all multi-selected chapter items."""
+        return [item for item in self.query(ChapterPreviewItem) if item.is_multi_selected]
+
+    def _update_action_buttons(self) -> None:
+        """Update merge/delete button states based on selection."""
+        selected = self.get_multi_selected_items()
+        selected_count = len(selected)
+
+        # Merge requires 2+ consecutive chapters
+        merge_btn = self.query_one("#preview-merge", Button)
+        delete_btn = self.query_one("#preview-delete", Button)
+
+        merge_btn.disabled = selected_count < 2
+        delete_btn.disabled = selected_count < 1
+
+    def merge_selected(self) -> None:
+        """Merge multi-selected chapters into the first one."""
+        if not self.preview_state:
+            return
+
+        selected = self.get_multi_selected_items()
+        if len(selected) < 2:
+            self.app.notify("Select 2+ chapters to merge (use Space to select)", severity="warning")
+            return
+
+        # Sort by index to get them in order
+        selected.sort(key=lambda x: x.index)
+
+        # First selected chapter is the target
+        target_item = selected[0]
+        target = target_item.chapter
+
+        # Merge content from subsequent chapters
+        merged_content = [target.original_content] if target.original_content else []
+        merged_word_count = target.word_count
+        merged_para_count = target.paragraph_count
+
+        for item in selected[1:]:
+            source = item.chapter
+            # Mark as merged
+            source.merged_into = target_item.index
+            source.included = False
+
+            # Combine content
+            if source.original_content:
+                merged_content.append(source.original_content)
+            merged_word_count += source.word_count
+            merged_para_count += source.paragraph_count
+
+        # Update target chapter
+        target.original_content = "\n\n".join(merged_content)
+        target.word_count = merged_word_count
+        target.paragraph_count = merged_para_count
+        target.title = target.title + " (+ " + str(len(selected) - 1) + " merged)"
+
+        # Mark state as modified
+        self.preview_state.modified = True
+
+        # Update displays
+        for item in selected:
+            item.is_multi_selected = False
+            item.remove_class("multi-selected")
+            item.refresh_display()
+
+        self._update_stats()
+        self._update_action_buttons()
+        self.app.notify(f"Merged {len(selected)} chapters", severity="information")
+
+    def delete_selected(self) -> None:
+        """Delete (exclude) multi-selected chapters."""
+        if not self.preview_state:
+            return
+
+        selected = self.get_multi_selected_items()
+        if not selected:
+            self.app.notify("Select chapters to delete (use Space to select)", severity="warning")
+            return
+
+        # Mark all selected as excluded
+        for item in selected:
+            item.chapter.included = False
+            item.is_multi_selected = False
+            item.remove_class("multi-selected")
+            item.refresh_display()
+
+        # Mark state as modified
+        self.preview_state.modified = True
+
+        self._update_stats()
+        self._update_action_buttons()
+        self.app.notify(f"Excluded {len(selected)} chapters", severity="information")
 
     class ApproveAndStart(Message):
         """Message sent when user clicks Approve & Start."""
@@ -1487,6 +1629,13 @@ class HelpScreen(ModalScreen):
             yield Static("  /              Focus path input")
             yield Static("  Backspace      Go to parent directory")
 
+            yield Label("── Preview Tab ──", classes="section")
+            yield Static("  Enter          Toggle chapter include/exclude")
+            yield Static("  Space          Toggle multi-select (for merge)")
+            yield Static("  m              Merge multi-selected chapters")
+            yield Static("  x              Exclude multi-selected chapters")
+            yield Static("  c              Clear multi-selection")
+
             yield Label("── Jobs ──", classes="section")
             yield Static("  R              Resume selected jobs")
             yield Static("  X              Delete selected jobs")
@@ -1496,8 +1645,8 @@ class HelpScreen(ModalScreen):
             yield Static("  p              Preview selected voice")
 
             yield Label("── Tips ──", classes="section")
+            yield Static("  Preview: Select chapters to include/merge")
             yield Static("  Font Size: Ctrl/Cmd + Plus/Minus")
-            yield Static("  Export: Select file → Export & Edit")
 
             yield Static("Press Escape, ? or F1 to close", classes="hint")
 
@@ -1591,6 +1740,11 @@ class AudiobookifyApp(App):
         # Job operations (uppercase for safety)
         Binding("R", "resume_jobs", "Resume", show=False),
         Binding("X", "delete_jobs", "Delete", show=False),
+        # Preview tab operations
+        Binding("space", "toggle_chapter_select", "Select Chapter", show=False),
+        Binding("m", "merge_chapters", "Merge", show=False),
+        Binding("x", "exclude_chapters", "Exclude", show=False),
+        Binding("c", "clear_selection", "Clear Selection", show=False),
         # Help
         Binding("?", "show_help", "Help"),
         Binding("f1", "show_help", "Help", show=False),
@@ -1727,6 +1881,51 @@ class AudiobookifyApp(App):
     def action_delete_jobs(self) -> None:
         """Delete selected jobs (keyboard shortcut)."""
         self.action_delete_job()
+
+    def action_toggle_chapter_select(self) -> None:
+        """Toggle multi-selection on current chapter in Preview tab (Space key)."""
+        try:
+            # Check if Preview tab is active
+            tabs = self.query_one("#bottom-tabs", TabbedContent)
+            if tabs.active != "preview-tab":
+                return
+            preview_panel = self.query_one(PreviewPanel)
+            preview_panel.toggle_multi_select_current()
+        except Exception:
+            pass
+
+    def action_merge_chapters(self) -> None:
+        """Merge multi-selected chapters in Preview tab (M key)."""
+        try:
+            tabs = self.query_one("#bottom-tabs", TabbedContent)
+            if tabs.active != "preview-tab":
+                return
+            preview_panel = self.query_one(PreviewPanel)
+            preview_panel.merge_selected()
+        except Exception:
+            pass
+
+    def action_exclude_chapters(self) -> None:
+        """Exclude multi-selected chapters in Preview tab (X key)."""
+        try:
+            tabs = self.query_one("#bottom-tabs", TabbedContent)
+            if tabs.active != "preview-tab":
+                return
+            preview_panel = self.query_one(PreviewPanel)
+            preview_panel.delete_selected()
+        except Exception:
+            pass
+
+    def action_clear_selection(self) -> None:
+        """Clear multi-selection in Preview tab (C key)."""
+        try:
+            tabs = self.query_one("#bottom-tabs", TabbedContent)
+            if tabs.active != "preview-tab":
+                return
+            preview_panel = self.query_one(PreviewPanel)
+            preview_panel.clear_multi_selection()
+        except Exception:
+            pass
 
     # ─────────────────────────────────────────────────────────────────────────
     # Preview Panel Message Handlers
@@ -2598,25 +2797,38 @@ class AudiobookifyApp(App):
         settings_panel = self.query_one(SettingsPanel)
         config = settings_panel.get_config()
 
+        detection_method = config["detection_method"]
+        hierarchy_style = config["hierarchy_style"]
+
         self.log_message(f"📋 Loading preview: {epub_path.name}")
+        self.log_message(f"   Detection: {detection_method}, Hierarchy: {hierarchy_style}")
+
+        # Clear existing preview before starting new one
+        preview_panel = self.query_one(PreviewPanel)
+        preview_panel.clear_preview()
 
         # Switch to Preview tab
         tabs = self.query_one("#bottom-tabs", TabbedContent)
         tabs.active = "preview-tab"
 
-        # Run preview in background
-        self.preview_chapters_async(
-            epub_path, config["detection_method"], config["hierarchy_style"]
-        )
+        # Run preview in background (exclusive to cancel any previous preview)
+        self.preview_chapters_async(epub_path, detection_method, hierarchy_style)
 
-    @work(exclusive=False, thread=True)
+    @work(exclusive=True, thread=True, group="preview")
     def preview_chapters_async(
         self, epub_path: Path, detection_method: str, hierarchy_style: str
     ) -> None:
-        """Preview chapters in background thread and load into Preview tab."""
+        """Preview chapters in background thread and load into Preview tab.
+
+        Uses exclusive=True in group="preview" to cancel any previous preview worker.
+        """
         from .chapter_detector import ChapterDetector
 
         try:
+            self.call_from_thread(
+                self.log_message, f"   🔍 Detecting chapters with '{detection_method}'..."
+            )
+
             detector = ChapterDetector(
                 str(epub_path),
                 method=detection_method,
@@ -2680,7 +2892,7 @@ class AudiobookifyApp(App):
             self.call_from_thread(load_preview)
             self.call_from_thread(
                 self.log_message,
-                f"✅ Loaded {len(preview_chapters)} chapters into Preview tab",
+                f"✅ Loaded {len(preview_chapters)} chapters (method: {detection_method})",
             )
 
         except Exception as e:

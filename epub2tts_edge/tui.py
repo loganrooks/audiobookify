@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from textual import work
+from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -1216,14 +1216,13 @@ class ChapterPreviewItem(ListItem):
         return f"{checkbox} {indent}{title} {stats}"
 
     def on_click(self, event: Click) -> None:
-        """Handle click with shift detection for range selection."""
-        # Find parent PreviewPanel and call handler directly
-        # This avoids message bubbling issues
-        for ancestor in self.ancestors:
-            if isinstance(ancestor, PreviewPanel):
-                ancestor._handle_item_click(self, event.shift)
-                break
-        event.stop()
+        """Handle click - pass shift state to parent PreviewPanel.
+
+        Note: We don't stop the event so ListView can update highlighting first.
+        The actual selection logic is handled by PreviewPanel._on_chapter_tree_click.
+        """
+        # Don't call event.stop() - let click bubble to PreviewPanel
+        pass
 
     def toggle_selection(self) -> None:
         """Toggle selection for batch operations."""
@@ -1579,6 +1578,32 @@ class PreviewPanel(Vertical):
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         """Update buttons when highlight changes."""
+        self._update_action_buttons()
+
+    @on(Click, "#chapter-tree")
+    def _on_chapter_tree_click(self, event: Click) -> None:
+        """Handle clicks on the chapter tree ListView.
+
+        This captures clicks at the ListView level since ListItem.on_click
+        doesn't reliably fire in Textual. By the time this handler runs,
+        ListView has already updated highlighted_child.
+        """
+        # Get the currently highlighted item (which was just clicked)
+        chapter_tree = self.query_one("#chapter-tree", ListView)
+        highlighted = chapter_tree.highlighted_child
+
+        if not isinstance(highlighted, ChapterPreviewItem):
+            return
+
+        # Handle shift-click for range selection
+        if event.shift and self._last_selected_index is not None:
+            self._select_range(self._last_selected_index, highlighted.index)
+        else:
+            # Regular click: toggle selection and set anchor
+            highlighted.toggle_selection()
+            self._last_selected_index = highlighted.index
+
+        self._update_stats()
         self._update_action_buttons()
 
     def _get_highlighted_item(self) -> ChapterPreviewItem | None:

@@ -23,9 +23,23 @@ Track recurring mistakes to improve future behavior. Review at session start.
 **Pattern**: Don't use on_key to track modifier state for mouse clicks
 **Fix**: Use Click event's built-in `event.shift`, `event.ctrl`, etc.
 
-### 2. Custom Messages for Widget Communication
+### 2. Textual Message Bubbling Issues
+**Learning**: Nested Message classes (e.g., `Widget.MessageName`) may not bubble correctly
+**Pattern**: Message handler auto-discovery can fail for nested classes
+**Fix**: Use direct method calls via `self.ancestors` instead of message bubbling
+**Example**:
+```python
+# Instead of: self.post_message(self.Clicked(...))
+# Use direct call:
+for ancestor in self.ancestors:
+    if isinstance(ancestor, ParentPanel):
+        ancestor._handle_click(self, event.shift)
+        break
+```
+
+### 3. Custom Messages - Use With Caution
 **Pattern**: Child widgets posting messages to parent panels
-**Example**: ChapterPreviewItem.Clicked message with shift state
+**Caveat**: May not work reliably - prefer direct method calls for critical functionality
 
 ## Code Quality
 

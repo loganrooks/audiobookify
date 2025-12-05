@@ -1369,7 +1369,7 @@ class PreviewPanel(Vertical):
 
         # Instruction label for editing - CLEAR that Start processes ALL
         yield Label(
-            "📝 Edit: Click/Space=select, Shift+↑↓=range | Merge/Delete selected | Start=ALL",
+            "📝 Space=select, Shift+Space=range, M=merge, X=delete, U=undo | Start=ALL",
             id="preview-instructions",
         )
 
@@ -1988,7 +1988,7 @@ class PreviewPanel(Vertical):
         - e/E: Edit chapter title
         - Escape: Cancel title edit
         - Space: Toggle selection and set anchor
-        - Shift+Up/Down: Extend selection range (more reliable than shift+click)
+        - Shift+Space: Select range from anchor to current
         """
         if event.key == "e" or event.key == "E":
             # Edit highlighted chapter title
@@ -2005,6 +2005,21 @@ class PreviewPanel(Vertical):
                 event.stop()
             except Exception:
                 pass  # No edit in progress
+        elif event.key == "shift+space":
+            # Shift+Space: select range from anchor to current
+            highlighted = self._get_highlighted_item()
+            if highlighted and self._last_selected_index is not None:
+                self._select_range(self._last_selected_index, highlighted.index)
+                self._update_stats()
+                self._update_action_buttons()
+                event.stop()
+            elif highlighted:
+                # No anchor yet, just select current and set anchor
+                highlighted.set_selected(True)
+                self._last_selected_index = highlighted.index
+                self._update_stats()
+                self._update_action_buttons()
+                event.stop()
         elif event.key == "space":
             # Space toggles selection on highlighted - track anchor
             highlighted = self._get_highlighted_item()
@@ -2013,20 +2028,7 @@ class PreviewPanel(Vertical):
                 self._last_selected_index = highlighted.index
                 self._update_stats()
                 self._update_action_buttons()
-                event.stop()
-        elif event.key == "shift+up" or event.key == "shift+down":
-            # Shift+Arrow extends selection range
-            highlighted = self._get_highlighted_item()
-            if highlighted:
-                if self._last_selected_index is None:
-                    # No anchor yet, set current as anchor and select it
-                    self._last_selected_index = highlighted.index
-                    highlighted.set_selected(True)
-                else:
-                    # Extend selection to include highlighted item
-                    highlighted.set_selected(True)
-                self._update_stats()
-                self._update_action_buttons()  # No edit in progress
+                event.stop()  # No edit in progress
 
     class ApproveAndStart(Message):
         """Message sent when user clicks Approve & Start."""
@@ -2103,12 +2105,11 @@ class HelpScreen(ModalScreen):
             yield Static("  Backspace      Go to parent directory")
 
             yield Label("── Preview Tab ──", classes="section")
-            yield Static("  Click          Select/deselect chapter")
-            yield Static("  Space          Toggle selection (sets anchor)")
-            yield Static("  Shift+↑/↓      Extend selection range")
-            yield Static("  m              Merge with next chapter")
-            yield Static("  x              Delete highlighted chapter")
-            yield Static("  u              Undo last merge/delete")
+            yield Static("  Space          Select/deselect (sets anchor)")
+            yield Static("  Shift+Space    Select range (anchor→current)")
+            yield Static("  m              Merge selected chapters")
+            yield Static("  x              Delete selected chapters")
+            yield Static("  u              Undo last operation")
             yield Static("  e              Edit chapter title")
 
             yield Label("── Jobs ──", classes="section")
@@ -2357,24 +2358,42 @@ class AudiobookifyApp(App):
         self.action_delete_job()
 
     def action_merge_chapters(self) -> None:
-        """Merge highlighted chapter with next in Preview tab (M key)."""
+        """Merge chapters in Preview tab (M key).
+
+        Uses batch_merge if multiple chapters are selected,
+        otherwise merges highlighted chapter with next one.
+        """
         try:
             tabs = self.query_one("#bottom-tabs", TabbedContent)
             if tabs.active != "preview-tab":
                 return
             preview_panel = self.query_one(PreviewPanel)
-            preview_panel.merge_with_next()
+            # Use batch merge if items are selected, otherwise merge with next
+            selected = preview_panel._get_selected_items()
+            if len(selected) >= 2:
+                preview_panel.batch_merge()
+            else:
+                preview_panel.merge_with_next()
         except Exception:
             pass
 
     def action_delete_chapter(self) -> None:
-        """Delete highlighted chapter in Preview tab (X key)."""
+        """Delete chapters in Preview tab (X key).
+
+        Uses batch_delete if chapters are selected,
+        otherwise deletes the highlighted chapter.
+        """
         try:
             tabs = self.query_one("#bottom-tabs", TabbedContent)
             if tabs.active != "preview-tab":
                 return
             preview_panel = self.query_one(PreviewPanel)
-            preview_panel.delete_chapter()
+            # Use batch delete if items are selected, otherwise delete highlighted
+            selected = preview_panel._get_selected_items()
+            if len(selected) >= 1:
+                preview_panel.batch_delete()
+            else:
+                preview_panel.delete_chapter()
         except Exception:
             pass
 

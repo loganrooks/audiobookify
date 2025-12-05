@@ -87,5 +87,11 @@ git push
 4. **PUSH to remote**
 5. Verify push succeeded
 
+### 5. Terminal Shift+Click Interception
+**Learning**: Many terminal emulators intercept Shift+Click for text selection
+**Pattern**: Shift+Click in TUI apps may not work - the terminal grabs it first
+**Fix**: Always provide keyboard-based alternatives (Shift+Arrow keys) as fallback
+**Example**: For range selection, use Shift+Up/Down instead of relying on Shift+Click
+
 ---
 Last updated: 2025-12-05

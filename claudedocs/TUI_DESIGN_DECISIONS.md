@@ -257,3 +257,4 @@ Current: Chapter-level progress in Progress tab
 | 2024-12-04 | Fixed job resume: BatchProcessor now respects task's existing job_id instead of overwriting; is_resumable allows completed_chapters=0 | batch_processor.py, job_manager.py |
 | 2024-12-04 | Added verbose resume logging: Job details now logged when resuming (ID, dir, status, progress, voice) | tui.py |
 | 2024-12-04 | Refactored JobsPanel: DataTable → ListView with JobItem widgets, checkbox-based multi-select, move up/down, batch resume/delete support | tui.py |
+| 2024-12-04 | Added comprehensive keyboard navigation: HelpScreen modal, tab switching (1-4), parent nav (Backspace), focus path (/), job ops (R/X) | tui.py |

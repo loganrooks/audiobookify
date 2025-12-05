@@ -61,7 +61,9 @@
 ### v2.4.0 - TUI Improvements & Additional Formats
 
 #### TUI Improvements (High Priority)
-- [ ] **Compact FilePanel layout** - Merge title/mode/count into single row to maximize file list
+- [x] **Compact FilePanel layout** - Merge title/mode/count into single row to maximize file list
+- [x] **Multi-select jobs** - Select multiple jobs for batch operations (delete, resume)
+- [x] **Job queue reordering** - Move jobs up/down in queue priority
 - [ ] **Directory browser** - Add DirectoryTree modal for easier folder selection
 - [ ] **Parent navigation** - Add "↑ Parent" button for quick directory traversal
 - [ ] **Path autocomplete** - Tab completion for directory input
@@ -74,7 +76,6 @@
 - [ ] **Path history** - Remember recently used directories
 - [ ] **Keyboard navigation** - More shortcuts for common operations
 - [ ] **Job status legend** - Popup or help text explaining job status icons
-- [ ] **Multi-select jobs** - Select multiple jobs for batch operations (delete, resume)
 
 #### Format Support
 - [ ] **PDF support** - Extract text from PDF files

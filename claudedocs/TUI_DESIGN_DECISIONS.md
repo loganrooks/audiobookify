@@ -222,3 +222,7 @@ Current: Chapter-level progress in Progress tab
 | 2024-12-04 | Fixed resume button (removed prepare() call, keep job in CONVERTING on cancel) | tui.py, batch_processor.py |
 | 2024-12-04 | Refactored text conversion: Added dual-mode FilePanel (Books/Text toggle), removed "Convert from Text" from SettingsPanel, cleaned up old action_convert_text/convert_text_async methods | tui.py |
 | 2024-12-04 | Fixed FilePanel/bottom-tabs layout: Removed max-height: 40% constraint, changed to 50/50 split (1fr each), removed internal max-height constraints, compacted margins | tui.py |
+| 2024-12-04 | Fixed Log tab height: Added CSS for TabbedContent internal height propagation (ContentSwitcher, TabPane) | tui.py |
+| 2024-12-04 | Renamed exports: "Export Text" → "Export & Edit", "Export Only:" → "Text Only:" for clarity | tui.py |
+| 2024-12-04 | Fixed job resume: BatchProcessor now respects task's existing job_id instead of overwriting; is_resumable allows completed_chapters=0 | batch_processor.py, job_manager.py |
+| 2024-12-04 | Added verbose resume logging: Job details now logged when resuming (ID, dir, status, progress, voice) | tui.py |

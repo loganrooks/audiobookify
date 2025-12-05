@@ -496,7 +496,7 @@ class SettingsPanel(VerticalScroll):
             )
 
         yield Button("📋 Preview Chapters", id="preview-chapters-btn", variant="default")
-        yield Button("📝 Export Text", id="export-text-btn", variant="default")
+        yield Button("📝 Export & Edit", id="export-text-btn", variant="default")
 
         # v2.1.0: Chapter selection
         yield Label("Chapter Selection", classes="section-title")
@@ -509,7 +509,7 @@ class SettingsPanel(VerticalScroll):
 
         # Processing options
         with Horizontal(classes="setting-row"):
-            yield Label("Export Only:")
+            yield Label("Text Only:")
             yield Switch(id="export-only-switch")
 
         with Horizontal(classes="setting-row"):
@@ -980,6 +980,16 @@ class AudiobookifyApp(App):
         min-height: 15;
     }
 
+    /* Fix TabbedContent internal height propagation */
+    #bottom-tabs > ContentSwitcher {
+        height: 1fr;
+    }
+
+    #bottom-tabs TabPane {
+        height: 100%;
+        padding: 0;
+    }
+
     ProgressPanel {
         height: 100%;
     }
@@ -989,6 +999,10 @@ class AudiobookifyApp(App):
     }
 
     LogPanel {
+        height: 100%;
+    }
+
+    JobsPanel {
         height: 100%;
     }
     """
@@ -1490,10 +1504,25 @@ class AudiobookifyApp(App):
         source_path = Path(job.source_file)
         book_name = source_path.name
 
+        # Log detailed job info for debugging
+        self.call_from_thread(self.log_message, f"   Job ID: {job.job_id}")
+        self.call_from_thread(self.log_message, f"   Job dir: {job.job_dir}")
+        self.call_from_thread(self.log_message, f"   Status: {job.status.value}")
+        self.call_from_thread(
+            self.log_message,
+            f"   Progress: {job.completed_chapters}/{job.total_chapters} chapters",
+        )
+        self.call_from_thread(self.log_message, f"   Voice: {job.speaker}")
+
         # Create task for the job
         task = BookTask(epub_path=str(source_path))
         task.job_id = job.job_id
         task.job_dir = job.job_dir
+
+        self.call_from_thread(
+            self.log_message,
+            f"   Task created with job_id={task.job_id}",
+        )
 
         # Add to queue display
         self.call_from_thread(self.query_one(QueuePanel).add_task, task)
@@ -1501,10 +1530,11 @@ class AudiobookifyApp(App):
         try:
             task.status = ProcessingStatus.CONVERTING
             self.call_from_thread(self.query_one(QueuePanel).update_task, task)
-            self.call_from_thread(
-                self.log_message,
-                f"   Skipping {job.completed_chapters} completed chapters...",
-            )
+            if job.completed_chapters > 0:
+                self.call_from_thread(
+                    self.log_message,
+                    f"   Will skip {job.completed_chapters} completed chapters...",
+                )
 
             # Create config using job's saved settings for consistency
             config = BatchConfig(
@@ -1720,7 +1750,7 @@ class AudiobookifyApp(App):
             )
             self.call_from_thread(
                 self.log_message,
-                "   Or use 'Export Only' to edit the .txt file before converting",
+                "   Or use 'Text Only' mode to export without audio",
             )
 
         except Exception as e:
@@ -1847,7 +1877,7 @@ class AudiobookifyApp(App):
         self.log_message("")
         self.log_message("📝 Export & Edit Workflow:")
         self.log_message("  1. Select a file and click 'Preview Chapters'")
-        self.log_message("  2. If chapters are wrong, click 'Export Text'")
+        self.log_message("  2. If chapters are wrong, click 'Export & Edit'")
         self.log_message("  3. Edit the .txt file to fix chapter markers")
         self.log_message("  4. Click 'Convert Text to Audio' to finish")
         self.log_message("─" * 40)

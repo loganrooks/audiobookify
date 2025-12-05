@@ -482,23 +482,37 @@ class BatchProcessor:
         if self._job_manager:
             from .job_manager import JobStatus
 
-            # Check for existing resumable job
-            job = self._job_manager.find_job_for_source(task.epub_path)
-            if job:
-                print(f"  Resuming job: {job.job_id}")
-                task.job_id = job.job_id
-                task.job_dir = job.job_dir
-            else:
-                # Create new job
-                job = self._job_manager.create_job(
-                    task.epub_path,
-                    speaker=self.config.speaker,
-                    rate=self.config.tts_rate,
-                    volume=self.config.tts_volume,
-                )
-                task.job_id = job.job_id
-                task.job_dir = job.job_dir
-                print(f"  Created job: {job.job_id}")
+            # If task already has a job_id (e.g., from TUI resume), load that job directly
+            if task.job_id:
+                job = self._job_manager.load_job(task.job_id)
+                if job:
+                    print(f"  Using existing job: {job.job_id}")
+                    print(
+                        f"    Status: {job.status.value}, Progress: {job.completed_chapters}/{job.total_chapters}"
+                    )
+                else:
+                    print(f"  Warning: Could not load job {task.job_id}, creating new")
+                    task.job_id = None
+                    task.job_dir = None
+
+            # If no job yet, check for existing resumable job or create new
+            if not job:
+                job = self._job_manager.find_job_for_source(task.epub_path)
+                if job:
+                    print(f"  Resuming job: {job.job_id}")
+                    task.job_id = job.job_id
+                    task.job_dir = job.job_dir
+                else:
+                    # Create new job
+                    job = self._job_manager.create_job(
+                        task.epub_path,
+                        speaker=self.config.speaker,
+                        rate=self.config.tts_rate,
+                        volume=self.config.tts_volume,
+                    )
+                    task.job_id = job.job_id
+                    task.job_dir = job.job_dir
+                    print(f"  Created job: {job.job_id}")
 
             self._job_manager.update_status(job.job_id, JobStatus.EXTRACTING)
 

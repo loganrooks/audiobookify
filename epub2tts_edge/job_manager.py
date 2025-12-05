@@ -80,10 +80,17 @@ class Job:
 
     @property
     def is_resumable(self) -> bool:
-        """Check if this job can be resumed."""
+        """Check if this job can be resumed.
+
+        A job is resumable if:
+        - Status is EXTRACTING or CONVERTING (not completed/failed/cancelled)
+        - Has some chapters to process (total_chapters > 0)
+        - Not already fully completed
+        """
         return (
             self.status in (JobStatus.EXTRACTING, JobStatus.CONVERTING)
-            and 0 < self.completed_chapters < self.total_chapters
+            and self.total_chapters > 0
+            and self.completed_chapters < self.total_chapters
         )
 
     @property

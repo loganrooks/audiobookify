@@ -32,12 +32,12 @@ This document captures key design decisions for the Audiobookify TUI, intended f
 **Consideration for Review**: The `max-width: 50` on settings panel may feel cramped with all v2.2.0 options. May need wider panel or scrollable sections.
 
 ### Vertical Distribution (Left Column)
-- **FilePanel**: `height: 1fr`, `min-height: 8`, `max-height: 40%`
-- **Bottom tabs**: `height: 3fr`, `min-height: 25`
+- **FilePanel**: `height: 1fr`, `min-height: 10`, `margin-bottom: 1`
+- **Bottom tabs**: `height: 1fr`, `min-height: 15`
 
-**Rationale**: Bottom tabs (Progress, Queue, Jobs, Log) need more space than file selection. The `max-height: 40%` on FilePanel prevents it from consuming too much space when many files are present.
+**Rationale**: 50/50 split with both panels anchored to the middle. Equal space for file selection and bottom tabs (Progress, Queue, Jobs, Log).
 
-**Fix Applied**: Originally FilePanel had no max-height, causing it to dominate the layout. Added `max-height: 40%` to give bottom tabs (especially Log panel) more room.
+**Fix Applied (v2)**: The `max-height: 40%` constraint combined with the new mode toggle buttons squeezed the file list to nothing. Changed to equal `1fr` heights for a clean 50/50 split.
 
 ## Panel Designs
 
@@ -221,3 +221,4 @@ Current: Chapter-level progress in Progress tab
 | 2024-12-04 | Fixed Log panel height (added max-height: 40% to FilePanel, bottom-tabs min-height: 25) | tui.py |
 | 2024-12-04 | Fixed resume button (removed prepare() call, keep job in CONVERTING on cancel) | tui.py, batch_processor.py |
 | 2024-12-04 | Refactored text conversion: Added dual-mode FilePanel (Books/Text toggle), removed "Convert from Text" from SettingsPanel, cleaned up old action_convert_text/convert_text_async methods | tui.py |
+| 2024-12-04 | Fixed FilePanel/bottom-tabs layout: Removed max-height: 40% constraint, changed to 50/50 split (1fr each), removed internal max-height constraints, compacted margins | tui.py |

@@ -147,17 +147,18 @@ class FilePanel(Vertical):
 
     FilePanel > Label.title {
         text-style: bold;
-        margin-bottom: 1;
+        margin-bottom: 0;
         color: $primary-lighten-2;
     }
 
     FilePanel > #mode-toggle {
-        height: 3;
-        margin-bottom: 1;
+        height: auto;
+        max-height: 3;
+        margin-bottom: 0;
     }
 
     FilePanel > #mode-toggle > Button {
-        min-width: 12;
+        min-width: 10;
         margin: 0 1 0 0;
     }
 
@@ -168,18 +169,17 @@ class FilePanel(Vertical):
 
     FilePanel > Label.file-count {
         color: $text-muted;
-        margin-bottom: 1;
+        margin-bottom: 0;
     }
 
     FilePanel > #path-input {
-        margin-bottom: 1;
+        margin-bottom: 0;
         border: round $primary-darken-1;
     }
 
     FilePanel > #file-list {
         height: 1fr;
-        max-height: 80%;
-        min-height: 5;
+        min-height: 3;
         border: round $primary-darken-2;
         background: $surface-darken-1;
     }
@@ -971,13 +971,13 @@ class AudiobookifyApp(App):
 
     FilePanel {
         height: 1fr;
-        min-height: 8;
-        max-height: 40%;
+        min-height: 10;
+        margin-bottom: 1;
     }
 
     #bottom-tabs {
-        height: 3fr;
-        min-height: 25;
+        height: 1fr;
+        min-height: 15;
     }
 
     ProgressPanel {

@@ -58,7 +58,23 @@
 
 ## Planned Features
 
-### v2.4.0 - Additional Formats & Advanced Features
+### v2.4.0 - TUI Improvements & Additional Formats
+
+#### TUI Improvements (High Priority)
+- [ ] **Compact FilePanel layout** - Merge title/mode/count into single row to maximize file list
+- [ ] **Directory browser** - Add DirectoryTree modal for easier folder selection
+- [ ] **Parent navigation** - Add "↑ Parent" button for quick directory traversal
+- [ ] **Path autocomplete** - Tab completion for directory input
+- [ ] **Preview tab** - Enhanced chapter preview with tree view, word counts, estimated duration
+- [ ] **Collapsible settings** - Group settings into collapsible sections (Voice, Timing, Advanced)
+- [ ] **Settings reorganization** - Move action buttons out of Settings panel
+
+#### TUI Improvements (Medium Priority)
+- [ ] **Estimated duration** - Show per-chapter and total estimated audio time
+- [ ] **Path history** - Remember recently used directories
+- [ ] **Keyboard navigation** - More shortcuts for common operations
+- [ ] **Job status legend** - Popup or help text explaining job status icons
+- [ ] **Multi-select jobs** - Select multiple jobs for batch operations (delete, resume)
 
 #### Format Support
 - [ ] **PDF support** - Extract text from PDF files

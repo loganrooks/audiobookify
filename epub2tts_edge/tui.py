@@ -1016,7 +1016,7 @@ class AudiobookifyApp(App):
         Binding("d", "deselect_all", "Deselect All"),
         Binding("p", "preview_voice", "Preview Voice"),
         Binding("?", "help", "Help"),
-        Binding("ctrl+d", "toggle_debug", "Debug", show=False),
+        Binding("ctrl+d", "toggle_debug", "Debug"),
     ]
 
     def __init__(self, initial_path: str = ".") -> None:
@@ -1636,16 +1636,28 @@ class AudiobookifyApp(App):
         """Resume the selected job."""
         if self.is_processing:
             self.notify("Already processing", severity="warning")
+            self.log_message("⚠️ Cannot resume: already processing")
             return
 
         jobs_panel = self.query_one(JobsPanel)
         job = jobs_panel.get_selected_job()
         if not job:
             self.notify("No job selected", severity="warning")
+            self.log_message("⚠️ Cannot resume: no job selected")
             return
+
+        # Log job info for debugging
+        self.log_debug(f"Selected job: {job.job_id}")
+        self.log_debug(f"Job status: {job.status.value}")
+        self.log_debug(f"Job progress: {job.completed_chapters}/{job.total_chapters}")
+        self.log_debug(f"Is resumable: {job.is_resumable}")
 
         if not job.is_resumable:
             self.notify("Job is not resumable", severity="warning")
+            self.log_message(
+                f"⚠️ Cannot resume: job status={job.status.value}, "
+                f"progress={job.completed_chapters}/{job.total_chapters}"
+            )
             return
 
         # Check source file still exists

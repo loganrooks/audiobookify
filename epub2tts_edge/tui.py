@@ -1379,7 +1379,6 @@ class PreviewPanel(Vertical):
             chapter_tree.append(ChapterPreviewItem(chapter, i))
 
         # Enable buttons
-        self.query_one("#preview-content", Button).disabled = False
         self.query_one("#preview-approve", Button).disabled = False
 
     def clear_preview(self) -> None:
@@ -1392,9 +1391,10 @@ class PreviewPanel(Vertical):
         self.query_one("#chapter-tree").display = False
         self.query_one("#chapter-tree", ListView).clear()
         self.query_one("#content-preview").display = False
-        self.query_one("#preview-content", Button).disabled = True
         self.query_one("#preview-approve", Button).disabled = True
         self.query_one("#preview-undo", Button).disabled = True
+        self.query_one("#preview-merge", Button).disabled = True
+        self.query_one("#preview-delete", Button).disabled = True
 
     def has_chapters(self) -> bool:
         """Check if there are chapters loaded."""
@@ -1462,8 +1462,6 @@ class PreviewPanel(Vertical):
             self.select_all()
         elif event.button.id == "preview-select-none":
             self.select_none()
-        elif event.button.id == "preview-content":
-            self.toggle_content_preview()
         elif event.button.id == "preview-merge":
             self.merge_with_next()
         elif event.button.id == "preview-delete":

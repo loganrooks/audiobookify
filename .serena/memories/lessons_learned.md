@@ -41,6 +41,26 @@ for ancestor in self.ancestors:
 **Pattern**: Child widgets posting messages to parent panels
 **Caveat**: May not work reliably - prefer direct method calls for critical functionality
 
+### 4. ListView Click Handling
+**Learning**: `ListItem.on_click` doesn't reliably fire because `ListView` handles clicks at a higher level
+**Pattern**: When you need to capture clicks on ListView items with modifiers (shift, ctrl):
+- Use `@on(Click, "#list-view-id")` decorator at the parent container level
+- Let the click bubble up (don't call `event.stop()` in ListItem)
+- Access `ListView.highlighted_child` which is already updated by the time your handler fires
+**Example**:
+```python
+@on(Click, "#chapter-tree")
+def _on_tree_click(self, event: Click) -> None:
+    chapter_tree = self.query_one("#chapter-tree", ListView)
+    highlighted = chapter_tree.highlighted_child  # Already updated
+    if event.shift:
+        # Handle shift-click range selection
+        pass
+    else:
+        # Handle regular click
+        highlighted.toggle_selection()
+```
+
 ## Code Quality
 
 ### 1. Always Format Before Commit

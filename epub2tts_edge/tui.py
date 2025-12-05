@@ -1369,7 +1369,7 @@ class PreviewPanel(Vertical):
 
         # Instruction label for editing - CLEAR that Start processes ALL
         yield Label(
-            "📝 Edit: Click=select, Shift+Click=range | Merge/Delete selected | Start=ALL",
+            "📝 Edit: Click/Space=select, Shift+↑↓=range | Merge/Delete selected | Start=ALL",
             id="preview-instructions",
         )
 
@@ -1587,6 +1587,9 @@ class PreviewPanel(Vertical):
         This captures clicks at the ListView level since ListItem.on_click
         doesn't reliably fire in Textual. By the time this handler runs,
         ListView has already updated highlighted_child.
+
+        Supports both Shift+Click and Ctrl+Click for range selection since
+        some terminals intercept Shift+Click for text selection.
         """
         # Get the currently highlighted item (which was just clicked)
         chapter_tree = self.query_one("#chapter-tree", ListView)
@@ -1595,8 +1598,11 @@ class PreviewPanel(Vertical):
         if not isinstance(highlighted, ChapterPreviewItem):
             return
 
-        # Handle shift-click for range selection
-        if event.shift and self._last_selected_index is not None:
+        # Check for range selection modifier (shift OR ctrl, since terminals may intercept shift)
+        range_modifier = event.shift or event.ctrl
+
+        # Handle range selection with shift or ctrl
+        if range_modifier and self._last_selected_index is not None:
             self._select_range(self._last_selected_index, highlighted.index)
         else:
             # Regular click: toggle selection and set anchor
@@ -1976,7 +1982,14 @@ class PreviewPanel(Vertical):
             self._finish_title_edit(event.input, event.value)
 
     def on_key(self, event) -> None:
-        """Handle keyboard shortcuts for chapter editing."""
+        """Handle keyboard shortcuts for chapter editing.
+
+        Supports:
+        - e/E: Edit chapter title
+        - Escape: Cancel title edit
+        - Space: Toggle selection and set anchor
+        - Shift+Up/Down: Extend selection range (more reliable than shift+click)
+        """
         if event.key == "e" or event.key == "E":
             # Edit highlighted chapter title
             self.edit_highlighted_title()
@@ -1996,7 +2009,24 @@ class PreviewPanel(Vertical):
             # Space toggles selection on highlighted - track anchor
             highlighted = self._get_highlighted_item()
             if highlighted:
-                self._last_selected_index = highlighted.index  # No edit in progress
+                highlighted.toggle_selection()
+                self._last_selected_index = highlighted.index
+                self._update_stats()
+                self._update_action_buttons()
+                event.stop()
+        elif event.key == "shift+up" or event.key == "shift+down":
+            # Shift+Arrow extends selection range
+            highlighted = self._get_highlighted_item()
+            if highlighted:
+                if self._last_selected_index is None:
+                    # No anchor yet, set current as anchor and select it
+                    self._last_selected_index = highlighted.index
+                    highlighted.set_selected(True)
+                else:
+                    # Extend selection to include highlighted item
+                    highlighted.set_selected(True)
+                self._update_stats()
+                self._update_action_buttons()  # No edit in progress
 
     class ApproveAndStart(Message):
         """Message sent when user clicks Approve & Start."""
@@ -2074,8 +2104,8 @@ class HelpScreen(ModalScreen):
 
             yield Label("── Preview Tab ──", classes="section")
             yield Static("  Click          Select/deselect chapter")
-            yield Static("  Shift+Click    Range select (anchor to click)")
-            yield Static("  Space          Toggle chapter selection")
+            yield Static("  Space          Toggle selection (sets anchor)")
+            yield Static("  Shift+↑/↓      Extend selection range")
             yield Static("  m              Merge with next chapter")
             yield Static("  x              Delete highlighted chapter")
             yield Static("  u              Undo last merge/delete")

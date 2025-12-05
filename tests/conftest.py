@@ -7,6 +7,9 @@ from pathlib import Path
 
 import pytest
 
+from tests.fixtures.epub_factory import FIXTURES, create_fixture_epub, create_test_epub
+from tests.mocks.tts_mock import MockTTSEngine
+
 
 # Mark test categories
 def pytest_configure(config):
@@ -251,3 +254,94 @@ def sample_epub(temp_dir: Path, sample_epub_content: dict) -> Path:
         Path to the created EPUB file
     """
     return create_minimal_epub(temp_dir, sample_epub_content)
+
+
+# ============================================================================
+# Enhanced Fixtures from tests/fixtures/
+# ============================================================================
+
+
+@pytest.fixture
+def epub_factory(temp_dir: Path):
+    """Factory fixture for creating EPUBs with custom content.
+
+    Returns a callable that creates EPUBs in the temp directory.
+
+    Example:
+        def test_something(epub_factory):
+            epub = epub_factory(chapters=[
+                ("Ch 1", "Content 1"),
+                ("Ch 2", "Content 2"),
+            ])
+    """
+
+    def _create(
+        chapters: list[tuple[str, str]] | None = None,
+        title: str = "Test Book",
+        author: str = "Test Author",
+    ) -> Path:
+        return create_test_epub(temp_dir, title=title, author=author, chapters=chapters)
+
+    return _create
+
+
+@pytest.fixture
+def epub_with_front_matter(temp_dir: Path) -> Path:
+    """Create an EPUB with front/back matter for testing chapter editing."""
+    return create_fixture_epub(temp_dir, "book_with_front_matter")
+
+
+@pytest.fixture
+def epub_with_parts(temp_dir: Path) -> Path:
+    """Create an EPUB with parts and chapters for hierarchical testing."""
+    return create_fixture_epub(temp_dir, "book_with_parts")
+
+
+@pytest.fixture
+def epub_with_empty_chapters(temp_dir: Path) -> Path:
+    """Create an EPUB with some empty chapters for content detection testing."""
+    return create_fixture_epub(temp_dir, "empty_chapters")
+
+
+@pytest.fixture
+def epub_many_chapters(temp_dir: Path) -> Path:
+    """Create an EPUB with 25 chapters for batch operation testing."""
+    return create_fixture_epub(temp_dir, "many_chapters")
+
+
+@pytest.fixture
+def available_fixtures() -> dict:
+    """Return all available EPUB fixture configurations."""
+    return FIXTURES
+
+
+# ============================================================================
+# Mock TTS Fixtures
+# ============================================================================
+
+
+@pytest.fixture
+def mock_tts() -> MockTTSEngine:
+    """Create a mock TTS engine for testing without network calls.
+
+    The mock generates silent audio instantly and tracks all calls
+    for verification in tests.
+
+    Example:
+        def test_processing(mock_tts, monkeypatch):
+            monkeypatch.setattr("epub2tts_edge.audio_generator.run_edgespeak",
+                                mock_tts.generate)
+            # ... run processing ...
+            assert mock_tts.call_count > 0
+    """
+    return MockTTSEngine(speed_factor=1000)
+
+
+@pytest.fixture
+def mock_tts_with_failures() -> MockTTSEngine:
+    """Create a mock TTS engine that fails on specific text.
+
+    Use this to test error handling in processing workflows.
+    Set mock.fail_on_text = "some text" to trigger failures.
+    """
+    return MockTTSEngine(speed_factor=1000, fail_on_text=None)

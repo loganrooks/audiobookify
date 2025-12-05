@@ -1178,42 +1178,43 @@ class JobsPanel(Vertical):
 
 
 class ChapterPreviewItem(ListItem):
-    """Interactive chapter item with checkbox for preview."""
+    """Interactive chapter item with selection for batch operations."""
 
     def __init__(self, chapter: PreviewChapter, index: int) -> None:
         super().__init__()
         self.chapter = chapter
         self.index = index
+        self.is_selected = False  # For batch operations (merge/delete)
 
     def compose(self) -> ComposeResult:
         yield Label(self._build_label())
 
     def _build_label(self) -> str:
         """Build the display label for this chapter."""
-        # Include checkbox
-        checkbox = "☑" if self.chapter.included else "☐"
+        # Selection marker (filled circle = selected, empty = not)
+        select_marker = "●" if self.is_selected else "○"
 
         indent = "  " * max(0, self.chapter.level - 1)
 
         # Truncate title if needed
         title = self.chapter.title
-        if len(title) > 40:
-            title = title[:37] + "..."
+        if len(title) > 50:
+            title = title[:47] + "..."
 
         # Stats
-        stats = f"({self.chapter.word_count:,}w, {self.chapter.paragraph_count}¶)"
+        stats = f"({self.chapter.word_count:,}w)"
 
-        # Status indicators
-        status = ""
-        if self.chapter.merged_into is not None:
-            status = " [merged→" + str(self.chapter.merged_into + 1) + "]"
+        return f"{select_marker} {indent}{title} {stats}"
 
-        return f"{checkbox} {indent}{title} {stats}{status}"
-
-    def toggle_include(self) -> None:
-        """Toggle chapter inclusion."""
-        self.chapter.included = not self.chapter.included
+    def toggle_selection(self) -> None:
+        """Toggle selection for batch operations."""
+        self.is_selected = not self.is_selected
         self.refresh_display()
+        # Update CSS class for visual feedback
+        if self.is_selected:
+            self.add_class("selected")
+        else:
+            self.remove_class("selected")
 
     def refresh_display(self) -> None:
         """Refresh the display."""
@@ -1288,21 +1289,34 @@ class PreviewPanel(Vertical):
         color: $text-muted;
     }
 
+    PreviewPanel > #preview-instructions {
+        height: auto;
+        padding: 0 1;
+        color: $text-muted;
+        text-style: italic;
+        display: none;
+    }
+
+    PreviewPanel > #preview-instructions.visible {
+        display: block;
+    }
+
     ChapterPreviewItem {
         height: auto;
         padding: 0 1;
     }
 
-    ChapterPreviewItem.excluded Label {
-        color: $text-muted;
-        text-style: strike;
+    ChapterPreviewItem.selected {
+        background: $primary-darken-2;
     }
 
-    ChapterPreviewItem.merged Label {
-        color: $warning;
-        text-style: italic;
+    ChapterPreviewItem.selected Label {
+        color: $text;
+        text-style: bold;
     }
     """
+
+    MAX_UNDO_STACK = 20  # Limit undo history to prevent memory issues
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -1321,6 +1335,12 @@ class PreviewPanel(Vertical):
             "Select a file and press 'Preview Chapters' to see chapter breakdown", id="no-preview"
         )
 
+        # Instruction label for editing
+        yield Label(
+            "💡 Click to select chapters → Merge adjacent / Delete selected | E=edit title",
+            id="preview-instructions",
+        )
+
         # Chapter tree (hidden initially)
         yield ListView(id="chapter-tree")
 
@@ -1329,11 +1349,12 @@ class PreviewPanel(Vertical):
 
         # Action buttons
         with Horizontal(id="preview-actions"):
-            yield Button("All", id="preview-select-all")
-            yield Button("None", id="preview-select-none")
-            yield Button("Merge↓", id="preview-merge", disabled=True)
-            yield Button("Delete", id="preview-delete", disabled=True)
-            yield Button("Undo", id="preview-undo", disabled=True)
+            yield Button("Select All", id="preview-select-all")
+            yield Button("Select None", id="preview-select-none")
+            yield Button("✏️ Edit", id="preview-edit", disabled=True)
+            yield Button("🔗 Merge", id="preview-merge", disabled=True)
+            yield Button("🗑️ Delete", id="preview-delete", disabled=True)
+            yield Button("↩️ Undo", id="preview-undo", disabled=True)
             yield Button("✅ Start", id="preview-approve", classes="approve", disabled=True)
 
     def on_mount(self) -> None:
@@ -1357,6 +1378,9 @@ class PreviewPanel(Vertical):
             book_author=book_author,
         )
 
+        # Clear undo stack for new book
+        self._undo_stack.clear()
+
         # Update header
         book_name = source_file.stem
         if len(book_name) > 40:
@@ -1368,8 +1392,9 @@ class PreviewPanel(Vertical):
         total_words = sum(c.word_count for c in chapters)
         self.query_one("#chapter-stats", Label).update(f"{total_chapters} ch, {total_words:,}w")
 
-        # Hide placeholder, show tree
+        # Hide placeholder, show tree and instructions
         self.query_one("#no-preview").display = False
+        self.query_one("#preview-instructions").add_class("visible")
         chapter_tree = self.query_one("#chapter-tree", ListView)
         chapter_tree.display = True
 
@@ -1378,8 +1403,9 @@ class PreviewPanel(Vertical):
         for i, chapter in enumerate(chapters):
             chapter_tree.append(ChapterPreviewItem(chapter, i))
 
-        # Enable buttons
+        # Enable approve button, update other buttons
         self.query_one("#preview-approve", Button).disabled = False
+        self._update_action_buttons()
 
     def clear_preview(self) -> None:
         """Clear the current preview."""
@@ -1388,6 +1414,7 @@ class PreviewPanel(Vertical):
         self.query_one("#book-title", Label).update("Select a file and click 'Preview Chapters'")
         self.query_one("#chapter-stats", Label).update("")
         self.query_one("#no-preview").display = True
+        self.query_one("#preview-instructions").remove_class("visible")
         self.query_one("#chapter-tree").display = False
         self.query_one("#chapter-tree", ListView).clear()
         self.query_one("#content-preview").display = False
@@ -1395,6 +1422,7 @@ class PreviewPanel(Vertical):
         self.query_one("#preview-undo", Button).disabled = True
         self.query_one("#preview-merge", Button).disabled = True
         self.query_one("#preview-delete", Button).disabled = True
+        self.query_one("#preview-edit", Button).disabled = True
 
     def has_chapters(self) -> bool:
         """Check if there are chapters loaded."""
@@ -1407,24 +1435,24 @@ class PreviewPanel(Vertical):
         return self.preview_state.get_included_chapters()
 
     def select_all(self) -> None:
-        """Select all chapters."""
+        """Select all chapters for batch operations."""
         if not self.preview_state:
             return
-        for chapter in self.preview_state.chapters:
-            chapter.included = True
         for item in self.query(ChapterPreviewItem):
-            item.refresh_display()
+            if not item.is_selected:
+                item.is_selected = True
+                item.add_class("selected")
+                item.refresh_display()
         self._update_stats()
+        self._update_action_buttons()
 
     def select_none(self) -> None:
         """Deselect all chapters."""
         if not self.preview_state:
             return
-        for chapter in self.preview_state.chapters:
-            chapter.included = False
-        for item in self.query(ChapterPreviewItem):
-            item.refresh_display()
+        self._clear_all_selections()
         self._update_stats()
+        self._update_action_buttons()
 
     def toggle_content_preview(self) -> None:
         """Toggle the content preview pane."""
@@ -1448,13 +1476,16 @@ class PreviewPanel(Vertical):
         """Update the stats display."""
         if not self.preview_state:
             return
-        included = self.preview_state.get_included_chapters()
-        total_words = sum(c.word_count for c in included)
         total_chapters = len(self.preview_state.chapters)
-        included_count = len(included)
-        self.query_one("#chapter-stats", Label).update(
-            f"{included_count}/{total_chapters} ch, {total_words:,}w"
-        )
+        total_words = sum(c.word_count for c in self.preview_state.chapters)
+        selected_count = len(self._get_selected_items())
+
+        if selected_count > 0:
+            self.query_one("#chapter-stats", Label).update(
+                f"{total_chapters} ch, {total_words:,}w | {selected_count} selected"
+            )
+        else:
+            self.query_one("#chapter-stats", Label).update(f"{total_chapters} ch, {total_words:,}w")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
@@ -1462,10 +1493,12 @@ class PreviewPanel(Vertical):
             self.select_all()
         elif event.button.id == "preview-select-none":
             self.select_none()
+        elif event.button.id == "preview-edit":
+            self.edit_highlighted_title()
         elif event.button.id == "preview-merge":
-            self.merge_with_next()
+            self.batch_merge()
         elif event.button.id == "preview-delete":
-            self.delete_chapter()
+            self.batch_delete()
         elif event.button.id == "preview-undo":
             self.undo()
         elif event.button.id == "preview-approve":
@@ -1473,9 +1506,9 @@ class PreviewPanel(Vertical):
             self.post_message(self.ApproveAndStart())
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
-        """Handle chapter selection - toggle include (normal click)."""
+        """Handle chapter selection - toggle selection for batch operations."""
         if isinstance(event.item, ChapterPreviewItem):
-            event.item.toggle_include()
+            event.item.toggle_selection()
             self._update_stats()
             self._update_action_buttons()
 
@@ -1504,25 +1537,47 @@ class PreviewPanel(Vertical):
         return None
 
     def _update_action_buttons(self) -> None:
-        """Update merge/delete/undo button states based on current state."""
+        """Update merge/delete/undo/edit button states based on selection."""
+        selected_count = len(self._get_selected_items())
+        selected_indices = self._get_selected_indices()
         highlighted = self._get_highlighted_item()
 
         merge_btn = self.query_one("#preview-merge", Button)
         delete_btn = self.query_one("#preview-delete", Button)
         undo_btn = self.query_one("#preview-undo", Button)
+        edit_btn = self.query_one("#preview-edit", Button)
 
-        if highlighted:
-            # Can merge if there's a next chapter
-            next_item = self._get_next_item(highlighted)
-            merge_btn.disabled = next_item is None
-            # Can always delete the highlighted chapter
-            delete_btn.disabled = False
+        # Update button labels with selection count
+        if selected_count > 0:
+            delete_btn.label = f"🗑️ Delete ({selected_count})"
+        else:
+            delete_btn.label = "🗑️ Delete"
+
+        if selected_count >= 2:
+            merge_btn.label = f"🔗 Merge ({selected_count})"
+        else:
+            merge_btn.label = "🔗 Merge"
+
+        # Enable delete if at least one selected
+        delete_btn.disabled = selected_count < 1
+
+        # Enable merge if 2+ adjacent chapters selected
+        if selected_count >= 2:
+            # Check if adjacent
+            selected_indices.sort()
+            is_adjacent = all(
+                selected_indices[i + 1] - selected_indices[i] == 1
+                for i in range(len(selected_indices) - 1)
+            )
+            merge_btn.disabled = not is_adjacent
         else:
             merge_btn.disabled = True
-            delete_btn.disabled = True
 
         # Undo is enabled if there's something in the stack
         undo_btn.disabled = len(self._undo_stack) == 0
+
+        # Edit is enabled if there's a highlighted item
+        edit_btn.disabled = highlighted is None
 
     def _save_undo_state(self) -> None:
         """Save current chapters to undo stack (deep copy)."""
@@ -1532,6 +1587,10 @@ class PreviewPanel(Vertical):
 
         snapshot = deepcopy(self.preview_state.chapters)
         self._undo_stack.append(snapshot)
+
+        # Enforce stack size limit to prevent memory issues
+        while len(self._undo_stack) > self.MAX_UNDO_STACK:
+            self._undo_stack.pop(0)
 
     def _rebuild_chapter_list(self) -> None:
         """Rebuild the ListView from current chapters."""
@@ -1603,6 +1662,11 @@ class PreviewPanel(Vertical):
             self.app.notify("Highlight a chapter first", severity="warning")
             return
 
+        # Prevent deleting the last chapter
+        if len(self.preview_state.chapters) <= 1:
+            self.app.notify("Cannot delete the last chapter", severity="error")
+            return
+
         # Save state for undo BEFORE making changes
         self._save_undo_state()
 
@@ -1635,6 +1699,193 @@ class PreviewPanel(Vertical):
         self._update_stats()
         self._update_action_buttons()
         self.app.notify("Undo successful", severity="information")
+
+    def _get_selected_items(self) -> list["ChapterPreviewItem"]:
+        """Get all selected chapter items in order."""
+        list_view = self.query_one("#chapter-tree", ListView)
+        selected = []
+        for item in list_view.children:
+            if isinstance(item, ChapterPreviewItem) and item.is_selected:
+                selected.append(item)
+        return selected
+
+    def _get_selected_indices(self) -> list[int]:
+        """Get indices of all selected items."""
+        list_view = self.query_one("#chapter-tree", ListView)
+        indices = []
+        for i, item in enumerate(list_view.children):
+            if isinstance(item, ChapterPreviewItem) and item.is_selected:
+                indices.append(i)
+        return indices
+
+    def _clear_all_selections(self) -> None:
+        """Clear all selections."""
+        list_view = self.query_one("#chapter-tree", ListView)
+        for item in list_view.children:
+            if isinstance(item, ChapterPreviewItem) and item.is_selected:
+                item.is_selected = False
+                item.remove_class("selected")
+                item.refresh_display()
+
+    def batch_delete(self) -> None:
+        """Delete all selected chapters at once."""
+        if not self.preview_state:
+            return
+
+        selected = self._get_selected_items()
+        if not selected:
+            self.app.notify("Select chapters first (click to select)", severity="warning")
+            return
+
+        # Prevent deleting all chapters
+        remaining = len(self.preview_state.chapters) - len(selected)
+        if remaining < 1:
+            self.app.notify("Cannot delete all chapters. Keep at least one.", severity="error")
+            return
+
+        # Save state for undo
+        self._save_undo_state()
+
+        # Get chapters to delete
+        chapters_to_delete = [item.chapter for item in selected]
+        deleted_count = len(chapters_to_delete)
+
+        # Remove chapters
+        for chapter in chapters_to_delete:
+            self.preview_state.chapters.remove(chapter)
+
+        # Rebuild UI
+        self._rebuild_chapter_list()
+        self.preview_state.modified = True
+
+        self._update_stats()
+        self._update_action_buttons()
+        self.app.notify(f"Deleted {deleted_count} chapter(s)", severity="information")
+
+    def batch_merge(self) -> None:
+        """Merge all selected chapters if they are adjacent."""
+        if not self.preview_state:
+            return
+
+        indices = self._get_selected_indices()
+        if len(indices) < 2:
+            self.app.notify("Select at least 2 adjacent chapters to merge", severity="warning")
+            return
+
+        # Check if indices are consecutive (adjacent)
+        indices.sort()
+        is_adjacent = all(indices[i + 1] - indices[i] == 1 for i in range(len(indices) - 1))
+
+        if not is_adjacent:
+            self.app.notify("Selected chapters must be adjacent to merge", severity="error")
+            return
+
+        # Save state for undo
+        self._save_undo_state()
+
+        # Get chapters to merge (in order)
+        chapters = [self.preview_state.chapters[i] for i in indices]
+        target = chapters[0]
+
+        # Combine titles
+        titles = [c.title for c in chapters]
+        target.title = " + ".join(titles)
+
+        # Merge content
+        contents = []
+        for c in chapters:
+            if c.original_content:
+                contents.append(c.original_content)
+        target.original_content = "\n\n".join(contents)
+
+        # Sum stats
+        target.word_count = sum(c.word_count for c in chapters)
+        target.paragraph_count = sum(c.paragraph_count for c in chapters)
+
+        # Remove merged chapters (all except first)
+        for chapter in chapters[1:]:
+            self.preview_state.chapters.remove(chapter)
+
+        # Rebuild UI
+        self._rebuild_chapter_list()
+        self.preview_state.modified = True
+
+        self._update_stats()
+        self._update_action_buttons()
+        self.app.notify(
+            f"Merged {len(chapters)} chapters into '{target.title[:30]}...'",
+            severity="information",
+        )
+
+    def edit_highlighted_title(self) -> None:
+        """Edit the title of the highlighted chapter using an inline Input."""
+        if not self.preview_state:
+            return
+
+        highlighted = self._get_highlighted_item()
+        if not highlighted:
+            self.app.notify("Highlight a chapter to edit its title", severity="warning")
+            return
+
+        # Create an input with current title
+        from textual.widgets import Input
+
+        # Create an Input widget
+        input_widget = Input(
+            value=highlighted.chapter.title,
+            id="title-edit-input",
+            placeholder="Enter new title...",
+        )
+        input_widget.chapter_item = highlighted  # Store reference to item
+
+        # Replace the label temporarily with input
+        label = highlighted.query_one(Label)
+        label.display = False
+        highlighted.mount(input_widget)
+        input_widget.focus()
+
+    def _finish_title_edit(self, input_widget, new_title: str) -> None:
+        """Complete the title edit operation."""
+        chapter_item = input_widget.chapter_item
+
+        if new_title.strip():
+            # Save undo state
+            self._save_undo_state()
+
+            # Update the chapter title
+            chapter_item.chapter.title = new_title.strip()
+            self.preview_state.modified = True
+
+            self.app.notify(f"Renamed to: {new_title[:30]}...", severity="information")
+
+        # Remove input and restore label
+        input_widget.remove()
+        label = chapter_item.query_one(Label)
+        label.display = True
+        chapter_item.refresh_display()
+
+    def on_input_submitted(self, event) -> None:
+        """Handle Enter key in title edit input."""
+        if event.input.id == "title-edit-input":
+            self._finish_title_edit(event.input, event.value)
+
+    def on_key(self, event) -> None:
+        """Handle keyboard shortcuts."""
+        if event.key == "e" or event.key == "E":
+            # Edit highlighted chapter title
+            self.edit_highlighted_title()
+            event.stop()
+        elif event.key == "escape":
+            # Cancel title edit if active
+            try:
+                input_widget = self.query_one("#title-edit-input", Input)
+                chapter_item = input_widget.chapter_item
+                input_widget.remove()
+                label = chapter_item.query_one(Label)
+                label.display = True
+                event.stop()
+            except Exception:
+                pass  # No edit in progress
 
     class ApproveAndStart(Message):
         """Message sent when user clicks Approve & Start."""

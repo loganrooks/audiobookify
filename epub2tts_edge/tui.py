@@ -87,6 +87,55 @@ class ChapterPreviewState:
         """Get total word count of included chapters."""
         return sum(c.word_count for c in self.get_included_chapters())
 
+    def get_chapter_selection_string(self) -> str | None:
+        """Convert included chapters to a selection string (e.g., '1,3,5-7').
+
+        Returns:
+            Selection string for ChapterSelector, or None if all chapters included.
+        """
+        if not self.chapters:
+            return None
+
+        # Get indices of included chapters (1-indexed for user display)
+        included_indices = [
+            i + 1  # Convert to 1-indexed
+            for i, ch in enumerate(self.chapters)
+            if ch.included and ch.merged_into is None
+        ]
+
+        # If all chapters are included, return None (means "all")
+        if len(included_indices) == len(self.chapters):
+            return None
+
+        if not included_indices:
+            return ""  # Nothing selected
+
+        # Convert to ranges for compact representation
+        # e.g., [1, 2, 3, 5, 7, 8, 9] → "1-3,5,7-9"
+        ranges: list[str] = []
+        start = included_indices[0]
+        end = start
+
+        for idx in included_indices[1:]:
+            if idx == end + 1:
+                # Consecutive
+                end = idx
+            else:
+                # Gap - emit current range
+                if start == end:
+                    ranges.append(str(start))
+                else:
+                    ranges.append(f"{start}-{end}")
+                start = end = idx
+
+        # Emit final range
+        if start == end:
+            ranges.append(str(start))
+        else:
+            ranges.append(f"{start}-{end}")
+
+        return ",".join(ranges)
+
 
 class VoicePreviewStatus(Static):
     """Widget to show voice preview generation and playback status."""
@@ -1691,17 +1740,44 @@ class AudiobookifyApp(App):
             self.notify("No chapters to process", severity="warning")
             return
 
+        if not preview_panel.preview_state:
+            self.notify("No preview state", severity="error")
+            return
+
         included = preview_panel.get_included_chapters()
         if not included:
             self.notify("No chapters selected", severity="warning")
             return
 
-        # Log what we're processing
-        self.log_message(f"✅ Processing {len(included)} approved chapters")
+        # Get chapter selection string for filtering
+        chapter_selection = preview_panel.preview_state.get_chapter_selection_string()
+        source_file = preview_panel.preview_state.source_file
 
-        # For now, start normal processing
-        # TODO: In future, pass filtered chapters to processing pipeline
-        self.action_start()
+        # Log what we're processing
+        total_chapters = len(preview_panel.preview_state.chapters)
+        if chapter_selection:
+            self.log_message(
+                f"✅ Processing {len(included)}/{total_chapters} chapters: {chapter_selection}"
+            )
+        else:
+            self.log_message(f"✅ Processing all {len(included)} chapters")
+
+        # Start processing with chapter filter
+        if self.is_processing:
+            self.notify("Processing already in progress", severity="warning")
+            return
+
+        self.is_processing = True
+        self.should_stop = False
+
+        progress_panel = self.query_one(ProgressPanel)
+        progress_panel.set_running(True)
+
+        queue_panel = self.query_one(QueuePanel)
+        queue_panel.clear_queue()
+
+        # Process the previewed file with chapter selection
+        self.current_worker = self.process_preview_file(source_file, chapter_selection)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Button Handlers
@@ -1997,6 +2073,134 @@ class AudiobookifyApp(App):
 
         # Processing complete
         self.call_from_thread(self._processing_complete, total)
+
+    @work(exclusive=True, thread=True)
+    def process_preview_file(self, epub_path: Path, chapter_selection: str | None) -> None:
+        """Process a single file from preview with chapter selection.
+
+        Args:
+            epub_path: Path to the EPUB file
+            chapter_selection: Chapter selection string (e.g., "1,3,5-7") or None for all
+        """
+        settings_panel = self.query_one(SettingsPanel)
+        config_dict = settings_panel.get_config()
+
+        # Create task
+        task = BookTask(epub_path=str(epub_path))
+
+        # Add to queue display
+        self.call_from_thread(self.query_one(QueuePanel).add_task, task)
+
+        # Update progress
+        self.call_from_thread(
+            self.query_one(ProgressPanel).set_progress,
+            0,
+            1,
+            epub_path.name,
+            "Processing with chapter filter...",
+        )
+
+        self.call_from_thread(self.log_message, f"📖 Processing: {epub_path.name}")
+        if chapter_selection:
+            self.call_from_thread(self.log_message, f"  📑 Selected chapters: {chapter_selection}")
+
+        # Process the book
+        try:
+            task.status = ProcessingStatus.EXPORTING
+            self.call_from_thread(self.query_one(QueuePanel).update_task, task)
+            self.call_from_thread(self.log_message, "  📝 Exporting to text...")
+
+            # Create config with chapter selection override
+            config = BatchConfig(
+                input_path=str(epub_path),
+                speaker=config_dict["speaker"],
+                detection_method=config_dict["detection_method"],
+                hierarchy_style=config_dict["hierarchy_style"],
+                skip_existing=config_dict["skip_existing"],
+                export_only=config_dict["export_only"],
+                # v2.1.0 options
+                tts_rate=config_dict.get("tts_rate"),
+                tts_volume=config_dict.get("tts_volume"),
+                # Chapter selection from preview (overrides settings panel)
+                chapters=chapter_selection,
+                # Pause settings
+                sentence_pause=config_dict.get("sentence_pause", 1200),
+                paragraph_pause=config_dict.get("paragraph_pause", 1200),
+            )
+
+            processor = BatchProcessor(config)
+            processor.prepare()
+
+            if processor.result.tasks:
+                book_task = processor.result.tasks[0]
+
+                # Update status in real-time during processing
+                export_only = config_dict["export_only"]
+                if not export_only:
+                    self.call_from_thread(self.log_message, "  🔊 Converting to audio...")
+                    task.status = ProcessingStatus.CONVERTING
+                    self.call_from_thread(self.query_one(QueuePanel).update_task, task)
+
+                # Create progress callback for chapter/paragraph updates
+                def progress_callback(info):
+                    """Handle progress updates from audio generation."""
+                    self.call_from_thread(
+                        self.query_one(ProgressPanel).set_chapter_progress,
+                        info.chapter_num,
+                        info.total_chapters,
+                        info.chapter_title,
+                        info.paragraph_num,
+                        info.total_paragraphs,
+                    )
+                    # Also log chapter starts
+                    if info.status == "chapter_start":
+                        self.call_from_thread(
+                            self.log_message,
+                            f"  📖 Chapter {info.chapter_num}/{info.total_chapters}: {info.chapter_title[:50]}",
+                        )
+
+                # Create cancellation check
+                def check_cancelled():
+                    return self.should_stop
+
+                success = processor.process_book(
+                    book_task,
+                    progress_callback=progress_callback,
+                    cancellation_check=check_cancelled,
+                )
+
+                task.status = book_task.status
+                task.chapter_count = book_task.chapter_count
+                task.start_time = book_task.start_time
+                task.end_time = book_task.end_time
+
+                if success:
+                    duration = task.duration
+                    time_str = f" ({int(duration)}s)" if duration else ""
+                    self.call_from_thread(
+                        self.log_message, f"✅ Completed: {epub_path.name}{time_str}"
+                    )
+                else:
+                    self.call_from_thread(
+                        self.log_message,
+                        f"❌ Failed: {epub_path.name} - {book_task.error_message}",
+                    )
+            else:
+                task.status = ProcessingStatus.SKIPPED
+                self.call_from_thread(
+                    self.log_message, f"⏭️ Skipped: {epub_path.name} (no tasks created)"
+                )
+
+        except Exception as e:
+            task.status = ProcessingStatus.FAILED
+            task.error_message = str(e)
+            self.call_from_thread(self.log_message, f"❌ Error: {epub_path.name} - {e}")
+
+        # Update queue display
+        self.call_from_thread(self.query_one(QueuePanel).update_task, task)
+
+        # Processing complete
+        self.call_from_thread(self._processing_complete, 1)
 
     @work(exclusive=True, thread=True)
     def process_text_files(self, files: list[Path]) -> None:

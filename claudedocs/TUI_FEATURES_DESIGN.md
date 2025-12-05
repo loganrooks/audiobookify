@@ -1160,10 +1160,11 @@ def process_with_preview(self) -> None:
 
 | Feature | Priority | Effort | Dependencies |
 |---------|----------|--------|--------------|
-| **Preview Tab (Phase 1)** | HIGH | Medium | None |
+| **Preview Tab (Phase 1)** | HIGH | Medium | None ✅ DONE |
+| **Preview Tab (Phase 2)** | HIGH | Medium | Phase 1 ✅ DONE |
 | **Keyboard Navigation** | HIGH | Small | None ✅ DONE |
 | **Job Status Legend** | HIGH | Small | None |
-| **Preview Tab (Phase 2-4)** | HIGH | Large | Preview Tab Phase 1 |
+| **Preview Tab (Phase 3-4)** | HIGH | Large | Phase 2 |
 | **tui.py split** | MEDIUM | Large | None |
 | **Path History** | MEDIUM | Medium | UserPreferences class |
 | **Path Autocomplete** | MEDIUM | Medium | PathInput widget |
@@ -1171,14 +1172,15 @@ def process_with_preview(self) -> None:
 
 ### Recommended Order
 1. ✅ **Keyboard Navigation** - DONE
-2. **Preview Tab Phase 1** - Basic interactive preview (high user impact)
-3. **Job Status Legend** - Quick win, helps users
-4. **Preview Tab Phase 2** - Include/exclude chapters
+2. ✅ **Preview Tab Phase 1** - Basic interactive preview - DONE
+3. ✅ **Preview Tab Phase 2** - Include/exclude affects processing - DONE
+4. **Job Status Legend** - Quick win, helps users
 5. **Preview Tab Phase 3** - Chapter merging
-6. **Split tui.py** - Foundational for future work
-7. **User Preferences** - Enables path history
-8. **Path History** - Depends on UserPreferences
-9. **Path Autocomplete** - Most complex, do last
+6. **Preview Tab Phase 4** - Content preview pane
+7. **Split tui.py** - Foundational for future work
+8. **User Preferences** - Enables path history
+9. **Path History** - Depends on UserPreferences
+10. **Path Autocomplete** - Most complex, do last
 
 ---
 
@@ -1188,3 +1190,4 @@ def process_with_preview(self) -> None:
 |------|--------|-------------|
 | 2024-12-04 | Claude | Initial design document |
 | 2024-12-05 | Claude | Added Preview Tab & Chapter Approval Workflow design |
+| 2024-12-05 | Claude | Marked Preview Tab Phases 1 & 2 as complete |

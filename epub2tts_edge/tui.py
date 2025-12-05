@@ -1016,6 +1016,7 @@ class AudiobookifyApp(App):
         Binding("d", "deselect_all", "Deselect All"),
         Binding("p", "preview_voice", "Preview Voice"),
         Binding("?", "help", "Help"),
+        Binding("ctrl+d", "toggle_debug", "Debug", show=False),
     ]
 
     def __init__(self, initial_path: str = ".") -> None:
@@ -1025,6 +1026,7 @@ class AudiobookifyApp(App):
         self.should_stop = False
         self.current_worker: Worker | None = None
         self.job_manager = JobManager()
+        self.debug_mode = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -1059,6 +1061,18 @@ class AudiobookifyApp(App):
             log_panel.write(message)
         except Exception:
             pass
+
+    def log_debug(self, message: str) -> None:
+        """Log a debug message (only shown when debug mode is enabled)."""
+        if self.debug_mode:
+            self.log_message(f"[DEBUG] {message}")
+
+    def action_toggle_debug(self) -> None:
+        """Toggle debug logging mode."""
+        self.debug_mode = not self.debug_mode
+        status = "enabled" if self.debug_mode else "disabled"
+        self.notify(f"Debug logging {status}", title="Debug Mode")
+        self.log_message(f"🔧 Debug logging {status} (Ctrl+D to toggle)")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "start-btn":
@@ -1504,25 +1518,22 @@ class AudiobookifyApp(App):
         source_path = Path(job.source_file)
         book_name = source_path.name
 
-        # Log detailed job info for debugging
-        self.call_from_thread(self.log_message, f"   Job ID: {job.job_id}")
-        self.call_from_thread(self.log_message, f"   Job dir: {job.job_dir}")
-        self.call_from_thread(self.log_message, f"   Status: {job.status.value}")
+        # Log detailed job info for debugging (only in debug mode)
+        self.call_from_thread(self.log_debug, f"Job ID: {job.job_id}")
+        self.call_from_thread(self.log_debug, f"Job dir: {job.job_dir}")
+        self.call_from_thread(self.log_debug, f"Status: {job.status.value}")
         self.call_from_thread(
-            self.log_message,
-            f"   Progress: {job.completed_chapters}/{job.total_chapters} chapters",
+            self.log_debug,
+            f"Progress: {job.completed_chapters}/{job.total_chapters} chapters",
         )
-        self.call_from_thread(self.log_message, f"   Voice: {job.speaker}")
+        self.call_from_thread(self.log_debug, f"Voice: {job.speaker}")
 
         # Create task for the job
         task = BookTask(epub_path=str(source_path))
         task.job_id = job.job_id
         task.job_dir = job.job_dir
 
-        self.call_from_thread(
-            self.log_message,
-            f"   Task created with job_id={task.job_id}",
-        )
+        self.call_from_thread(self.log_debug, f"Task created with job_id={task.job_id}")
 
         # Add to queue display
         self.call_from_thread(self.query_one(QueuePanel).add_task, task)
@@ -1533,7 +1544,7 @@ class AudiobookifyApp(App):
             if job.completed_chapters > 0:
                 self.call_from_thread(
                     self.log_message,
-                    f"   Will skip {job.completed_chapters} completed chapters...",
+                    f"   Skipping {job.completed_chapters} completed chapters...",
                 )
 
             # Create config using job's saved settings for consistency
@@ -1849,14 +1860,15 @@ class AudiobookifyApp(App):
         """Show help."""
         self.log_message("─" * 40)
         self.log_message("Keyboard Shortcuts:")
-        self.log_message("  s     - Start processing")
-        self.log_message("  Esc   - Stop processing")
-        self.log_message("  r     - Refresh file list")
-        self.log_message("  a     - Select all files")
-        self.log_message("  d     - Deselect all files")
-        self.log_message("  p     - Preview selected voice")
-        self.log_message("  q     - Quit")
-        self.log_message("  ?     - Show this help")
+        self.log_message("  s      - Start processing")
+        self.log_message("  Esc    - Stop processing")
+        self.log_message("  r      - Refresh file list")
+        self.log_message("  a      - Select all files")
+        self.log_message("  d      - Deselect all files")
+        self.log_message("  p      - Preview selected voice")
+        self.log_message("  Ctrl+D - Toggle debug logging")
+        self.log_message("  q      - Quit")
+        self.log_message("  ?      - Show this help")
         self.log_message("─" * 40)
         self.log_message("")
         self.log_message("💡 Tip: Font Size")

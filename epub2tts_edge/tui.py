@@ -1369,7 +1369,7 @@ class PreviewPanel(Vertical):
 
         # Instruction label for editing - CLEAR that Start processes ALL
         yield Label(
-            "📝 Space=select, Shift+Space=range, M=merge, X=delete, U=undo | Start=ALL",
+            "📝 Space=select, Enter=range, M=merge, X=delete, U=undo | Start=ALL",
             id="preview-instructions",
         )
 
@@ -1988,7 +1988,7 @@ class PreviewPanel(Vertical):
         - e/E: Edit chapter title
         - Escape: Cancel title edit
         - Space: Toggle selection and set anchor
-        - Shift+Space: Select range from anchor to current
+        - Enter: Select range from anchor to current
         """
         if event.key == "e" or event.key == "E":
             # Edit highlighted chapter title
@@ -2005,18 +2005,12 @@ class PreviewPanel(Vertical):
                 event.stop()
             except Exception:
                 pass  # No edit in progress
-        elif event.key == "shift+space":
-            # Shift+Space: select range from anchor to current
+        elif event.key == "enter":
+            # Enter: select range from anchor to current (if anchor set)
             highlighted = self._get_highlighted_item()
             if highlighted and self._last_selected_index is not None:
+                # Range selection from anchor to current
                 self._select_range(self._last_selected_index, highlighted.index)
-                self._update_stats()
-                self._update_action_buttons()
-                event.stop()
-            elif highlighted:
-                # No anchor yet, just select current and set anchor
-                highlighted.set_selected(True)
-                self._last_selected_index = highlighted.index
                 self._update_stats()
                 self._update_action_buttons()
                 event.stop()
@@ -2106,7 +2100,7 @@ class HelpScreen(ModalScreen):
 
             yield Label("── Preview Tab ──", classes="section")
             yield Static("  Space          Select/deselect (sets anchor)")
-            yield Static("  Shift+Space    Select range (anchor→current)")
+            yield Static("  Enter          Select range (anchor→current)")
             yield Static("  m              Merge selected chapters")
             yield Static("  x              Delete selected chapters")
             yield Static("  u              Undo last operation")

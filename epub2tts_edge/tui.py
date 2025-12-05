@@ -1307,6 +1307,7 @@ class PreviewPanel(Vertical):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self.preview_state: ChapterPreviewState | None = None
+        self._undo_stack: list[list[PreviewChapter]] = []  # Stack of chapter snapshots
 
     def compose(self) -> ComposeResult:
         # Header with book info
@@ -1331,8 +1332,8 @@ class PreviewPanel(Vertical):
             yield Button("All", id="preview-select-all")
             yield Button("None", id="preview-select-none")
             yield Button("Merge↓", id="preview-merge", disabled=True)
-            yield Button("Exclude", id="preview-delete", disabled=True)
-            yield Button("👁️", id="preview-content", disabled=True)
+            yield Button("Delete", id="preview-delete", disabled=True)
+            yield Button("Undo", id="preview-undo", disabled=True)
             yield Button("✅ Start", id="preview-approve", classes="approve", disabled=True)
 
     def on_mount(self) -> None:
@@ -1384,6 +1385,7 @@ class PreviewPanel(Vertical):
     def clear_preview(self) -> None:
         """Clear the current preview."""
         self.preview_state = None
+        self._undo_stack.clear()
         self.query_one("#book-title", Label).update("Select a file and click 'Preview Chapters'")
         self.query_one("#chapter-stats", Label).update("")
         self.query_one("#no-preview").display = True
@@ -1392,6 +1394,7 @@ class PreviewPanel(Vertical):
         self.query_one("#content-preview").display = False
         self.query_one("#preview-content", Button).disabled = True
         self.query_one("#preview-approve", Button).disabled = True
+        self.query_one("#preview-undo", Button).disabled = True
 
     def has_chapters(self) -> bool:
         """Check if there are chapters loaded."""
@@ -1464,7 +1467,9 @@ class PreviewPanel(Vertical):
         elif event.button.id == "preview-merge":
             self.merge_with_next()
         elif event.button.id == "preview-delete":
-            self.exclude_highlighted()
+            self.delete_chapter()
+        elif event.button.id == "preview-undo":
+            self.undo()
         elif event.button.id == "preview-approve":
             # Bubble up to app
             self.post_message(self.ApproveAndStart())
@@ -1501,25 +1506,48 @@ class PreviewPanel(Vertical):
         return None
 
     def _update_action_buttons(self) -> None:
-        """Update merge/exclude button states based on highlighted item."""
+        """Update merge/delete/undo button states based on current state."""
         highlighted = self._get_highlighted_item()
 
         merge_btn = self.query_one("#preview-merge", Button)
         delete_btn = self.query_one("#preview-delete", Button)
+        undo_btn = self.query_one("#preview-undo", Button)
 
         if highlighted:
             # Can merge if there's a next chapter
             next_item = self._get_next_item(highlighted)
-            can_merge = next_item is not None and highlighted.chapter.included
-            merge_btn.disabled = not can_merge
-            # Can exclude if chapter is included
-            delete_btn.disabled = not highlighted.chapter.included
+            merge_btn.disabled = next_item is None
+            # Can always delete the highlighted chapter
+            delete_btn.disabled = False
         else:
             merge_btn.disabled = True
             delete_btn.disabled = True
 
+        # Undo is enabled if there's something in the stack
+        undo_btn.disabled = len(self._undo_stack) == 0
+
+    def _save_undo_state(self) -> None:
+        """Save current chapters to undo stack (deep copy)."""
+        if not self.preview_state:
+            return
+        from copy import deepcopy
+
+        snapshot = deepcopy(self.preview_state.chapters)
+        self._undo_stack.append(snapshot)
+
+    def _rebuild_chapter_list(self) -> None:
+        """Rebuild the ListView from current chapters."""
+        if not self.preview_state:
+            return
+
+        chapter_tree = self.query_one("#chapter-tree", ListView)
+        chapter_tree.clear()
+
+        for i, chapter in enumerate(self.preview_state.chapters):
+            chapter_tree.append(ChapterPreviewItem(chapter, i))
+
     def merge_with_next(self) -> None:
-        """Merge the highlighted chapter with the one below it."""
+        """Merge highlighted chapter with the one below it - visually combines them."""
         if not self.preview_state:
             return
 
@@ -1533,8 +1561,14 @@ class PreviewPanel(Vertical):
             self.app.notify("No chapter below to merge with", severity="warning")
             return
 
+        # Save state for undo BEFORE making changes
+        self._save_undo_state()
+
         target = target_item.chapter
         source = next_item.chapter
+
+        # Combine titles
+        target.title = f"{target.title} + {source.title}"
 
         # Merge content
         merged_content = []
@@ -1542,29 +1576,27 @@ class PreviewPanel(Vertical):
             merged_content.append(target.original_content)
         if source.original_content:
             merged_content.append(source.original_content)
-
         target.original_content = "\n\n".join(merged_content)
+
+        # Combine stats
         target.word_count += source.word_count
         target.paragraph_count += source.paragraph_count
-        target.title = target.title + " (+ 1 merged)"
 
-        # Mark source as merged
-        source.merged_into = target_item.index
-        source.included = False
+        # Remove the source chapter from the list
+        self.preview_state.chapters.remove(source)
+
+        # Rebuild the list view
+        self._rebuild_chapter_list()
 
         # Mark state as modified
         self.preview_state.modified = True
 
-        # Update displays
-        target_item.refresh_display()
-        next_item.refresh_display()
-
         self._update_stats()
         self._update_action_buttons()
-        self.app.notify("Merged with next chapter", severity="information")
+        self.app.notify(f"Merged: {target.title}", severity="information")
 
-    def exclude_highlighted(self) -> None:
-        """Exclude the highlighted chapter."""
+    def delete_chapter(self) -> None:
+        """Delete the highlighted chapter from the list."""
         if not self.preview_state:
             return
 
@@ -1573,19 +1605,38 @@ class PreviewPanel(Vertical):
             self.app.notify("Highlight a chapter first", severity="warning")
             return
 
-        if not item.chapter.included:
-            self.app.notify("Chapter already excluded", severity="warning")
-            return
+        # Save state for undo BEFORE making changes
+        self._save_undo_state()
 
-        item.chapter.included = False
-        item.refresh_display()
+        chapter = item.chapter
+
+        # Remove from chapters list
+        self.preview_state.chapters.remove(chapter)
+
+        # Rebuild the list view
+        self._rebuild_chapter_list()
 
         # Mark state as modified
         self.preview_state.modified = True
 
         self._update_stats()
         self._update_action_buttons()
-        self.app.notify("Chapter excluded", severity="information")
+        self.app.notify(f"Deleted: {chapter.title}", severity="information")
+
+    def undo(self) -> None:
+        """Undo the last merge or delete operation."""
+        if not self.preview_state or not self._undo_stack:
+            return
+
+        # Restore chapters from undo stack
+        self.preview_state.chapters = self._undo_stack.pop()
+
+        # Rebuild the list view
+        self._rebuild_chapter_list()
+
+        self._update_stats()
+        self._update_action_buttons()
+        self.app.notify("Undo successful", severity="information")
 
     class ApproveAndStart(Message):
         """Message sent when user clicks Approve & Start."""
@@ -1664,7 +1715,8 @@ class HelpScreen(ModalScreen):
             yield Label("── Preview Tab ──", classes="section")
             yield Static("  Enter          Toggle chapter include/exclude")
             yield Static("  m              Merge with next chapter")
-            yield Static("  x              Exclude highlighted chapter")
+            yield Static("  x              Delete highlighted chapter")
+            yield Static("  u              Undo last merge/delete")
 
             yield Label("── Jobs ──", classes="section")
             yield Static("  R              Resume selected jobs")
@@ -1675,7 +1727,7 @@ class HelpScreen(ModalScreen):
             yield Static("  p              Preview selected voice")
 
             yield Label("── Tips ──", classes="section")
-            yield Static("  Preview: Click to toggle, M to merge↓")
+            yield Static("  Preview: M=merge↓, X=delete, U=undo")
             yield Static("  Font Size: Ctrl/Cmd + Plus/Minus")
 
             yield Static("Press Escape, ? or F1 to close", classes="hint")
@@ -1772,7 +1824,8 @@ class AudiobookifyApp(App):
         Binding("X", "delete_jobs", "Delete", show=False),
         # Preview tab operations
         Binding("m", "merge_chapters", "Merge↓", show=False),
-        Binding("x", "exclude_chapter", "Exclude", show=False),
+        Binding("x", "delete_chapter", "Delete", show=False),
+        Binding("u", "undo_preview", "Undo", show=False),
         # Help
         Binding("?", "show_help", "Help"),
         Binding("f1", "show_help", "Help", show=False),
@@ -1921,14 +1974,25 @@ class AudiobookifyApp(App):
         except Exception:
             pass
 
-    def action_exclude_chapter(self) -> None:
-        """Exclude highlighted chapter in Preview tab (X key)."""
+    def action_delete_chapter(self) -> None:
+        """Delete highlighted chapter in Preview tab (X key)."""
         try:
             tabs = self.query_one("#bottom-tabs", TabbedContent)
             if tabs.active != "preview-tab":
                 return
             preview_panel = self.query_one(PreviewPanel)
-            preview_panel.exclude_highlighted()
+            preview_panel.delete_chapter()
+        except Exception:
+            pass
+
+    def action_undo_preview(self) -> None:
+        """Undo last merge/delete in Preview tab (U key)."""
+        try:
+            tabs = self.query_one("#bottom-tabs", TabbedContent)
+            if tabs.active != "preview-tab":
+                return
+            preview_panel = self.query_one(PreviewPanel)
+            preview_panel.undo()
         except Exception:
             pass
 

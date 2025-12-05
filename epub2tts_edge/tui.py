@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from textual import events, work
+from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -1184,7 +1184,6 @@ class ChapterPreviewItem(ListItem):
         super().__init__()
         self.chapter = chapter
         self.index = index
-        self.is_multi_selected = False  # For multi-select operations (merge/delete)
 
     def compose(self) -> ComposeResult:
         yield Label(self._build_label())
@@ -1193,9 +1192,6 @@ class ChapterPreviewItem(ListItem):
         """Build the display label for this chapter."""
         # Include checkbox
         checkbox = "☑" if self.chapter.included else "☐"
-
-        # Multi-select indicator
-        select_marker = "▶" if self.is_multi_selected else " "
 
         indent = "  " * max(0, self.chapter.level - 1)
 
@@ -1212,22 +1208,12 @@ class ChapterPreviewItem(ListItem):
         if self.chapter.merged_into is not None:
             status = " [merged→" + str(self.chapter.merged_into + 1) + "]"
 
-        return f"{select_marker}{checkbox} {indent}{title} {stats}{status}"
+        return f"{checkbox} {indent}{title} {stats}{status}"
 
     def toggle_include(self) -> None:
         """Toggle chapter inclusion."""
         self.chapter.included = not self.chapter.included
         self.refresh_display()
-
-    def toggle_multi_select(self) -> None:
-        """Toggle multi-selection for merge/delete."""
-        self.is_multi_selected = not self.is_multi_selected
-        self.refresh_display()
-        # Update CSS class for visual feedback
-        if self.is_multi_selected:
-            self.add_class("multi-selected")
-        else:
-            self.remove_class("multi-selected")
 
     def refresh_display(self) -> None:
         """Refresh the display."""
@@ -1312,15 +1298,6 @@ class PreviewPanel(Vertical):
         text-style: strike;
     }
 
-    ChapterPreviewItem.multi-selected {
-        background: $primary-darken-2;
-    }
-
-    ChapterPreviewItem.multi-selected Label {
-        color: $text;
-        text-style: bold;
-    }
-
     ChapterPreviewItem.merged Label {
         color: $warning;
         text-style: italic;
@@ -1349,12 +1326,12 @@ class PreviewPanel(Vertical):
         # Content preview pane (expandable)
         yield Static("", id="content-preview")
 
-        # Action buttons - two rows
+        # Action buttons
         with Horizontal(id="preview-actions"):
             yield Button("All", id="preview-select-all")
             yield Button("None", id="preview-select-none")
-            yield Button("🔀 Merge", id="preview-merge", disabled=True)
-            yield Button("🗑️ Del", id="preview-delete", disabled=True)
+            yield Button("Merge↓", id="preview-merge", disabled=True)
+            yield Button("Exclude", id="preview-delete", disabled=True)
             yield Button("👁️", id="preview-content", disabled=True)
             yield Button("✅ Start", id="preview-approve", classes="approve", disabled=True)
 
@@ -1485,9 +1462,9 @@ class PreviewPanel(Vertical):
         elif event.button.id == "preview-content":
             self.toggle_content_preview()
         elif event.button.id == "preview-merge":
-            self.merge_selected()
+            self.merge_with_next()
         elif event.button.id == "preview-delete":
-            self.delete_selected()
+            self.exclude_highlighted()
         elif event.button.id == "preview-approve":
             # Bubble up to app
             self.post_message(self.ApproveAndStart())
@@ -1499,129 +1476,116 @@ class PreviewPanel(Vertical):
             self._update_stats()
             self._update_action_buttons()
 
-    def on_key(self, event: events.Key) -> None:
-        """Handle key events for multi-select (Space key)."""
-        if event.key == "space":
-            # Toggle multi-select on highlighted item
-            chapter_tree = self.query_one("#chapter-tree", ListView)
-            if chapter_tree.highlighted_child:
-                item = chapter_tree.highlighted_child
-                if isinstance(item, ChapterPreviewItem):
-                    item.toggle_multi_select()
-                    self._update_action_buttons()
-                    event.prevent_default()
-                    event.stop()
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        """Update buttons when highlight changes."""
+        self._update_action_buttons()
 
-    def toggle_multi_select_current(self) -> None:
-        """Toggle multi-selection on the currently highlighted chapter."""
+    def _get_highlighted_item(self) -> ChapterPreviewItem | None:
+        """Get the currently highlighted chapter item."""
         chapter_tree = self.query_one("#chapter-tree", ListView)
         if chapter_tree.highlighted_child:
             item = chapter_tree.highlighted_child
             if isinstance(item, ChapterPreviewItem):
-                item.toggle_multi_select()
-                self._update_action_buttons()
+                return item
+        return None
 
-    def clear_multi_selection(self) -> None:
-        """Clear all multi-selections."""
-        for item in self.query(ChapterPreviewItem):
-            if item.is_multi_selected:
-                item.is_multi_selected = False
-                item.remove_class("multi-selected")
-                item.refresh_display()
-        self._update_action_buttons()
-
-    def get_multi_selected_items(self) -> list[ChapterPreviewItem]:
-        """Get all multi-selected chapter items."""
-        return [item for item in self.query(ChapterPreviewItem) if item.is_multi_selected]
+    def _get_next_item(self, current: ChapterPreviewItem) -> ChapterPreviewItem | None:
+        """Get the chapter item after the current one."""
+        items = list(self.query(ChapterPreviewItem))
+        try:
+            idx = items.index(current)
+            if idx + 1 < len(items):
+                return items[idx + 1]
+        except ValueError:
+            pass
+        return None
 
     def _update_action_buttons(self) -> None:
-        """Update merge/delete button states based on selection."""
-        selected = self.get_multi_selected_items()
-        selected_count = len(selected)
+        """Update merge/exclude button states based on highlighted item."""
+        highlighted = self._get_highlighted_item()
 
-        # Merge requires 2+ consecutive chapters
         merge_btn = self.query_one("#preview-merge", Button)
         delete_btn = self.query_one("#preview-delete", Button)
 
-        merge_btn.disabled = selected_count < 2
-        delete_btn.disabled = selected_count < 1
+        if highlighted:
+            # Can merge if there's a next chapter
+            next_item = self._get_next_item(highlighted)
+            can_merge = next_item is not None and highlighted.chapter.included
+            merge_btn.disabled = not can_merge
+            # Can exclude if chapter is included
+            delete_btn.disabled = not highlighted.chapter.included
+        else:
+            merge_btn.disabled = True
+            delete_btn.disabled = True
 
-    def merge_selected(self) -> None:
-        """Merge multi-selected chapters into the first one."""
+    def merge_with_next(self) -> None:
+        """Merge the highlighted chapter with the one below it."""
         if not self.preview_state:
             return
 
-        selected = self.get_multi_selected_items()
-        if len(selected) < 2:
-            self.app.notify("Select 2+ chapters to merge (use Space to select)", severity="warning")
+        target_item = self._get_highlighted_item()
+        if not target_item:
+            self.app.notify("Highlight a chapter first", severity="warning")
             return
 
-        # Sort by index to get them in order
-        selected.sort(key=lambda x: x.index)
+        next_item = self._get_next_item(target_item)
+        if not next_item:
+            self.app.notify("No chapter below to merge with", severity="warning")
+            return
 
-        # First selected chapter is the target
-        target_item = selected[0]
         target = target_item.chapter
+        source = next_item.chapter
 
-        # Merge content from subsequent chapters
-        merged_content = [target.original_content] if target.original_content else []
-        merged_word_count = target.word_count
-        merged_para_count = target.paragraph_count
+        # Merge content
+        merged_content = []
+        if target.original_content:
+            merged_content.append(target.original_content)
+        if source.original_content:
+            merged_content.append(source.original_content)
 
-        for item in selected[1:]:
-            source = item.chapter
-            # Mark as merged
-            source.merged_into = target_item.index
-            source.included = False
-
-            # Combine content
-            if source.original_content:
-                merged_content.append(source.original_content)
-            merged_word_count += source.word_count
-            merged_para_count += source.paragraph_count
-
-        # Update target chapter
         target.original_content = "\n\n".join(merged_content)
-        target.word_count = merged_word_count
-        target.paragraph_count = merged_para_count
-        target.title = target.title + " (+ " + str(len(selected) - 1) + " merged)"
+        target.word_count += source.word_count
+        target.paragraph_count += source.paragraph_count
+        target.title = target.title + " (+ 1 merged)"
+
+        # Mark source as merged
+        source.merged_into = target_item.index
+        source.included = False
 
         # Mark state as modified
         self.preview_state.modified = True
 
         # Update displays
-        for item in selected:
-            item.is_multi_selected = False
-            item.remove_class("multi-selected")
-            item.refresh_display()
+        target_item.refresh_display()
+        next_item.refresh_display()
 
         self._update_stats()
         self._update_action_buttons()
-        self.app.notify(f"Merged {len(selected)} chapters", severity="information")
+        self.app.notify("Merged with next chapter", severity="information")
 
-    def delete_selected(self) -> None:
-        """Delete (exclude) multi-selected chapters."""
+    def exclude_highlighted(self) -> None:
+        """Exclude the highlighted chapter."""
         if not self.preview_state:
             return
 
-        selected = self.get_multi_selected_items()
-        if not selected:
-            self.app.notify("Select chapters to delete (use Space to select)", severity="warning")
+        item = self._get_highlighted_item()
+        if not item:
+            self.app.notify("Highlight a chapter first", severity="warning")
             return
 
-        # Mark all selected as excluded
-        for item in selected:
-            item.chapter.included = False
-            item.is_multi_selected = False
-            item.remove_class("multi-selected")
-            item.refresh_display()
+        if not item.chapter.included:
+            self.app.notify("Chapter already excluded", severity="warning")
+            return
+
+        item.chapter.included = False
+        item.refresh_display()
 
         # Mark state as modified
         self.preview_state.modified = True
 
         self._update_stats()
         self._update_action_buttons()
-        self.app.notify(f"Excluded {len(selected)} chapters", severity="information")
+        self.app.notify("Chapter excluded", severity="information")
 
     class ApproveAndStart(Message):
         """Message sent when user clicks Approve & Start."""
@@ -1699,10 +1663,8 @@ class HelpScreen(ModalScreen):
 
             yield Label("── Preview Tab ──", classes="section")
             yield Static("  Enter          Toggle chapter include/exclude")
-            yield Static("  Space          Toggle multi-select (for merge)")
-            yield Static("  m              Merge multi-selected chapters")
-            yield Static("  x              Exclude multi-selected chapters")
-            yield Static("  c              Clear multi-selection")
+            yield Static("  m              Merge with next chapter")
+            yield Static("  x              Exclude highlighted chapter")
 
             yield Label("── Jobs ──", classes="section")
             yield Static("  R              Resume selected jobs")
@@ -1713,7 +1675,7 @@ class HelpScreen(ModalScreen):
             yield Static("  p              Preview selected voice")
 
             yield Label("── Tips ──", classes="section")
-            yield Static("  Preview: Select chapters to include/merge")
+            yield Static("  Preview: Click to toggle, M to merge↓")
             yield Static("  Font Size: Ctrl/Cmd + Plus/Minus")
 
             yield Static("Press Escape, ? or F1 to close", classes="hint")
@@ -1809,10 +1771,8 @@ class AudiobookifyApp(App):
         Binding("R", "resume_jobs", "Resume", show=False),
         Binding("X", "delete_jobs", "Delete", show=False),
         # Preview tab operations
-        Binding("space", "toggle_chapter_select", "Select Chapter", show=False),
-        Binding("m", "merge_chapters", "Merge", show=False),
-        Binding("x", "exclude_chapters", "Exclude", show=False),
-        Binding("c", "clear_selection", "Clear Selection", show=False),
+        Binding("m", "merge_chapters", "Merge↓", show=False),
+        Binding("x", "exclude_chapter", "Exclude", show=False),
         # Help
         Binding("?", "show_help", "Help"),
         Binding("f1", "show_help", "Help", show=False),
@@ -1950,48 +1910,25 @@ class AudiobookifyApp(App):
         """Delete selected jobs (keyboard shortcut)."""
         self.action_delete_job()
 
-    def action_toggle_chapter_select(self) -> None:
-        """Toggle multi-selection on current chapter in Preview tab (Space key)."""
-        try:
-            # Check if Preview tab is active
-            tabs = self.query_one("#bottom-tabs", TabbedContent)
-            if tabs.active != "preview-tab":
-                return
-            preview_panel = self.query_one(PreviewPanel)
-            preview_panel.toggle_multi_select_current()
-        except Exception:
-            pass
-
     def action_merge_chapters(self) -> None:
-        """Merge multi-selected chapters in Preview tab (M key)."""
+        """Merge highlighted chapter with next in Preview tab (M key)."""
         try:
             tabs = self.query_one("#bottom-tabs", TabbedContent)
             if tabs.active != "preview-tab":
                 return
             preview_panel = self.query_one(PreviewPanel)
-            preview_panel.merge_selected()
+            preview_panel.merge_with_next()
         except Exception:
             pass
 
-    def action_exclude_chapters(self) -> None:
-        """Exclude multi-selected chapters in Preview tab (X key)."""
+    def action_exclude_chapter(self) -> None:
+        """Exclude highlighted chapter in Preview tab (X key)."""
         try:
             tabs = self.query_one("#bottom-tabs", TabbedContent)
             if tabs.active != "preview-tab":
                 return
             preview_panel = self.query_one(PreviewPanel)
-            preview_panel.delete_selected()
-        except Exception:
-            pass
-
-    def action_clear_selection(self) -> None:
-        """Clear multi-selection in Preview tab (C key)."""
-        try:
-            tabs = self.query_one("#bottom-tabs", TabbedContent)
-            if tabs.active != "preview-tab":
-                return
-            preview_panel = self.query_one(PreviewPanel)
-            preview_panel.clear_multi_selection()
+            preview_panel.exclude_highlighted()
         except Exception:
             pass
 

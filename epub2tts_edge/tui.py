@@ -20,6 +20,7 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.events import Click
 from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import (
@@ -1180,6 +1181,14 @@ class JobsPanel(Vertical):
 class ChapterPreviewItem(ListItem):
     """Interactive chapter item with selection for batch operations."""
 
+    class Clicked(Message):
+        """Message sent when chapter item is clicked with modifier info."""
+
+        def __init__(self, item: "ChapterPreviewItem", shift: bool) -> None:
+            super().__init__()
+            self.item = item
+            self.shift = shift
+
     def __init__(self, chapter: PreviewChapter, index: int) -> None:
         super().__init__()
         self.chapter = chapter
@@ -1206,6 +1215,12 @@ class ChapterPreviewItem(ListItem):
 
         return f"{checkbox} {indent}{title} {stats}"
 
+    def on_click(self, event: Click) -> None:
+        """Handle click with shift detection for range selection."""
+        # Post message to parent with shift state
+        self.post_message(self.Clicked(self, shift=event.shift))
+        event.stop()
+
     def toggle_selection(self) -> None:
         """Toggle selection for batch operations."""
         self.is_selected = not self.is_selected
@@ -1215,6 +1230,16 @@ class ChapterPreviewItem(ListItem):
             self.add_class("selected")
         else:
             self.remove_class("selected")
+
+    def set_selected(self, selected: bool) -> None:
+        """Set selection state directly (for range selection)."""
+        if self.is_selected != selected:
+            self.is_selected = selected
+            self.refresh_display()
+            if self.is_selected:
+                self.add_class("selected")
+            else:
+                self.remove_class("selected")
 
     def refresh_display(self) -> None:
         """Refresh the display."""
@@ -1322,8 +1347,9 @@ class PreviewPanel(Vertical):
         super().__init__(**kwargs)
         self.preview_state: ChapterPreviewState | None = None
         self._undo_stack: list[list[PreviewChapter]] = []  # Stack of chapter snapshots
-        self._last_selected_index: int | None = None  # Anchor for shift-click range select
-        self._shift_held: bool = False  # Track if shift key is held  # Stack of chapter snapshots
+        self._last_selected_index: int | None = (
+            None  # Anchor for shift-click range select  # Track if shift key is held  # Stack of chapter snapshots
+        )
 
     def compose(self) -> ComposeResult:
         # Header with book info
@@ -1512,27 +1538,38 @@ class PreviewPanel(Vertical):
             self.post_message(self.ApproveAndStart())
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
-        """Handle chapter selection - toggle selection for batch operations.
+        """Handle ListView selection - only for keyboard navigation (Enter key).
 
-        Supports shift-click for range selection:
+        Note: Click-based selection is handled by on_chapter_preview_item_clicked
+        to properly detect shift modifier for range selection.
+        """
+        # ListView.Selected is triggered by Enter key on highlighted item
+        # We still want Enter to toggle selection
+        if isinstance(event.item, ChapterPreviewItem):
+            event.item.toggle_selection()
+            self._last_selected_index = event.item.index
+            self._update_stats()
+            self._update_action_buttons()
+
+    def on_chapter_preview_item_clicked(self, event: ChapterPreviewItem.Clicked) -> None:
+        """Handle chapter item click with shift detection for range selection.
+
         - Regular click: Toggle selection, update anchor point
         - Shift+click: Select range from anchor to clicked item
         """
-        if isinstance(event.item, ChapterPreviewItem):
-            clicked_index = event.item.index
+        item = event.item
+        clicked_index = item.index
 
-            if self._shift_held and self._last_selected_index is not None:
-                # Range selection: select all items from anchor to clicked
-                self._select_range(self._last_selected_index, clicked_index)
-                # Reset shift state after range selection
-                self._shift_held = False
-            else:
-                # Regular toggle, update anchor point
-                event.item.toggle_selection()
-                self._last_selected_index = clicked_index
+        if event.shift and self._last_selected_index is not None:
+            # Range selection: select all items from anchor to clicked
+            self._select_range(self._last_selected_index, clicked_index)
+        else:
+            # Regular click: toggle selection, update anchor point
+            item.toggle_selection()
+            self._last_selected_index = clicked_index
 
-            self._update_stats()
-            self._update_action_buttons()
+        self._update_stats()
+        self._update_action_buttons()
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         """Update buttons when highlight changes."""
@@ -1763,10 +1800,7 @@ class PreviewPanel(Vertical):
         items = list(self.query(ChapterPreviewItem))
         for item in items:
             if start_index <= item.index <= end_index:
-                if not item.is_selected:
-                    item.is_selected = True
-                    item.add_class("selected")
-                    item.refresh_display()
+                item.set_selected(True)
 
     def batch_delete(self) -> None:
         """Delete all selected chapters at once."""
@@ -1911,14 +1945,8 @@ class PreviewPanel(Vertical):
             self._finish_title_edit(event.input, event.value)
 
     def on_key(self, event) -> None:
-        """Handle keyboard shortcuts and track modifier keys.
-
-        Tracks shift key state for shift-click range selection.
-        """
-        # Track shift key state for range selection
-        if event.key == "shift":
-            self._shift_held = True
-        elif event.key == "e" or event.key == "E":
+        """Handle keyboard shortcuts for chapter editing."""
+        if event.key == "e" or event.key == "E":
             # Edit highlighted chapter title
             self.edit_highlighted_title()
             event.stop()
@@ -1934,7 +1962,7 @@ class PreviewPanel(Vertical):
             except Exception:
                 pass  # No edit in progress
         elif event.key == "space":
-            # Space also toggles selection - track anchor
+            # Space toggles selection on highlighted - track anchor
             highlighted = self._get_highlighted_item()
             if highlighted:
                 self._last_selected_index = highlighted.index  # No edit in progress

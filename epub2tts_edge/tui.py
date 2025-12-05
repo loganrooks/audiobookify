@@ -2869,9 +2869,17 @@ class AudiobookifyApp(App):
                 self.call_from_thread(self.log_message, f"✅ Completed: {txt_path.name}")
 
             except Exception as e:
+                import traceback
+
                 task.status = ProcessingStatus.FAILED
                 task.error_message = str(e)
-                self.call_from_thread(self.log_message, f"❌ Error: {txt_path.name} - {e}")
+                # Log detailed error with traceback
+                self.call_from_thread(self.log_message, f"❌ Error: {txt_path.name}")
+                self.call_from_thread(self.log_message, f"   Exception: {type(e).__name__}: {e}")
+                # Log traceback lines for debugging
+                tb_lines = traceback.format_exc().strip().split("\n")
+                for line in tb_lines[-5:]:  # Last 5 lines of traceback
+                    self.call_from_thread(self.log_message, f"   {line}")
 
             finally:
                 os.chdir(original_dir)

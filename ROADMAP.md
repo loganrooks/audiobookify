@@ -2,6 +2,18 @@
 
 ## Current Version: 2.3.0
 
+### Design Documents
+
+The following design documents detail implementation plans for major features:
+
+| Document | Description | Status |
+|----------|-------------|--------|
+| [Architecture Refactor](./claudedocs/ARCHITECTURE_REFACTOR.md) | Module extraction, unified pipeline | Planning |
+| [Settings Panel Redesign](./claudedocs/SETTINGS_PANEL_REDESIGN.md) | Tabbed settings, actions separation | Planning |
+| [Testing Strategy](./claudedocs/TESTING_STRATEGY.md) | TUI tests, fixtures, CI integration | Planning |
+
+---
+
 ### Completed Features
 
 #### Phase 1: Enhanced Chapter Detection (v2.0.0)
@@ -60,34 +72,57 @@
 
 ### v2.4.0 - TUI Improvements & Additional Formats
 
-#### TUI Improvements (High Priority)
+#### TUI Improvements (Completed)
 - [x] **Compact FilePanel layout** - Merge title/mode/count into single row to maximize file list
 - [x] **Multi-select jobs** - Select multiple jobs for batch operations (delete, resume)
 - [x] **Job queue reordering** - Move jobs up/down in queue priority
 - [x] **Preview chapter editing** - Merge/delete chapters with undo, batch operations
 - [x] **Chapter title editing** - Inline title editing with E key
-- [ ] **Directory browser** - Add DirectoryTree modal for easier folder selection
 - [x] **Parent navigation** - Backspace key navigates to parent directory
-- [ ] **Path autocomplete** - Tab completion for directory input
-- [ ] **Collapsible settings** - Group settings into collapsible sections (Voice, Timing, Advanced)
-- [ ] **Settings reorganization** - Move action buttons out of Settings panel
-
-#### TUI Architecture Improvements (P1)
-- [ ] **Multi-file preview** - Tabbed interface to preview/edit multiple books before processing
-- [ ] **Book reordering** - Drag-and-drop or buttons to reorder books in processing queue
-- [ ] **Jobs panel integration** - Connect Preview workflow to JobManager for unified tracking
-- [ ] **Unified job tracking** - Single source of truth for all processing jobs (QueuePanel + JobsPanel)
-
-#### TUI Architecture Improvements (P2)
-- [ ] **Parallel job processing** - Process multiple books concurrently (configurable)
-- [ ] **Job persistence** - Save/restore job queue across TUI sessions
-- [ ] **Progress estimation** - Estimate time remaining based on word count and processing speed
-
-#### TUI Improvements (Medium Priority)
-- [ ] **Estimated duration** - Show per-chapter and total estimated audio time
-- [ ] **Path history** - Remember recently used directories
 - [x] **Keyboard navigation** - More shortcuts for common operations (1-4 tabs, /, Backspace, R, X, F1)
-- [ ] **Job status legend** - Popup or help text explaining job status icons
+
+#### TUI Improvements (Next)
+- [ ] **Shift-click range selection** - Select range of chapters for batch operations
+- [ ] **Directory browser** - Add DirectoryTree modal for easier folder selection
+- [ ] **Path autocomplete** - Tab completion for directory input
+- [ ] **Settings panel redesign** - Tabbed settings with actions separation (see [design doc](./claudedocs/SETTINGS_PANEL_REDESIGN.md))
+
+#### TUI Architecture (v2.5.0) - See [Architecture Refactor](./claudedocs/ARCHITECTURE_REFACTOR.md)
+
+**Phase 1: Module Extraction**
+- [ ] Extract tui.py monolith (3,372 lines) into organized modules
+- [ ] Create tui/panels/, tui/models/, tui/screens/ structure
+- [ ] Maintain backward compatibility during migration
+
+**Phase 2: Unified Processing Pipeline**
+- [ ] Implement EventBus for decoupled communication
+- [ ] Create unified ProcessingPipeline
+- [ ] Connect Preview workflow to JobManager
+- [ ] Single source of truth for all processing jobs
+
+**Phase 3: Enhanced Features**
+- [ ] Multi-file preview with tabbed interface
+- [ ] Parallel job processing (configurable concurrency)
+- [ ] Progress estimation based on word count
+- [ ] Processing profiles (Quick Draft, High Quality, etc.)
+
+#### Testing Infrastructure - See [Testing Strategy](./claudedocs/TESTING_STRATEGY.md)
+- [ ] Set up TUI integration tests with Textual's AppTest
+- [ ] Create test fixtures (create_test_epub helper)
+- [ ] Implement MockTTSEngine for fast testing
+- [ ] Add CI/CD workflow for automated testing
+
+#### Content Intelligence
+- [ ] **Empty chapter detection** - Flag/auto-remove chapters with no meaningful content
+- [ ] **Duplicate content detection** - Identify repeated sections
+- [ ] **ML-based chapter detection** - Learn patterns from book structure
+- [ ] **Smart front/back matter** - Auto-identify title pages, copyright, indexes
+- [ ] **Footnote handling** - Options to inline, append, or skip footnotes
+
+#### Quality of Life
+- [ ] **Output naming templates** - Configurable "{author} - {title}.m4b" patterns
+- [ ] **Quick edit shortcuts** - Keyboard shortcuts for common edit patterns
+- [ ] **Batch chapter operations** - Apply same edit across multiple books
 
 #### Format Support
 - [ ] **PDF support** - Extract text from PDF files
@@ -99,7 +134,6 @@
 - [ ] **Local TTS engines** - Offline conversion (Piper, Coqui)
 - [ ] **GPU acceleration** - Faster processing with CUDA
 - [ ] **Streaming mode** - Start playback while converting
-- [ ] **Cloud sync** - Sync audiobook library across devices
 - [ ] **Audiobook metadata** - Enhanced ID3/M4B tags
 
 ### v3.0.0 - Platform Expansion
@@ -118,11 +152,14 @@
 3. **Complex layouts** - Tables, sidebars may not extract well
 4. **Non-English** - Some languages have limited voice options
 
-### TUI Architecture Limitations
-1. **Preview is single-file only** - When multiple files selected, only first is previewed
-2. **Jobs panel disconnected from Preview** - Preview→Start workflow doesn't create entries in Jobs panel
-3. **Two tracking systems** - QueuePanel (current processing) and JobsPanel (persistent jobs) are separate
-4. **No multi-book preview editing** - Cannot preview/edit multiple books before batch processing
+### TUI Architecture Limitations (Addressed in v2.5.0)
+
+These are documented in [Architecture Refactor](./claudedocs/ARCHITECTURE_REFACTOR.md):
+
+1. **tui.py monolith** - 3,372 lines mixing models, panels, and processing logic
+2. **Preview is single-file only** - Multi-file preview planned for unified pipeline
+3. **Two tracking systems** - QueuePanel and JobsPanel will be unified
+4. **Jobs panel disconnected from Preview** - Will be connected via EventBus
 
 ### Planned Fixes
 - [ ] Better error handling for network issues

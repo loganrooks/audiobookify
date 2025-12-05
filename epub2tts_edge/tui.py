@@ -1217,8 +1217,12 @@ class ChapterPreviewItem(ListItem):
 
     def on_click(self, event: Click) -> None:
         """Handle click with shift detection for range selection."""
-        # Post message to parent with shift state
-        self.post_message(self.Clicked(self, shift=event.shift))
+        # Find parent PreviewPanel and call handler directly
+        # This avoids message bubbling issues
+        for ancestor in self.ancestors:
+            if isinstance(ancestor, PreviewPanel):
+                ancestor._handle_item_click(self, event.shift)
+                break
         event.stop()
 
     def toggle_selection(self) -> None:
@@ -1551,16 +1555,18 @@ class PreviewPanel(Vertical):
             self._update_stats()
             self._update_action_buttons()
 
-    def on_chapter_preview_item_clicked(self, event: ChapterPreviewItem.Clicked) -> None:
+    def _handle_item_click(self, item: ChapterPreviewItem, shift: bool) -> None:
         """Handle chapter item click with shift detection for range selection.
 
-        - Regular click: Toggle selection, update anchor point
-        - Shift+click: Select range from anchor to clicked item
+        Called directly from ChapterPreviewItem.on_click to avoid message bubbling issues.
+
+        Args:
+            item: The clicked chapter item
+            shift: True if shift key was held during click
         """
-        item = event.item
         clicked_index = item.index
 
-        if event.shift and self._last_selected_index is not None:
+        if shift and self._last_selected_index is not None:
             # Range selection: select all items from anchor to clicked
             self._select_range(self._last_selected_index, clicked_index)
         else:

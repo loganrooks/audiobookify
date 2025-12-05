@@ -249,6 +249,10 @@ class FilePanel(Vertical):
         padding: 0;
         margin: 0 1 0 0;
     }
+
+    FilePanel > #file-actions > Button.sel-btn {
+        min-width: 6;
+    }
     """
 
     def __init__(self, initial_path: str = ".") -> None:
@@ -268,8 +272,8 @@ class FilePanel(Vertical):
         )
         yield ListView(id="file-list")
         with Horizontal(id="file-actions"):
-            yield Button("✓", id="select-all")
-            yield Button("✗", id="deselect-all")
+            yield Button("All", id="select-all", classes="sel-btn")
+            yield Button("None", id="deselect-all", classes="sel-btn")
             yield Button("⟳", id="refresh")
 
     def on_mount(self) -> None:
@@ -902,6 +906,10 @@ class JobsPanel(Vertical):
     JobsPanel Button.move {
         background: $primary-darken-1;
     }
+
+    JobsPanel Button.sel-btn {
+        min-width: 6;
+    }
     """
 
     def __init__(self, job_manager: JobManager | None = None, **kwargs) -> None:
@@ -914,8 +922,8 @@ class JobsPanel(Vertical):
             yield Label("(0)", id="job-count", classes="count")
         yield ListView(id="jobs-list")
         with Horizontal(id="jobs-buttons"):
-            yield Button("✓", id="job-select-all")
-            yield Button("✗", id="job-deselect-all")
+            yield Button("All", id="job-select-all", classes="sel-btn")
+            yield Button("None", id="job-deselect-all", classes="sel-btn")
             yield Button("↑", id="job-move-up", classes="move")
             yield Button("↓", id="job-move-down", classes="move")
             yield Button("▶", id="job-resume", classes="resume")
@@ -2040,26 +2048,39 @@ class AudiobookifyApp(App):
                 method=detection_method,
                 hierarchy_style=hierarchy_style,
             )
-            chapters = detector.detect()
+            chapter_tree = detector.detect()
 
-            if not chapters:
+            # Flatten the chapter tree to get a list
+            chapter_list = chapter_tree.flatten() if chapter_tree else []
+
+            if not chapter_list:
                 self.call_from_thread(self.log_message, "   ⚠️ No chapters detected!")
                 self.call_from_thread(self.log_message, "   Try a different detection method.")
                 return
 
-            self.call_from_thread(self.log_message, f"   Found {len(chapters)} chapter(s):")
+            self.call_from_thread(self.log_message, f"   Found {len(chapter_list)} chapter(s):")
             self.call_from_thread(self.log_message, "")
 
-            for i, chapter in enumerate(chapters, 1):
-                title = chapter.title[:60] + "..." if len(chapter.title) > 60 else chapter.title
-                # Show word count if content is available
-                word_count = ""
+            total_words = 0
+            total_paragraphs = 0
+            for i, chapter in enumerate(chapter_list, 1):
+                title = chapter.title[:50] + "..." if len(chapter.title) > 50 else chapter.title
+                # Show word count and paragraph count
+                stats = ""
                 if hasattr(chapter, "content") and chapter.content:
                     words = len(chapter.content.split())
-                    word_count = f" ({words:,} words)"
-                self.call_from_thread(self.log_message, f"   {i:3}. {title}{word_count}")
+                    total_words += words
+                    # Count paragraphs (non-empty lines or content blocks)
+                    paragraphs = len(chapter.paragraphs) if chapter.paragraphs else 0
+                    total_paragraphs += paragraphs
+                    stats = f" ({words:,}w, {paragraphs}¶)"
+                self.call_from_thread(self.log_message, f"   {i:3}. {title}{stats}")
 
             self.call_from_thread(self.log_message, "")
+            self.call_from_thread(
+                self.log_message,
+                f"   📊 Total: {total_words:,} words, {total_paragraphs} paragraphs",
+            )
             self.call_from_thread(self.log_message, "─" * 40)
             self.call_from_thread(
                 self.log_message,
@@ -2067,7 +2088,7 @@ class AudiobookifyApp(App):
             )
             self.call_from_thread(
                 self.log_message,
-                "   Or use 'Text Only' mode to export without audio",
+                "   Or use 'Export & Edit' to manually fix chapter markers",
             )
 
         except Exception as e:

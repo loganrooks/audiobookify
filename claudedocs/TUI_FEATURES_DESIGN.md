@@ -1193,3 +1193,4 @@ def process_with_preview(self) -> None:
 | 2024-12-05 | Claude | Added Preview Tab & Chapter Approval Workflow design |
 | 2024-12-05 | Claude | Marked Preview Tab Phases 1 & 2 as complete |
 | 2024-12-05 | Claude | Added Phase 3: merge/delete functionality with keyboard shortcuts |
+| 2024-12-05 | Claude | Enhanced merge: exports merged content directly to text file for processing |

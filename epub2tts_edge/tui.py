@@ -78,6 +78,8 @@ class ChapterPreviewState:
     detection_method: str
     chapters: list[PreviewChapter] = field(default_factory=list)
     modified: bool = False
+    book_title: str = ""
+    book_author: str = ""
 
     def get_included_chapters(self) -> list[PreviewChapter]:
         """Get chapters that are included (not excluded or merged)."""
@@ -135,6 +137,52 @@ class ChapterPreviewState:
             ranges.append(f"{start}-{end}")
 
         return ",".join(ranges)
+
+    def export_to_text(self, output_path: Path) -> Path:
+        """Export preview state to text file format for processing.
+
+        This exports the current preview state (with merges applied) to a text file
+        that can be processed by the audio generator.
+
+        Args:
+            output_path: Path to write the text file
+
+        Returns:
+            Path to the output file
+        """
+        import re
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            # Write metadata header
+            title = self.book_title or self.source_file.stem
+            author = self.book_author or "Unknown"
+            f.write(f"Title: {title}\n")
+            f.write(f"Author: {author}\n\n")
+
+            # Write title chapter
+            f.write("# Title\n")
+            f.write(f"{title}, by {author}\n\n")
+
+            # Write included chapters
+            for chapter in self.get_included_chapters():
+                # Determine header level based on chapter level
+                markers = "#" * min(chapter.level, 6) if chapter.level > 0 else "#"
+
+                f.write(f"{markers} {chapter.title}\n\n")
+
+                # Write paragraphs from original_content
+                if chapter.original_content:
+                    # Split content into paragraphs and clean up
+                    paragraphs = chapter.original_content.split("\n\n")
+                    for paragraph in paragraphs:
+                        # Clean up text (normalize whitespace, quotes)
+                        clean = re.sub(r"[\s\n]+", " ", paragraph.strip())
+                        clean = re.sub(r"[\u201c\u201d]", '"', clean)
+                        clean = re.sub(r"[\u2018\u2019]", "'", clean)
+                        if clean:
+                            f.write(f"{clean}\n\n")
+
+        return output_path
 
 
 class VoicePreviewStatus(Static):
@@ -1315,13 +1363,20 @@ class PreviewPanel(Vertical):
         self.query_one("#chapter-tree").display = False
 
     def load_chapters(
-        self, source_file: Path, chapters: list[PreviewChapter], detection_method: str
+        self,
+        source_file: Path,
+        chapters: list[PreviewChapter],
+        detection_method: str,
+        book_title: str = "",
+        book_author: str = "",
     ) -> None:
         """Load chapters into the preview panel."""
         self.preview_state = ChapterPreviewState(
             source_file=source_file,
             detection_method=detection_method,
             chapters=chapters,
+            book_title=book_title,
+            book_author=book_author,
         )
 
         # Update header
@@ -1948,18 +2003,39 @@ class AudiobookifyApp(App):
             self.notify("No chapters selected", severity="warning")
             return
 
-        # Get chapter selection string for filtering
-        chapter_selection = preview_panel.preview_state.get_chapter_selection_string()
-        source_file = preview_panel.preview_state.source_file
+        preview_state = preview_panel.preview_state
+        source_file = preview_state.source_file
 
         # Log what we're processing
-        total_chapters = len(preview_panel.preview_state.chapters)
-        if chapter_selection:
-            self.log_message(
-                f"✅ Processing {len(included)}/{total_chapters} chapters: {chapter_selection}"
-            )
-        else:
-            self.log_message(f"✅ Processing all {len(included)} chapters")
+        total_chapters = len(preview_state.chapters)
+        self.log_message(f"✅ Processing {len(included)}/{total_chapters} chapters from preview")
+
+        # Export preview state to text file (with merged content preserved)
+        text_file = source_file.with_suffix(".txt")
+        self.log_message(f"   📝 Exporting preview to: {text_file.name}")
+
+        try:
+            preview_state.export_to_text(text_file)
+        except Exception as e:
+            self.notify(f"Failed to export: {e}", severity="error")
+            self.log_message(f"❌ Export failed: {e}")
+            return
+
+        # Extract cover image if not already present
+        cover_path = source_file.with_suffix(".png")
+        if not cover_path.exists() and source_file.suffix.lower() == ".epub":
+            try:
+                from PIL import Image
+
+                from .epub2tts_edge import get_epub_cover
+
+                cover_data = get_epub_cover(str(source_file))
+                if cover_data:
+                    image = Image.open(cover_data)
+                    image.save(str(cover_path))
+                    self.log_message(f"   🖼️ Extracted cover: {cover_path.name}")
+            except Exception as e:
+                self.log_message(f"   ⚠️ Could not extract cover: {e}")
 
         # Start processing with chapter filter
         if self.is_processing:
@@ -1975,8 +2051,9 @@ class AudiobookifyApp(App):
         queue_panel = self.query_one(QueuePanel)
         queue_panel.clear_queue()
 
-        # Process the previewed file with chapter selection
-        self.current_worker = self.process_preview_file(source_file, chapter_selection)
+        # Process the exported text file using text file processor
+        # (no chapter selection needed - already filtered in export)
+        self.current_worker = self.process_text_files([text_file])
 
     # ─────────────────────────────────────────────────────────────────────────
     # Button Handlers
@@ -2836,6 +2913,22 @@ class AudiobookifyApp(App):
             )
             chapter_tree = detector.detect()
 
+            # Extract book metadata from detector's book object
+            book_title = "Unknown"
+            book_author = "Unknown"
+            try:
+                title_meta = detector.book.get_metadata("DC", "title")
+                if title_meta:
+                    book_title = title_meta[0][0]
+            except (IndexError, KeyError, TypeError):
+                pass
+            try:
+                author_meta = detector.book.get_metadata("DC", "creator")
+                if author_meta:
+                    book_author = author_meta[0][0]
+            except (IndexError, KeyError, TypeError):
+                pass
+
             # Flatten the chapter tree to get a list
             chapter_list = chapter_tree.flatten() if chapter_tree else []
 
@@ -2887,7 +2980,9 @@ class AudiobookifyApp(App):
             # Load into Preview panel on main thread
             def load_preview():
                 preview_panel = self.query_one(PreviewPanel)
-                preview_panel.load_chapters(epub_path, preview_chapters, detection_method)
+                preview_panel.load_chapters(
+                    epub_path, preview_chapters, detection_method, book_title, book_author
+                )
 
             self.call_from_thread(load_preview)
             self.call_from_thread(

@@ -186,31 +186,32 @@ class FilePanel(Vertical):
         background: $surface;
     }
 
-    FilePanel > Label.title {
-        text-style: bold;
-        margin-bottom: 0;
-        color: $primary-lighten-2;
-    }
-
-    FilePanel > #mode-toggle {
+    FilePanel > #file-header {
         height: auto;
-        max-height: 3;
         margin-bottom: 0;
     }
 
-    FilePanel > #mode-toggle > Button {
-        min-width: 10;
-        margin: 0 1 0 0;
+    FilePanel > #file-header > Label.title {
+        text-style: bold;
+        color: $primary-lighten-2;
+        width: auto;
     }
 
-    FilePanel > #mode-toggle > Button.active {
+    FilePanel > #file-header > Label.file-count {
+        color: $text-muted;
+        margin-left: 1;
+    }
+
+    FilePanel > #file-header > Button {
+        min-width: 6;
+        height: auto;
+        padding: 0;
+        margin: 0 0 0 1;
+    }
+
+    FilePanel > #file-header > Button.active {
         background: $primary;
         color: $text;
-    }
-
-    FilePanel > Label.file-count {
-        color: $text-muted;
-        margin-bottom: 0;
     }
 
     FilePanel > #path-input {
@@ -236,14 +237,15 @@ class FilePanel(Vertical):
     }
 
     FilePanel > #file-actions {
-        height: 3;
-        min-height: 3;
+        height: auto;
         margin-top: 0;
         width: 100%;
     }
 
     FilePanel > #file-actions > Button {
-        min-width: 10;
+        min-width: 4;
+        height: auto;
+        padding: 0;
         margin: 0 1 0 0;
     }
     """
@@ -255,19 +257,19 @@ class FilePanel(Vertical):
         self.file_mode = "books"  # "books" or "text"
 
     def compose(self) -> ComposeResult:
-        yield Label("📁 Select Files", classes="title", id="panel-title")
-        with Horizontal(id="mode-toggle"):
-            yield Button("📚 Books", id="mode-books", classes="active")
-            yield Button("📝 Text", id="mode-text")
-        yield Label("0 files found", classes="file-count", id="file-count")
+        with Horizontal(id="file-header"):
+            yield Label("📁", classes="title", id="panel-title")
+            yield Label("(0)", classes="file-count", id="file-count")
+            yield Button("📚", id="mode-books", classes="active")
+            yield Button("📝", id="mode-text")
         yield Input(
             placeholder="Enter folder path...", value=str(self.current_path), id="path-input"
         )
         yield ListView(id="file-list")
         with Horizontal(id="file-actions"):
-            yield Button("✓ All", id="select-all", variant="default")
-            yield Button("✗ None", id="deselect-all", variant="default")
-            yield Button("🔄 Refresh", id="refresh", variant="primary")
+            yield Button("✓", id="select-all")
+            yield Button("✗", id="deselect-all")
+            yield Button("⟳", id="refresh")
 
     def on_mount(self) -> None:
         self.scan_directory()
@@ -339,8 +341,8 @@ class FilePanel(Vertical):
         # Update file count with resumable indicator
         count_label = self.query_one("#file-count", Label)
         count = len(self.files)
-        resume_text = f" (🔄 {resumable_count} resumable)" if resumable_count > 0 else ""
-        count_label.update(f"{count} file{'s' if count != 1 else ''} found{resume_text}")
+        resume_text = f"+🔄{resumable_count}" if resumable_count > 0 else ""
+        count_label.update(f"({count}{resume_text})")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "path-input":
@@ -851,19 +853,24 @@ class JobsPanel(Vertical):
         height: 1fr;
         border: round $secondary;
         border-title-color: $secondary;
-        padding: 1;
+        padding: 0 1;
         background: $surface;
     }
 
-    JobsPanel > Label.title {
-        text-style: bold;
+    JobsPanel > #jobs-header {
+        height: auto;
         margin-bottom: 0;
-        color: $secondary-lighten-2;
     }
 
-    JobsPanel > Label.count {
+    JobsPanel > #jobs-header > Label.title {
+        text-style: bold;
+        color: $secondary-lighten-2;
+        width: auto;
+    }
+
+    JobsPanel > #jobs-header > Label.count {
         color: $text-muted;
-        margin-bottom: 1;
+        margin-left: 1;
     }
 
     JobsPanel > #jobs-list {
@@ -871,20 +878,15 @@ class JobsPanel(Vertical):
         background: $surface-darken-1;
     }
 
-    JobsPanel > #jobs-actions {
-        height: auto;
-        margin-top: 1;
-    }
-
-    JobsPanel > #jobs-selection {
+    JobsPanel > #jobs-buttons {
         height: auto;
         margin-top: 0;
     }
 
     JobsPanel Button {
-        min-width: 8;
-        height: 1;
-        padding: 0 1;
+        min-width: 4;
+        height: auto;
+        padding: 0;
         margin: 0 1 0 0;
     }
 
@@ -906,18 +908,18 @@ class JobsPanel(Vertical):
         self.job_manager = job_manager or JobManager()
 
     def compose(self) -> ComposeResult:
-        yield Label("💼 Saved Jobs", classes="title")
-        yield Label("0 jobs", id="job-count", classes="count")
+        with Horizontal(id="jobs-header"):
+            yield Label("💼 Jobs", classes="title")
+            yield Label("(0)", id="job-count", classes="count")
         yield ListView(id="jobs-list")
-        with Horizontal(id="jobs-selection"):
-            yield Button("✓ All", id="job-select-all")
-            yield Button("✗ None", id="job-deselect-all")
-            yield Button("↑ Up", id="job-move-up", classes="move")
-            yield Button("↓ Down", id="job-move-down", classes="move")
-        with Horizontal(id="jobs-actions"):
-            yield Button("🔄 Resume", id="job-resume", classes="resume")
-            yield Button("🗑️ Delete", id="job-delete", classes="delete")
-            yield Button("🔃 Refresh", id="job-refresh")
+        with Horizontal(id="jobs-buttons"):
+            yield Button("✓", id="job-select-all")
+            yield Button("✗", id="job-deselect-all")
+            yield Button("↑", id="job-move-up", classes="move")
+            yield Button("↓", id="job-move-down", classes="move")
+            yield Button("▶", id="job-resume", classes="resume")
+            yield Button("🗑", id="job-delete", classes="delete")
+            yield Button("⟳", id="job-refresh")
 
     def on_mount(self) -> None:
         self.refresh_jobs()
@@ -939,7 +941,7 @@ class JobsPanel(Vertical):
         # Update count label
         count_label = self.query_one("#job-count", Label)
         job_count = len(jobs)
-        count_label.update(f"{job_count} job{'s' if job_count != 1 else ''}")
+        count_label.update(f"({job_count})")
 
     def get_selected_jobs(self) -> list[Job]:
         """Get all selected jobs."""

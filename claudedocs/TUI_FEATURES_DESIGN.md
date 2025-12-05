@@ -11,6 +11,7 @@ This document provides detailed architectural designs for planned TUI features a
 4. [Keyboard Navigation](#keyboard-navigation)
 5. [Job Status Legend](#job-status-legend)
 6. [Refactoring Recommendations](#refactoring-recommendations)
+7. [Preview Tab & Chapter Approval Workflow](#preview-tab--chapter-approval-workflow)
 
 ---
 
@@ -839,24 +840,345 @@ class AppConfig:
 
 ---
 
+## Preview Tab & Chapter Approval Workflow
+
+### Purpose
+Transform the chapter preview from log output to an interactive Preview tab where users can review, approve, edit, remove, and merge chapters before processing.
+
+### Current State
+- Chapter preview outputs to Log panel
+- No interactive editing
+- Users must export to text file, edit externally, then reimport
+
+### Proposed Workflow
+
+```
+1. User selects EPUB file(s)
+2. User clicks "Preview Chapters" or presses designated key
+3. Preview tab opens automatically showing:
+   - Chapter tree with checkboxes
+   - Paragraph count per chapter
+   - Word count per chapter
+   - Expandable content preview
+4. User can:
+   - ✅ Approve chapters (check/uncheck to include/exclude)
+   - 🔀 Merge chapters (select multiple → merge button)
+   - ✂️ Split chapters (coming later)
+   - 👁️ Preview content (expand to see first N paragraphs)
+5. User clicks "Start" to process approved chapters only
+```
+
+### Data Model
+
+```python
+from dataclasses import dataclass, field
+from enum import Enum
+
+class ChapterAction(Enum):
+    INCLUDE = "include"
+    EXCLUDE = "exclude"
+    MERGE_WITH_PREVIOUS = "merge_prev"
+    MERGE_WITH_NEXT = "merge_next"
+
+@dataclass
+class PreviewChapter:
+    """A chapter in the preview with editing state."""
+    original_node: "ChapterNode"  # Reference to original
+    title: str
+    word_count: int
+    paragraph_count: int
+    content_preview: str  # First 500 chars or 3 paragraphs
+    included: bool = True
+    merged_into: int | None = None  # Index of chapter this merges into
+    children: list["PreviewChapter"] = field(default_factory=list)
+
+@dataclass
+class ChapterPreviewState:
+    """State for the preview workflow."""
+    source_file: Path
+    detection_method: str
+    chapters: list[PreviewChapter]
+    modified: bool = False
+
+    def get_included_chapters(self) -> list[PreviewChapter]:
+        """Get chapters that are included (not excluded or merged)."""
+        return [c for c in self.chapters if c.included and c.merged_into is None]
+
+    def merge_chapters(self, indices: list[int]) -> None:
+        """Merge selected chapters into the first one."""
+        if len(indices) < 2:
+            return
+        primary = indices[0]
+        for idx in indices[1:]:
+            self.chapters[idx].merged_into = primary
+        self.modified = True
+```
+
+### UI Components
+
+#### PreviewTab (New TabPane)
+
+```python
+class PreviewTab(TabPane):
+    """Tab for interactive chapter preview and editing."""
+
+    DEFAULT_CSS = '''
+    PreviewTab {
+        height: 100%;
+    }
+
+    #preview-header {
+        height: auto;
+        padding: 0 1;
+        background: $surface-darken-1;
+    }
+
+    #chapter-tree {
+        height: 1fr;
+    }
+
+    #preview-actions {
+        height: auto;
+        dock: bottom;
+        padding: 1;
+    }
+
+    .chapter-item {
+        height: auto;
+        padding: 0 1;
+    }
+
+    .chapter-item.excluded {
+        color: $text-muted;
+        text-style: strike;
+    }
+
+    .chapter-item.merged {
+        color: $warning;
+        text-style: italic;
+    }
+
+    #content-preview {
+        height: auto;
+        max-height: 10;
+        background: $surface-darken-2;
+        padding: 1;
+        display: none;
+    }
+
+    #content-preview.visible {
+        display: block;
+    }
+    '''
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            # Header with book info
+            with Horizontal(id="preview-header"):
+                yield Label("📖 ", id="book-icon")
+                yield Label("No book selected", id="book-title")
+                yield Label("", id="chapter-stats")
+
+            # Chapter tree with checkboxes
+            yield ListView(id="chapter-tree")
+
+            # Content preview pane (expandable)
+            yield Static("", id="content-preview")
+
+            # Action buttons
+            with Horizontal(id="preview-actions"):
+                yield Button("☑ All", id="preview-select-all")
+                yield Button("☐ None", id="preview-select-none")
+                yield Button("🔀 Merge", id="preview-merge", disabled=True)
+                yield Button("👁️ Preview", id="preview-content")
+                yield Button("✅ Approve & Start", id="preview-approve", variant="success")
+```
+
+#### ChapterPreviewItem (ListItem widget)
+
+```python
+class ChapterPreviewItem(ListItem):
+    """Interactive chapter item with checkbox."""
+
+    def __init__(self, chapter: PreviewChapter, index: int) -> None:
+        super().__init__()
+        self.chapter = chapter
+        self.index = index
+        self.is_selected = False  # For multi-select merge operations
+
+    def compose(self) -> ComposeResult:
+        checkbox = "☑" if self.chapter.included else "☐"
+        indent = "  " * (self.chapter.original_node.level - 1)
+        stats = f"({self.chapter.word_count:,}w, {self.chapter.paragraph_count}¶)"
+
+        status = ""
+        if self.chapter.merged_into is not None:
+            status = " [merged]"
+
+        yield Label(f"{checkbox} {indent}{self.chapter.title} {stats}{status}")
+
+    def toggle_include(self) -> None:
+        """Toggle chapter inclusion."""
+        self.chapter.included = not self.chapter.included
+        self.refresh()
+
+    def toggle_select(self) -> None:
+        """Toggle selection for merge operations."""
+        self.is_selected = not self.is_selected
+        self.refresh()
+```
+
+### Integration Points
+
+#### 1. Bottom Tabs Update
+
+```python
+# In AudiobookifyApp.compose()
+with TabbedContent(id="bottom-tabs"):
+    with TabPane("Progress", id="progress-tab"):
+        yield ProgressPanel()
+    with TabPane("Preview", id="preview-tab"):  # NEW
+        yield PreviewTab()
+    with TabPane("Queue", id="queue-tab"):
+        yield QueuePanel()
+    with TabPane("Jobs", id="jobs-tab"):
+        yield JobsPanel(job_manager=self.job_manager)
+    with TabPane("Log", id="log-tab"):
+        yield LogPanel()
+```
+
+#### 2. Preview Workflow
+
+```python
+def action_preview_chapters(self) -> None:
+    """Preview chapters in the Preview tab instead of log."""
+    selected = [item.path for item in self.query(EPUBFileItem) if item.is_selected]
+
+    if not selected:
+        self.notify("Select a file to preview", severity="warning")
+        return
+
+    if len(selected) > 1:
+        self.notify("Select only one file for preview", severity="warning")
+        return
+
+    epub_path = selected[0]
+
+    # Switch to Preview tab
+    self.query_one("#bottom-tabs", TabbedContent).active = "preview-tab"
+
+    # Load chapters into preview
+    preview_tab = self.query_one(PreviewTab)
+    preview_tab.load_chapters(epub_path, self.get_settings())
+```
+
+#### 3. Processing Approved Chapters
+
+```python
+def process_with_preview(self) -> None:
+    """Process only approved chapters from preview."""
+    preview_tab = self.query_one(PreviewTab)
+
+    if not preview_tab.has_chapters():
+        self.notify("No chapters to process", severity="warning")
+        return
+
+    approved = preview_tab.get_approved_chapters()
+
+    if not approved:
+        self.notify("No chapters selected", severity="warning")
+        return
+
+    # Create modified chapter list for processing
+    # Pass to existing processing pipeline with filtered chapters
+    self.process_approved_chapters(
+        preview_tab.source_file,
+        approved,
+        self.get_settings()
+    )
+```
+
+### Keyboard Shortcuts
+
+| Key | Action | Context |
+|-----|--------|---------|
+| `5` | Switch to Preview tab | Global |
+| `Space` | Toggle chapter inclusion | Preview tab focused |
+| `Enter` | Expand/collapse content preview | Preview tab focused |
+| `m` | Merge selected chapters | Preview tab, multiple selected |
+| `u` | Unmerge chapter | Preview tab, merged chapter selected |
+
+### Implementation Phases
+
+**Phase 1: Basic Preview Tab**
+- Create PreviewTab widget
+- Move chapter preview from log to tab
+- Add chapter tree with stats
+- Keyboard shortcut to switch to tab
+
+**Phase 2: Interactive Selection**
+- Add checkboxes for include/exclude
+- Select all / Select none buttons
+- Chapter exclusion affects processing
+
+**Phase 3: Chapter Merging**
+- Multi-select for merge operations
+- Merge button combines chapters
+- Visual indication of merged chapters
+- Unmerge capability
+
+**Phase 4: Content Preview**
+- Expandable content preview pane
+- Show first N paragraphs
+- Highlight potential issues (very short chapters, etc.)
+
+### Visual Mockup
+
+```
+┌─ Preview ─────────────────────────────────────────┐
+│ 📖 Writing and Difference              46 ch, 120k words │
+├───────────────────────────────────────────────────┤
+│ ☑ 1. Force and Signification        (12,340w, 45¶) │
+│ ☑ 2. Cogito and History of Madness  (8,210w, 32¶)  │
+│ ☐ 3. Edmond Jabès and the Question  (5,670w, 22¶)  │
+│ ☑ 4. Violence and Metaphysics       (15,890w, 58¶) │
+│   └─ [merged with 5]                               │
+│ ☑ 5. "Genesis and Structure"        (9,450w, 38¶)  │
+│ ...                                                │
+├───────────────────────────────────────────────────┤
+│ Content Preview:                                   │
+│ "The concept of force is central to Derrida's     │
+│  critique of structuralism. He argues that..."    │
+├───────────────────────────────────────────────────┤
+│ [☑ All] [☐ None] [🔀 Merge] [👁️ Preview] [✅ Approve & Start] │
+└───────────────────────────────────────────────────┘
+```
+
+---
+
 ## Implementation Priority
 
 | Feature | Priority | Effort | Dependencies |
 |---------|----------|--------|--------------|
-| **tui.py split** | HIGH | Large | None |
-| **Keyboard Navigation** | HIGH | Small | None |
+| **Preview Tab (Phase 1)** | HIGH | Medium | None |
+| **Keyboard Navigation** | HIGH | Small | None ✅ DONE |
 | **Job Status Legend** | HIGH | Small | None |
+| **Preview Tab (Phase 2-4)** | HIGH | Large | Preview Tab Phase 1 |
+| **tui.py split** | MEDIUM | Large | None |
 | **Path History** | MEDIUM | Medium | UserPreferences class |
 | **Path Autocomplete** | MEDIUM | Medium | PathInput widget |
 | **User Preferences** | MEDIUM | Medium | None |
 
 ### Recommended Order
-1. **Keyboard Navigation** - Quick win, high impact
-2. **Job Status Legend** - Quick win, helps users
-3. **Split tui.py** - Foundational for future work
-4. **User Preferences** - Enables path history
-5. **Path History** - Depends on UserPreferences
-6. **Path Autocomplete** - Most complex, do last
+1. ✅ **Keyboard Navigation** - DONE
+2. **Preview Tab Phase 1** - Basic interactive preview (high user impact)
+3. **Job Status Legend** - Quick win, helps users
+4. **Preview Tab Phase 2** - Include/exclude chapters
+5. **Preview Tab Phase 3** - Chapter merging
+6. **Split tui.py** - Foundational for future work
+7. **User Preferences** - Enables path history
+8. **Path History** - Depends on UserPreferences
+9. **Path Autocomplete** - Most complex, do last
 
 ---
 
@@ -865,3 +1187,4 @@ class AppConfig:
 | Date | Author | Description |
 |------|--------|-------------|
 | 2024-12-04 | Claude | Initial design document |
+| 2024-12-05 | Claude | Added Preview Tab & Chapter Approval Workflow design |

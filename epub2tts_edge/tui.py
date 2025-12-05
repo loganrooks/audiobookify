@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from textual import work
+from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -1498,6 +1498,19 @@ class PreviewPanel(Vertical):
             event.item.toggle_include()
             self._update_stats()
             self._update_action_buttons()
+
+    def on_key(self, event: events.Key) -> None:
+        """Handle key events for multi-select (Space key)."""
+        if event.key == "space":
+            # Toggle multi-select on highlighted item
+            chapter_tree = self.query_one("#chapter-tree", ListView)
+            if chapter_tree.highlighted_child:
+                item = chapter_tree.highlighted_child
+                if isinstance(item, ChapterPreviewItem):
+                    item.toggle_multi_select()
+                    self._update_action_buttons()
+                    event.prevent_default()
+                    event.stop()
 
     def toggle_multi_select_current(self) -> None:
         """Toggle multi-selection on the currently highlighted chapter."""

@@ -10,13 +10,17 @@ Usage:
     audiobookify-tui
 """
 
+# Type alias for chapter nodes (to avoid circular imports)
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
@@ -42,6 +46,46 @@ from textual.worker import Worker
 from .batch_processor import BatchConfig, BatchProcessor, BookTask, ProcessingStatus
 from .job_manager import Job, JobManager, JobStatus
 from .voice_preview import AVAILABLE_VOICES, VoicePreview, VoicePreviewConfig
+
+if TYPE_CHECKING:
+    pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Preview Tab Data Models
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class PreviewChapter:
+    """A chapter in the preview with editing state."""
+
+    title: str
+    level: int
+    word_count: int
+    paragraph_count: int
+    content_preview: str  # First 500 chars
+    included: bool = True
+    merged_into: int | None = None  # Index of chapter this merges into
+    original_content: str = ""  # Full content for processing
+
+
+@dataclass
+class ChapterPreviewState:
+    """State for the preview workflow."""
+
+    source_file: Path
+    detection_method: str
+    chapters: list[PreviewChapter] = field(default_factory=list)
+    modified: bool = False
+
+    def get_included_chapters(self) -> list[PreviewChapter]:
+        """Get chapters that are included (not excluded or merged)."""
+        return [c for c in self.chapters if c.included and c.merged_into is None]
+
+    def get_total_words(self) -> int:
+        """Get total word count of included chapters."""
+        return sum(c.word_count for c in self.get_included_chapters())
 
 
 class VoicePreviewStatus(Static):
@@ -1031,6 +1075,301 @@ class JobsPanel(Vertical):
             jobs_list.append(JobItem(item.job, selected=item.is_selected))
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Preview Tab Components
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class ChapterPreviewItem(ListItem):
+    """Interactive chapter item with checkbox for preview."""
+
+    def __init__(self, chapter: PreviewChapter, index: int) -> None:
+        super().__init__()
+        self.chapter = chapter
+        self.index = index
+        self.is_selected = False  # For multi-select operations
+
+    def compose(self) -> ComposeResult:
+        yield Label(self._build_label())
+
+    def _build_label(self) -> str:
+        """Build the display label for this chapter."""
+        checkbox = "☑" if self.chapter.included else "☐"
+        indent = "  " * max(0, self.chapter.level - 1)
+
+        # Truncate title if needed
+        title = self.chapter.title
+        if len(title) > 45:
+            title = title[:42] + "..."
+
+        # Stats
+        stats = f"({self.chapter.word_count:,}w, {self.chapter.paragraph_count}¶)"
+
+        # Status indicators
+        status = ""
+        if self.chapter.merged_into is not None:
+            status = " [merged]"
+
+        return f"{checkbox} {indent}{title} {stats}{status}"
+
+    def toggle_include(self) -> None:
+        """Toggle chapter inclusion."""
+        self.chapter.included = not self.chapter.included
+        self.query_one(Label).update(self._build_label())
+
+    def refresh_display(self) -> None:
+        """Refresh the display."""
+        self.query_one(Label).update(self._build_label())
+
+
+class PreviewPanel(Vertical):
+    """Panel for interactive chapter preview and editing."""
+
+    DEFAULT_CSS = """
+    PreviewPanel {
+        height: 100%;
+    }
+
+    PreviewPanel > #preview-header {
+        height: auto;
+        padding: 0 1;
+        background: $surface-darken-1;
+    }
+
+    PreviewPanel > #preview-header > Label {
+        margin-right: 1;
+    }
+
+    PreviewPanel > #preview-header > #book-title {
+        width: 1fr;
+    }
+
+    PreviewPanel > #preview-header > #chapter-stats {
+        color: $text-muted;
+    }
+
+    PreviewPanel > #chapter-tree {
+        height: 1fr;
+        border: solid $primary-darken-2;
+        margin: 0;
+    }
+
+    PreviewPanel > #content-preview {
+        height: auto;
+        max-height: 8;
+        background: $surface-darken-2;
+        padding: 0 1;
+        margin: 0;
+        display: none;
+    }
+
+    PreviewPanel > #content-preview.visible {
+        display: block;
+    }
+
+    PreviewPanel > #preview-actions {
+        height: auto;
+        padding: 0;
+        margin-top: 0;
+    }
+
+    PreviewPanel > #preview-actions > Button {
+        min-width: 6;
+        height: auto;
+        padding: 0;
+        margin: 0 1 0 0;
+    }
+
+    PreviewPanel > #preview-actions > Button.approve {
+        background: $success-darken-1;
+    }
+
+    PreviewPanel > #no-preview {
+        height: 100%;
+        content-align: center middle;
+        color: $text-muted;
+    }
+
+    ChapterPreviewItem {
+        height: auto;
+        padding: 0 1;
+    }
+
+    ChapterPreviewItem.excluded Label {
+        color: $text-muted;
+        text-style: strike;
+    }
+
+    ChapterPreviewItem.merged Label {
+        color: $warning;
+        text-style: italic;
+    }
+    """
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.preview_state: ChapterPreviewState | None = None
+
+    def compose(self) -> ComposeResult:
+        # Header with book info
+        with Horizontal(id="preview-header"):
+            yield Label("📖", id="book-icon")
+            yield Label("Select a file and click 'Preview Chapters'", id="book-title")
+            yield Label("", id="chapter-stats")
+
+        # Placeholder when no preview
+        yield Static(
+            "Select a file and press 'Preview Chapters' to see chapter breakdown", id="no-preview"
+        )
+
+        # Chapter tree (hidden initially)
+        yield ListView(id="chapter-tree")
+
+        # Content preview pane (expandable)
+        yield Static("", id="content-preview")
+
+        # Action buttons
+        with Horizontal(id="preview-actions"):
+            yield Button("All", id="preview-select-all")
+            yield Button("None", id="preview-select-none")
+            yield Button("👁️", id="preview-content", disabled=True)
+            yield Button("✅ Start", id="preview-approve", classes="approve", disabled=True)
+
+    def on_mount(self) -> None:
+        """Hide the chapter tree initially."""
+        self.query_one("#chapter-tree").display = False
+
+    def load_chapters(
+        self, source_file: Path, chapters: list[PreviewChapter], detection_method: str
+    ) -> None:
+        """Load chapters into the preview panel."""
+        self.preview_state = ChapterPreviewState(
+            source_file=source_file,
+            detection_method=detection_method,
+            chapters=chapters,
+        )
+
+        # Update header
+        book_name = source_file.stem
+        if len(book_name) > 40:
+            book_name = book_name[:37] + "..."
+        self.query_one("#book-title", Label).update(book_name)
+
+        # Update stats
+        total_chapters = len(chapters)
+        total_words = sum(c.word_count for c in chapters)
+        self.query_one("#chapter-stats", Label).update(f"{total_chapters} ch, {total_words:,}w")
+
+        # Hide placeholder, show tree
+        self.query_one("#no-preview").display = False
+        chapter_tree = self.query_one("#chapter-tree", ListView)
+        chapter_tree.display = True
+
+        # Populate chapter list
+        chapter_tree.clear()
+        for i, chapter in enumerate(chapters):
+            chapter_tree.append(ChapterPreviewItem(chapter, i))
+
+        # Enable buttons
+        self.query_one("#preview-content", Button).disabled = False
+        self.query_one("#preview-approve", Button).disabled = False
+
+    def clear_preview(self) -> None:
+        """Clear the current preview."""
+        self.preview_state = None
+        self.query_one("#book-title", Label).update("Select a file and click 'Preview Chapters'")
+        self.query_one("#chapter-stats", Label).update("")
+        self.query_one("#no-preview").display = True
+        self.query_one("#chapter-tree").display = False
+        self.query_one("#chapter-tree", ListView).clear()
+        self.query_one("#content-preview").display = False
+        self.query_one("#preview-content", Button).disabled = True
+        self.query_one("#preview-approve", Button).disabled = True
+
+    def has_chapters(self) -> bool:
+        """Check if there are chapters loaded."""
+        return self.preview_state is not None and len(self.preview_state.chapters) > 0
+
+    def get_included_chapters(self) -> list[PreviewChapter]:
+        """Get chapters that are included."""
+        if not self.preview_state:
+            return []
+        return self.preview_state.get_included_chapters()
+
+    def select_all(self) -> None:
+        """Select all chapters."""
+        if not self.preview_state:
+            return
+        for chapter in self.preview_state.chapters:
+            chapter.included = True
+        for item in self.query(ChapterPreviewItem):
+            item.refresh_display()
+        self._update_stats()
+
+    def select_none(self) -> None:
+        """Deselect all chapters."""
+        if not self.preview_state:
+            return
+        for chapter in self.preview_state.chapters:
+            chapter.included = False
+        for item in self.query(ChapterPreviewItem):
+            item.refresh_display()
+        self._update_stats()
+
+    def toggle_content_preview(self) -> None:
+        """Toggle the content preview pane."""
+        content_preview = self.query_one("#content-preview", Static)
+        chapter_tree = self.query_one("#chapter-tree", ListView)
+
+        if content_preview.display:
+            content_preview.display = False
+            content_preview.remove_class("visible")
+        else:
+            # Get selected chapter
+            if chapter_tree.highlighted_child:
+                item = chapter_tree.highlighted_child
+                if isinstance(item, ChapterPreviewItem):
+                    preview_text = item.chapter.content_preview or "(No content preview available)"
+                    content_preview.update(f"Preview: {preview_text}")
+                    content_preview.display = True
+                    content_preview.add_class("visible")
+
+    def _update_stats(self) -> None:
+        """Update the stats display."""
+        if not self.preview_state:
+            return
+        included = self.preview_state.get_included_chapters()
+        total_words = sum(c.word_count for c in included)
+        total_chapters = len(self.preview_state.chapters)
+        included_count = len(included)
+        self.query_one("#chapter-stats", Label).update(
+            f"{included_count}/{total_chapters} ch, {total_words:,}w"
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses."""
+        if event.button.id == "preview-select-all":
+            self.select_all()
+        elif event.button.id == "preview-select-none":
+            self.select_none()
+        elif event.button.id == "preview-content":
+            self.toggle_content_preview()
+        elif event.button.id == "preview-approve":
+            # Bubble up to app
+            self.post_message(self.ApproveAndStart())
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        """Handle chapter selection - toggle include."""
+        if isinstance(event.item, ChapterPreviewItem):
+            event.item.toggle_include()
+            self._update_stats()
+
+    class ApproveAndStart(Message):
+        """Message sent when user clicks Approve & Start."""
+
+        pass
+
+
 class HelpScreen(ModalScreen):
     """Modal screen showing all keyboard shortcuts."""
 
@@ -1089,7 +1428,7 @@ class HelpScreen(ModalScreen):
             yield Static("  r              Refresh file list")
             yield Static("  Tab            Focus next panel")
             yield Static("  Shift+Tab      Focus previous panel")
-            yield Static("  1/2/3/4        Switch bottom tabs")
+            yield Static("  1-5            Switch tabs (Prog/Prev/Queue/Jobs/Log)")
             yield Static("  ?/F1           Show this help")
             yield Static("  Ctrl+D         Toggle debug mode")
 
@@ -1194,11 +1533,12 @@ class AudiobookifyApp(App):
         # Navigation
         Binding("slash", "focus_path", "Path", show=False),
         Binding("backspace", "parent_dir", "Parent", show=False),
-        # Tab switching (1-4 for bottom tabs)
+        # Tab switching (1-5 for bottom tabs)
         Binding("1", "tab_progress", "Progress", show=False),
-        Binding("2", "tab_queue", "Queue", show=False),
-        Binding("3", "tab_jobs", "Jobs", show=False),
-        Binding("4", "tab_log", "Log", show=False),
+        Binding("2", "tab_preview", "Preview", show=False),
+        Binding("3", "tab_queue", "Queue", show=False),
+        Binding("4", "tab_jobs", "Jobs", show=False),
+        Binding("5", "tab_log", "Log", show=False),
         # Job operations (uppercase for safety)
         Binding("R", "resume_jobs", "Resume", show=False),
         Binding("X", "delete_jobs", "Delete", show=False),
@@ -1228,6 +1568,8 @@ class AudiobookifyApp(App):
                 with TabbedContent(id="bottom-tabs"):
                     with TabPane("Progress", id="progress-tab"):
                         yield ProgressPanel()
+                    with TabPane("Preview", id="preview-tab"):
+                        yield PreviewPanel()
                     with TabPane("Queue", id="queue-tab"):
                         yield QueuePanel()
                     with TabPane("Jobs", id="jobs-tab"):
@@ -1301,6 +1643,13 @@ class AudiobookifyApp(App):
         except Exception:
             pass
 
+    def action_tab_preview(self) -> None:
+        """Switch to Preview tab."""
+        try:
+            self.query_one("#bottom-tabs", TabbedContent).active = "preview-tab"
+        except Exception:
+            pass
+
     def action_tab_queue(self) -> None:
         """Switch to Queue tab."""
         try:
@@ -1329,6 +1678,30 @@ class AudiobookifyApp(App):
     def action_delete_jobs(self) -> None:
         """Delete selected jobs (keyboard shortcut)."""
         self.action_delete_job()
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Preview Panel Message Handlers
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def on_preview_panel_approve_and_start(self, event: PreviewPanel.ApproveAndStart) -> None:
+        """Handle Approve & Start from Preview panel."""
+        preview_panel = self.query_one(PreviewPanel)
+
+        if not preview_panel.has_chapters():
+            self.notify("No chapters to process", severity="warning")
+            return
+
+        included = preview_panel.get_included_chapters()
+        if not included:
+            self.notify("No chapters selected", severity="warning")
+            return
+
+        # Log what we're processing
+        self.log_message(f"✅ Processing {len(included)} approved chapters")
+
+        # For now, start normal processing
+        # TODO: In future, pass filtered chapters to processing pipeline
+        self.action_start()
 
     # ─────────────────────────────────────────────────────────────────────────
     # Button Handlers
@@ -2008,7 +2381,7 @@ class AudiobookifyApp(App):
             self.notify("Failed to delete jobs", severity="error")
 
     def action_preview_chapters(self) -> None:
-        """Preview chapters for the first selected file."""
+        """Preview chapters for the first selected file in the Preview tab."""
         # Get selected files
         selected = [item.path for item in self.query(EPUBFileItem) if item.is_selected]
 
@@ -2021,14 +2394,11 @@ class AudiobookifyApp(App):
         settings_panel = self.query_one(SettingsPanel)
         config = settings_panel.get_config()
 
-        self.log_message("─" * 40)
-        self.log_message(f"📋 Chapter Preview: {epub_path.name}")
-        self.log_message(f"   Detection: {config['detection_method']}")
-        self.log_message("─" * 40)
+        self.log_message(f"📋 Loading preview: {epub_path.name}")
 
-        # Switch to Log tab to show results
+        # Switch to Preview tab
         tabs = self.query_one("#bottom-tabs", TabbedContent)
-        tabs.active = "log-tab"
+        tabs.active = "preview-tab"
 
         # Run preview in background
         self.preview_chapters_async(
@@ -2039,7 +2409,7 @@ class AudiobookifyApp(App):
     def preview_chapters_async(
         self, epub_path: Path, detection_method: str, hierarchy_style: str
     ) -> None:
-        """Preview chapters in background thread."""
+        """Preview chapters in background thread and load into Preview tab."""
         from .chapter_detector import ChapterDetector
 
         try:
@@ -2054,45 +2424,55 @@ class AudiobookifyApp(App):
             chapter_list = chapter_tree.flatten() if chapter_tree else []
 
             if not chapter_list:
-                self.call_from_thread(self.log_message, "   ⚠️ No chapters detected!")
-                self.call_from_thread(self.log_message, "   Try a different detection method.")
+                self.call_from_thread(self.notify, "No chapters detected!", severity="warning")
+                self.call_from_thread(
+                    self.log_message, "⚠️ No chapters detected. Try a different detection method."
+                )
                 return
 
-            self.call_from_thread(self.log_message, f"   Found {len(chapter_list)} chapter(s):")
-            self.call_from_thread(self.log_message, "")
+            # Convert to PreviewChapter objects
+            preview_chapters: list[PreviewChapter] = []
+            for chapter in chapter_list:
+                # Calculate stats
+                word_count = 0
+                paragraph_count = 0
+                content_preview = ""
+                original_content = ""
 
-            total_words = 0
-            total_paragraphs = 0
-            for i, chapter in enumerate(chapter_list, 1):
-                title = chapter.title[:50] + "..." if len(chapter.title) > 50 else chapter.title
-                # Show word count and paragraph count
-                stats = ""
                 if hasattr(chapter, "content") and chapter.content:
-                    words = len(chapter.content.split())
-                    total_words += words
-                    # Count paragraphs (non-empty lines or content blocks)
-                    paragraphs = len(chapter.paragraphs) if chapter.paragraphs else 0
-                    total_paragraphs += paragraphs
-                    stats = f" ({words:,}w, {paragraphs}¶)"
-                self.call_from_thread(self.log_message, f"   {i:3}. {title}{stats}")
+                    original_content = chapter.content
+                    word_count = len(chapter.content.split())
+                    paragraph_count = len(chapter.paragraphs) if chapter.paragraphs else 0
+                    # Create content preview (first 200 chars)
+                    content_preview = chapter.content[:200].strip()
+                    if len(chapter.content) > 200:
+                        content_preview += "..."
 
-            self.call_from_thread(self.log_message, "")
+                preview_chapters.append(
+                    PreviewChapter(
+                        title=chapter.title,
+                        level=chapter.level,
+                        word_count=word_count,
+                        paragraph_count=paragraph_count,
+                        content_preview=content_preview,
+                        original_content=original_content,
+                    )
+                )
+
+            # Load into Preview panel on main thread
+            def load_preview():
+                preview_panel = self.query_one(PreviewPanel)
+                preview_panel.load_chapters(epub_path, preview_chapters, detection_method)
+
+            self.call_from_thread(load_preview)
             self.call_from_thread(
                 self.log_message,
-                f"   📊 Total: {total_words:,} words, {total_paragraphs} paragraphs",
-            )
-            self.call_from_thread(self.log_message, "─" * 40)
-            self.call_from_thread(
-                self.log_message,
-                "💡 Tip: If chapters look wrong, try 'TOC Only' or 'Headings Only' detection",
-            )
-            self.call_from_thread(
-                self.log_message,
-                "   Or use 'Export & Edit' to manually fix chapter markers",
+                f"✅ Loaded {len(preview_chapters)} chapters into Preview tab",
             )
 
         except Exception as e:
-            self.call_from_thread(self.log_message, f"   ❌ Error: {e}")
+            self.call_from_thread(self.log_message, f"❌ Preview error: {e}")
+            self.call_from_thread(self.notify, f"Preview error: {e}", severity="error")
 
     def action_export_text(self) -> None:
         """Export selected EPUB to text file for editing."""

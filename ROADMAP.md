@@ -65,7 +65,7 @@
 - [x] **Multi-select jobs** - Select multiple jobs for batch operations (delete, resume)
 - [x] **Job queue reordering** - Move jobs up/down in queue priority
 - [ ] **Directory browser** - Add DirectoryTree modal for easier folder selection
-- [ ] **Parent navigation** - Add "↑ Parent" button for quick directory traversal
+- [x] **Parent navigation** - Backspace key navigates to parent directory
 - [ ] **Path autocomplete** - Tab completion for directory input
 - [ ] **Preview tab** - Enhanced chapter preview with tree view, word counts, estimated duration
 - [ ] **Collapsible settings** - Group settings into collapsible sections (Voice, Timing, Advanced)
@@ -74,7 +74,7 @@
 #### TUI Improvements (Medium Priority)
 - [ ] **Estimated duration** - Show per-chapter and total estimated audio time
 - [ ] **Path history** - Remember recently used directories
-- [ ] **Keyboard navigation** - More shortcuts for common operations
+- [x] **Keyboard navigation** - More shortcuts for common operations (1-4 tabs, /, Backspace, R, X, F1)
 - [ ] **Job status legend** - Popup or help text explaining job status icons
 
 #### Format Support

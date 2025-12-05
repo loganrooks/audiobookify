@@ -93,21 +93,51 @@ Contains all conversion options:
 **Concern**: Settings panel is getting dense with v2.2.0 options (normalization, silence detection, pronunciation, multi-voice). May need reorganization.
 
 ### JobsPanel
-Shows saved jobs from `~/.audiobookify/jobs/`:
-- DataTable showing job_id, status, progress, source file
-- Resume/Delete buttons
+Shows saved jobs from `~/.audiobookify/jobs/` with checkbox-based multi-select:
+- **ListView with JobItem widgets** (similar to FilePanel's EPUBFileItem pattern)
+- Each job shows: checkbox, status icon, book name, progress, created date, resumable indicator (🔄)
+- Multi-select support for batch operations
+- Selection buttons: ✓ All, ✗ None, ↑ Up, ↓ Down
+- Action buttons: Resume, Delete, Refresh
 
-**Button CSS Fix Applied**:
+**Major Refactor (2024-12-04)**: Changed from DataTable with cursor-based selection to ListView with checkbox selection:
+
+**Before (DataTable)**:
+- Used `table.cursor_row` and `get_row_at()` for selection
+- Bug: `get_row_at()` returns row data tuple, not RowKey - caused silent exception
+- Single selection only, buttons stayed disabled due to silent error
+
+**After (ListView + JobItem)**:
+```python
+class JobItem(ListItem):
+    """A list item representing a saved job with checkbox selection."""
+
+    STATUS_ICONS = {
+        JobStatus.PENDING: "⏳",
+        JobStatus.EXTRACTING: "📝",
+        ...
+    }
+
+    def toggle(self) -> None:
+        self.is_selected = not self.is_selected
+        self.query_one(Label).update(self._build_label())
+```
+
+**Benefits**:
+1. Checkbox selection is explicit and reliable (no cursor-based quirks)
+2. Multi-select support for batch resume/delete
+3. UI consistency with FilePanel's file selection
+4. Move up/down for queue priority control
+
+**Button CSS**:
 ```css
 JobsPanel Button {
-    min-width: 10;
-    height: 3;       /* Was: height: 1; max-height: 1 - too small! */
+    min-width: 8;
+    height: 1;       /* Compact buttons for more list space */
     padding: 0 1;
     margin: 0 1 0 0;
 }
 ```
-
-**Issue**: With `height: 1`, button text was invisible. Changed to `height: 3` for proper text display.
 
 ### LogPanel
 RichLog widget for conversion output:
@@ -226,3 +256,4 @@ Current: Chapter-level progress in Progress tab
 | 2024-12-04 | Renamed exports: "Export Text" → "Export & Edit", "Export Only:" → "Text Only:" for clarity | tui.py |
 | 2024-12-04 | Fixed job resume: BatchProcessor now respects task's existing job_id instead of overwriting; is_resumable allows completed_chapters=0 | batch_processor.py, job_manager.py |
 | 2024-12-04 | Added verbose resume logging: Job details now logged when resuming (ID, dir, status, progress, voice) | tui.py |
+| 2024-12-04 | Refactored JobsPanel: DataTable → ListView with JobItem widgets, checkbox-based multi-select, move up/down, batch resume/delete support | tui.py |

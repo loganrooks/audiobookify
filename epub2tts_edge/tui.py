@@ -132,6 +132,47 @@ class EPUBFileItem(ListItem):
         self.query_one(Label).update(f"{checkbox} {self.path.name}{resume_indicator}")
 
 
+class JobItem(ListItem):
+    """A list item representing a saved job with checkbox selection."""
+
+    STATUS_ICONS = {
+        JobStatus.PENDING: "⏳",
+        JobStatus.EXTRACTING: "📝",
+        JobStatus.CONVERTING: "🔊",
+        JobStatus.FINALIZING: "📦",
+        JobStatus.COMPLETED: "✅",
+        JobStatus.FAILED: "❌",
+        JobStatus.CANCELLED: "🚫",
+    }
+
+    def __init__(self, job: Job, selected: bool = False) -> None:
+        super().__init__()
+        self.job = job
+        self.is_selected = selected
+
+    def compose(self) -> ComposeResult:
+        yield Label(self._build_label())
+
+    def _build_label(self) -> str:
+        """Build the display label for this job item."""
+        checkbox = "☑" if self.is_selected else "☐"
+        status_icon = self.STATUS_ICONS.get(self.job.status, "?")
+        book_name = Path(self.job.source_file).stem[:25]
+        progress = f"{self.job.completed_chapters}/{self.job.total_chapters}"
+        created = datetime.fromtimestamp(self.job.created_at).strftime("%m/%d %H:%M")
+        resumable = " 🔄" if self.job.is_resumable else ""
+        return f"{checkbox} {status_icon} {book_name} [{progress}] {created}{resumable}"
+
+    def toggle(self) -> None:
+        """Toggle selection state."""
+        self.is_selected = not self.is_selected
+        self.query_one(Label).update(self._build_label())
+
+    def refresh_display(self) -> None:
+        """Refresh the display label (e.g., after job update)."""
+        self.query_one(Label).update(self._build_label())
+
+
 class FilePanel(Vertical):
     """Panel for browsing and selecting files (EPUB/MOBI or TXT)."""
 
@@ -803,7 +844,7 @@ class LogPanel(Vertical):
 
 
 class JobsPanel(Vertical):
-    """Panel showing saved jobs that can be resumed or deleted."""
+    """Panel showing saved jobs with checkbox selection for multi-select operations."""
 
     DEFAULT_CSS = """
     JobsPanel {
@@ -816,23 +857,33 @@ class JobsPanel(Vertical):
 
     JobsPanel > Label.title {
         text-style: bold;
-        margin-bottom: 1;
+        margin-bottom: 0;
         color: $secondary-lighten-2;
     }
 
-    JobsPanel > #jobs-table {
+    JobsPanel > Label.count {
+        color: $text-muted;
+        margin-bottom: 1;
+    }
+
+    JobsPanel > #jobs-list {
         height: 1fr;
         background: $surface-darken-1;
     }
 
-    JobsPanel > Horizontal {
+    JobsPanel > #jobs-actions {
         height: auto;
         margin-top: 1;
     }
 
+    JobsPanel > #jobs-selection {
+        height: auto;
+        margin-top: 0;
+    }
+
     JobsPanel Button {
-        min-width: 10;
-        height: 3;
+        min-width: 8;
+        height: 1;
         padding: 0 1;
         margin: 0 1 0 0;
     }
@@ -844,6 +895,10 @@ class JobsPanel(Vertical):
     JobsPanel Button.delete {
         background: $error-darken-1;
     }
+
+    JobsPanel Button.move {
+        background: $primary-darken-1;
+    }
     """
 
     def __init__(self, job_manager: JobManager | None = None, **kwargs) -> None:
@@ -852,96 +907,117 @@ class JobsPanel(Vertical):
 
     def compose(self) -> ComposeResult:
         yield Label("💼 Saved Jobs", classes="title")
-        yield DataTable(id="jobs-table")
-        with Horizontal():
-            yield Button("🔄 Resume", id="job-resume", classes="resume", disabled=True)
-            yield Button("🗑️ Delete", id="job-delete", classes="delete", disabled=True)
+        yield Label("0 jobs", id="job-count", classes="count")
+        yield ListView(id="jobs-list")
+        with Horizontal(id="jobs-selection"):
+            yield Button("✓ All", id="job-select-all")
+            yield Button("✗ None", id="job-deselect-all")
+            yield Button("↑ Up", id="job-move-up", classes="move")
+            yield Button("↓ Down", id="job-move-down", classes="move")
+        with Horizontal(id="jobs-actions"):
+            yield Button("🔄 Resume", id="job-resume", classes="resume")
+            yield Button("🗑️ Delete", id="job-delete", classes="delete")
             yield Button("🔃 Refresh", id="job-refresh")
 
     def on_mount(self) -> None:
-        table = self.query_one("#jobs-table", DataTable)
-        table.add_columns("Status", "Book", "Progress", "Created")
-        table.cursor_type = "row"
         self.refresh_jobs()
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        """Handle item selection (toggle checkbox)."""
+        if isinstance(event.item, JobItem):
+            event.item.toggle()
 
     def refresh_jobs(self) -> None:
         """Refresh the job list from disk."""
-        table = self.query_one("#jobs-table", DataTable)
-        table.clear()
+        jobs_list = self.query_one("#jobs-list", ListView)
+        jobs_list.clear()
 
         jobs = self.job_manager.list_jobs(include_completed=True)
         for job in jobs:
-            status_icon = self._get_status_icon(job.status)
-            book_name = Path(job.source_file).stem[:30]
-            progress = f"{job.completed_chapters}/{job.total_chapters}"
-            created = datetime.fromtimestamp(job.created_at).strftime("%m/%d %H:%M")
-            table.add_row(status_icon, book_name, progress, created, key=job.job_id)
+            jobs_list.append(JobItem(job))
 
-        # Update button states
-        self._update_button_states()
+        # Update count label
+        count_label = self.query_one("#job-count", Label)
+        job_count = len(jobs)
+        count_label.update(f"{job_count} job{'s' if job_count != 1 else ''}")
 
-    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        """Handle row selection to enable/disable buttons."""
-        self._update_button_states()
-
-    def _update_button_states(self) -> None:
-        """Update resume/delete button states based on selection."""
-        table = self.query_one("#jobs-table", DataTable)
-        resume_btn = self.query_one("#job-resume", Button)
-        delete_btn = self.query_one("#job-delete", Button)
-
-        if table.cursor_row is not None and table.row_count > 0:
-            try:
-                row_key = table.get_row_at(table.cursor_row)
-                job_id = str(row_key.key)
-                job = self.job_manager.load_job(job_id)
-
-                if job:
-                    # Enable resume only for resumable jobs
-                    resume_btn.disabled = not job.is_resumable
-                    delete_btn.disabled = False
-                else:
-                    resume_btn.disabled = True
-                    delete_btn.disabled = True
-            except Exception:
-                resume_btn.disabled = True
-                delete_btn.disabled = True
-        else:
-            resume_btn.disabled = True
-            delete_btn.disabled = True
+    def get_selected_jobs(self) -> list[Job]:
+        """Get all selected jobs."""
+        return [item.job for item in self.query(JobItem) if item.is_selected]
 
     def get_selected_job(self) -> Job | None:
-        """Get the currently selected job."""
-        table = self.query_one("#jobs-table", DataTable)
-        if table.cursor_row is not None and table.row_count > 0:
-            try:
-                row_key = table.get_row_at(table.cursor_row)
-                job_id = str(row_key.key)
-                return self.job_manager.load_job(job_id)
-            except Exception:
-                return None
-        return None
+        """Get the first selected job (for backward compatibility)."""
+        selected = self.get_selected_jobs()
+        return selected[0] if selected else None
 
-    def delete_selected_job(self) -> bool:
-        """Delete the currently selected job."""
-        job = self.get_selected_job()
-        if job:
-            result = self.job_manager.delete_job(job.job_id)
-            self.refresh_jobs()
-            return result
-        return False
+    def get_resumable_selected_jobs(self) -> list[Job]:
+        """Get selected jobs that can be resumed."""
+        return [job for job in self.get_selected_jobs() if job.is_resumable]
 
-    def _get_status_icon(self, status: JobStatus) -> str:
-        icons = {
-            JobStatus.PENDING: "⏳",
-            JobStatus.EXTRACTING: "📝",
-            JobStatus.CONVERTING: "🔊",
-            JobStatus.FINALIZING: "📦",
-            JobStatus.COMPLETED: "✅",
-            JobStatus.FAILED: "❌",
-            JobStatus.CANCELLED: "🚫",
-        }
-        return icons.get(status, "?")
+    def delete_selected_jobs(self) -> int:
+        """Delete all selected jobs. Returns count of deleted jobs."""
+        deleted = 0
+        for job in self.get_selected_jobs():
+            if self.job_manager.delete_job(job.job_id):
+                deleted += 1
+        self.refresh_jobs()
+        return deleted
+
+    def select_all(self) -> None:
+        """Select all jobs."""
+        for item in self.query(JobItem):
+            if not item.is_selected:
+                item.toggle()
+
+    def deselect_all(self) -> None:
+        """Deselect all jobs."""
+        for item in self.query(JobItem):
+            if item.is_selected:
+                item.toggle()
+
+    def move_selected_up(self) -> None:
+        """Move selected jobs up in the list (for queue priority)."""
+        jobs_list = self.query_one("#jobs-list", ListView)
+        items = list(self.query(JobItem))
+
+        # Find indices of selected items
+        selected_indices = [i for i, item in enumerate(items) if item.is_selected]
+
+        if not selected_indices or selected_indices[0] == 0:
+            return  # Can't move up if already at top or nothing selected
+
+        # Move each selected item up by one position
+        for idx in selected_indices:
+            if idx > 0:
+                # Swap with previous item
+                items[idx], items[idx - 1] = items[idx - 1], items[idx]
+
+        # Rebuild the list
+        jobs_list.clear()
+        for item in items:
+            jobs_list.append(JobItem(item.job, selected=item.is_selected))
+
+    def move_selected_down(self) -> None:
+        """Move selected jobs down in the list (for queue priority)."""
+        jobs_list = self.query_one("#jobs-list", ListView)
+        items = list(self.query(JobItem))
+
+        # Find indices of selected items (in reverse order for proper movement)
+        selected_indices = [i for i, item in enumerate(items) if item.is_selected]
+
+        if not selected_indices or selected_indices[-1] == len(items) - 1:
+            return  # Can't move down if already at bottom or nothing selected
+
+        # Move each selected item down by one position (process in reverse)
+        for idx in reversed(selected_indices):
+            if idx < len(items) - 1:
+                # Swap with next item
+                items[idx], items[idx + 1] = items[idx + 1], items[idx]
+
+        # Rebuild the list
+        jobs_list.clear()
+        for item in items:
+            jobs_list.append(JobItem(item.job, selected=item.is_selected))
 
 
 class AudiobookifyApp(App):
@@ -1027,6 +1103,7 @@ class AudiobookifyApp(App):
         self.current_worker: Worker | None = None
         self.job_manager = JobManager()
         self.debug_mode = False
+        self._pending_resume_jobs: list[Job] = []  # Jobs queued for sequential resume
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -1087,6 +1164,14 @@ class AudiobookifyApp(App):
             self.action_delete_job()
         elif event.button.id == "job-refresh":
             self.action_refresh_jobs()
+        elif event.button.id == "job-select-all":
+            self.query_one(JobsPanel).select_all()
+        elif event.button.id == "job-deselect-all":
+            self.query_one(JobsPanel).deselect_all()
+        elif event.button.id == "job-move-up":
+            self.query_one(JobsPanel).move_selected_up()
+        elif event.button.id == "job-move-down":
+            self.query_one(JobsPanel).move_selected_down()
         elif event.button.id == "preview-chapters-btn":
             self.action_preview_chapters()
         elif event.button.id == "export-text-btn":
@@ -1633,52 +1718,77 @@ class AudiobookifyApp(App):
         self.log_message("Jobs list refreshed")
 
     def action_resume_job(self) -> None:
-        """Resume the selected job."""
+        """Resume selected jobs. First resumable job starts immediately, others queue."""
+        self.log_debug("action_resume_job called")
+
         if self.is_processing:
             self.notify("Already processing", severity="warning")
             self.log_message("⚠️ Cannot resume: already processing")
             return
 
         jobs_panel = self.query_one(JobsPanel)
-        job = jobs_panel.get_selected_job()
-        if not job:
-            self.notify("No job selected", severity="warning")
-            self.log_message("⚠️ Cannot resume: no job selected")
+        selected_jobs = jobs_panel.get_selected_jobs()
+
+        self.log_debug(f"Selected jobs count: {len(selected_jobs)}")
+
+        if not selected_jobs:
+            self.notify("No jobs selected", severity="warning")
+            self.log_message("⚠️ Cannot resume: no jobs selected (use checkbox to select)")
             return
 
-        # Log job info for debugging
-        self.log_debug(f"Selected job: {job.job_id}")
-        self.log_debug(f"Job status: {job.status.value}")
-        self.log_debug(f"Job progress: {job.completed_chapters}/{job.total_chapters}")
-        self.log_debug(f"Is resumable: {job.is_resumable}")
+        # Filter to resumable jobs only
+        resumable_jobs = [j for j in selected_jobs if j.is_resumable]
+        self.log_debug(f"Resumable jobs count: {len(resumable_jobs)}")
 
-        if not job.is_resumable:
-            self.notify("Job is not resumable", severity="warning")
-            self.log_message(
-                f"⚠️ Cannot resume: job status={job.status.value}, "
-                f"progress={job.completed_chapters}/{job.total_chapters}"
-            )
+        if not resumable_jobs:
+            self.notify("No resumable jobs selected", severity="warning")
+            self.log_message("⚠️ Cannot resume: none of the selected jobs are resumable")
+            for job in selected_jobs:
+                self.log_debug(
+                    f"  {Path(job.source_file).name}: status={job.status.value}, "
+                    f"progress={job.completed_chapters}/{job.total_chapters}, "
+                    f"is_resumable={job.is_resumable}"
+                )
             return
 
-        # Check source file still exists
-        source_path = Path(job.source_file)
-        if not source_path.exists():
-            self.notify(f"Source file not found: {source_path.name}", severity="error")
-            self.log_message(f"❌ Source file missing: {job.source_file}")
+        # Verify source files exist
+        valid_jobs = []
+        for job in resumable_jobs:
+            source_path = Path(job.source_file)
+            if source_path.exists():
+                valid_jobs.append(job)
+            else:
+                self.log_message(f"⚠️ Source file missing: {source_path.name}")
+
+        if not valid_jobs:
+            self.notify("No valid source files found", severity="error")
             return
 
-        # Log resume info
-        self.log_message(f"🔄 Resuming job: {job.job_id}")
+        # First job starts immediately
+        first_job = valid_jobs[0]
+        source_path = Path(first_job.source_file)
+
+        self.log_message(f"🔄 Resuming {len(valid_jobs)} job(s)")
         self.log_message(
-            f"   {source_path.name} - {job.completed_chapters}/{job.total_chapters} chapters done"
+            f"   Starting: {source_path.name} "
+            f"({first_job.completed_chapters}/{first_job.total_chapters} chapters done)"
         )
+
+        # Note: Multi-job resume queues remaining jobs for sequential processing
+        if len(valid_jobs) > 1:
+            self.log_message(
+                f"   Note: {len(valid_jobs) - 1} more job(s) will resume after this one"
+            )
+            # Store remaining jobs for sequential processing
+            self._pending_resume_jobs = valid_jobs[1:]
+
         self.notify(
-            f"Resuming: {source_path.name}",
+            f"Resuming {len(valid_jobs)} job(s)",
             title="Job Resume",
             severity="information",
         )
 
-        # Start processing - BatchProcessor will find the existing job
+        # Start processing
         self.is_processing = True
         self.should_stop = False
         progress_panel = self.query_one(ProgressPanel)
@@ -1690,20 +1800,29 @@ class AudiobookifyApp(App):
         tabs.active = "progress-tab"
 
         # Start the resume worker with job context
-        self.resume_job_async(job)
+        self.resume_job_async(first_job)
 
     def action_delete_job(self) -> None:
-        """Delete the selected job."""
+        """Delete all selected jobs."""
         jobs_panel = self.query_one(JobsPanel)
-        job = jobs_panel.get_selected_job()
-        if job:
-            job_name = Path(job.source_file).name
-            if jobs_panel.delete_selected_job():
-                self.log_message(f"Deleted job: {job_name}")
-                self.notify(f"Deleted: {job_name}", title="Job Deleted")
-            else:
-                self.log_message(f"Failed to delete job: {job_name}")
-                self.notify(f"Failed to delete: {job_name}", severity="error")
+        selected_jobs = jobs_panel.get_selected_jobs()
+
+        if not selected_jobs:
+            self.notify("No jobs selected", severity="warning")
+            self.log_message("⚠️ Cannot delete: no jobs selected (use checkbox to select)")
+            return
+
+        job_names = [Path(j.source_file).name for j in selected_jobs]
+        deleted_count = jobs_panel.delete_selected_jobs()
+
+        if deleted_count > 0:
+            self.log_message(f"🗑️ Deleted {deleted_count} job(s)")
+            for name in job_names:
+                self.log_message(f"   {name}")
+            self.notify(f"Deleted {deleted_count} job(s)", title="Jobs Deleted")
+        else:
+            self.log_message("❌ Failed to delete jobs")
+            self.notify("Failed to delete jobs", severity="error")
 
     def action_preview_chapters(self) -> None:
         """Preview chapters for the first selected file."""

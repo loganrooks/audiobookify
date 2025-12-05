@@ -17,6 +17,7 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
     DataTable,
@@ -1022,6 +1023,93 @@ class JobsPanel(Vertical):
             jobs_list.append(JobItem(item.job, selected=item.is_selected))
 
 
+class HelpScreen(ModalScreen):
+    """Modal screen showing all keyboard shortcuts."""
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close"),
+        Binding("?", "dismiss", "Close"),
+        Binding("f1", "dismiss", "Close"),
+    ]
+
+    DEFAULT_CSS = """
+    HelpScreen {
+        align: center middle;
+    }
+
+    #help-container {
+        width: 65;
+        height: auto;
+        max-height: 85%;
+        background: $surface;
+        border: round $primary;
+        padding: 1 2;
+    }
+
+    #help-container > Label.title {
+        text-style: bold;
+        text-align: center;
+        width: 100%;
+        margin-bottom: 1;
+    }
+
+    #help-container > Label.section {
+        text-style: bold;
+        color: $primary;
+        margin-top: 1;
+    }
+
+    #help-container > Static {
+        height: 1;
+    }
+
+    #help-container > Static.hint {
+        color: $text-muted;
+        text-align: center;
+        margin-top: 1;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="help-container"):
+            yield Label("⌨️  Keyboard Shortcuts", classes="title")
+
+            yield Label("── Global ──", classes="section")
+            yield Static("  q              Quit application")
+            yield Static("  s              Start conversion")
+            yield Static("  Escape         Stop conversion")
+            yield Static("  r              Refresh file list")
+            yield Static("  Tab            Focus next panel")
+            yield Static("  Shift+Tab      Focus previous panel")
+            yield Static("  1/2/3/4        Switch bottom tabs")
+            yield Static("  ?/F1           Show this help")
+            yield Static("  Ctrl+D         Toggle debug mode")
+
+            yield Label("── File Selection ──", classes="section")
+            yield Static("  a              Select all files")
+            yield Static("  d              Deselect all")
+            yield Static("  /              Focus path input")
+            yield Static("  Backspace      Go to parent directory")
+
+            yield Label("── Jobs ──", classes="section")
+            yield Static("  R              Resume selected jobs")
+            yield Static("  X              Delete selected jobs")
+            yield Static("  ↑/↓            Reorder in queue")
+
+            yield Label("── Voice ──", classes="section")
+            yield Static("  p              Preview selected voice")
+
+            yield Label("── Tips ──", classes="section")
+            yield Static("  Font Size: Ctrl/Cmd + Plus/Minus")
+            yield Static("  Export: Select file → Export & Edit")
+
+            yield Static("Press Escape, ? or F1 to close", classes="hint")
+
+    def action_dismiss(self) -> None:
+        """Close the help screen."""
+        self.dismiss()
+
+
 class AudiobookifyApp(App):
     """Main Audiobookify TUI Application."""
 
@@ -1086,14 +1174,30 @@ class AudiobookifyApp(App):
     """
 
     BINDINGS = [
+        # Core actions
         Binding("q", "quit", "Quit"),
         Binding("s", "start", "Start"),
         Binding("escape", "stop", "Stop"),
         Binding("r", "refresh", "Refresh"),
+        # File selection
         Binding("a", "select_all", "Select All"),
         Binding("d", "deselect_all", "Deselect All"),
         Binding("p", "preview_voice", "Preview Voice"),
-        Binding("?", "help", "Help"),
+        # Navigation
+        Binding("slash", "focus_path", "Path", show=False),
+        Binding("backspace", "parent_dir", "Parent", show=False),
+        # Tab switching (1-4 for bottom tabs)
+        Binding("1", "tab_progress", "Progress", show=False),
+        Binding("2", "tab_queue", "Queue", show=False),
+        Binding("3", "tab_jobs", "Jobs", show=False),
+        Binding("4", "tab_log", "Log", show=False),
+        # Job operations (uppercase for safety)
+        Binding("R", "resume_jobs", "Resume", show=False),
+        Binding("X", "delete_jobs", "Delete", show=False),
+        # Help
+        Binding("?", "show_help", "Help"),
+        Binding("f1", "show_help", "Help", show=False),
+        # Debug
         Binding("ctrl+d", "toggle_debug", "Debug"),
     ]
 
@@ -1152,6 +1256,75 @@ class AudiobookifyApp(App):
         status = "enabled" if self.debug_mode else "disabled"
         self.notify(f"Debug logging {status}", title="Debug Mode")
         self.log_message(f"🔧 Debug logging {status} (Ctrl+D to toggle)")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Keyboard Navigation Actions
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def action_show_help(self) -> None:
+        """Show the help modal with all keyboard shortcuts."""
+        self.push_screen(HelpScreen())
+
+    def action_focus_path(self) -> None:
+        """Focus the path input field."""
+        try:
+            path_input = self.query_one("#path-input", Input)
+            path_input.focus()
+        except Exception:
+            pass
+
+    def action_parent_dir(self) -> None:
+        """Navigate to parent directory."""
+        try:
+            file_panel = self.query_one(FilePanel)
+            parent = file_panel.current_path.parent
+            if parent.exists() and parent != file_panel.current_path:
+                file_panel.current_path = parent
+                file_panel.query_one("#path-input", Input).value = str(parent)
+                file_panel.scan_directory()
+                self.log_debug(f"Navigated to parent: {parent}")
+        except Exception as e:
+            self.log_debug(f"Parent navigation failed: {e}")
+
+    def action_tab_progress(self) -> None:
+        """Switch to Progress tab."""
+        try:
+            self.query_one("#bottom-tabs", TabbedContent).active = "progress-tab"
+        except Exception:
+            pass
+
+    def action_tab_queue(self) -> None:
+        """Switch to Queue tab."""
+        try:
+            self.query_one("#bottom-tabs", TabbedContent).active = "queue-tab"
+        except Exception:
+            pass
+
+    def action_tab_jobs(self) -> None:
+        """Switch to Jobs tab."""
+        try:
+            self.query_one("#bottom-tabs", TabbedContent).active = "jobs-tab"
+        except Exception:
+            pass
+
+    def action_tab_log(self) -> None:
+        """Switch to Log tab."""
+        try:
+            self.query_one("#bottom-tabs", TabbedContent).active = "log-tab"
+        except Exception:
+            pass
+
+    def action_resume_jobs(self) -> None:
+        """Resume selected jobs (keyboard shortcut)."""
+        self.action_resume_job()
+
+    def action_delete_jobs(self) -> None:
+        """Delete selected jobs (keyboard shortcut)."""
+        self.action_delete_job()
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Button Handlers
+    # ─────────────────────────────────────────────────────────────────────────
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "start-btn":
@@ -1988,44 +2161,6 @@ class AudiobookifyApp(App):
 
         except Exception as e:
             self.call_from_thread(self.log_message, f"❌ Export failed: {e}")
-
-    def action_help(self) -> None:
-        """Show help."""
-        self.log_message("─" * 40)
-        self.log_message("Keyboard Shortcuts:")
-        self.log_message("  s      - Start processing")
-        self.log_message("  Esc    - Stop processing")
-        self.log_message("  r      - Refresh file list")
-        self.log_message("  a      - Select all files")
-        self.log_message("  d      - Deselect all files")
-        self.log_message("  p      - Preview selected voice")
-        self.log_message("  Ctrl+D - Toggle debug logging")
-        self.log_message("  q      - Quit")
-        self.log_message("  ?      - Show this help")
-        self.log_message("─" * 40)
-        self.log_message("")
-        self.log_message("💡 Tip: Font Size")
-        self.log_message("  Font size is controlled by your terminal:")
-        self.log_message("  - Ctrl/Cmd + Plus  → Increase font size")
-        self.log_message("  - Ctrl/Cmd + Minus → Decrease font size")
-        self.log_message("")
-        self.log_message("v2.1.0 Features:")
-        self.log_message("  - Rate/Volume: Adjust TTS speed and volume")
-        self.log_message("  - Chapters: Select specific chapters (e.g., 1-5)")
-        self.log_message("  - Voice Preview: Listen before converting")
-        self.log_message("")
-        self.log_message("v2.2.0 Features:")
-        self.log_message("  - Normalize: Consistent volume across chapters")
-        self.log_message("  - Trim Silence: Remove excessive pauses")
-        self.log_message("  - Pronunciation: Custom word pronunciations")
-        self.log_message("  - Voice Mapping: Different voices for characters")
-        self.log_message("")
-        self.log_message("📝 Export & Edit Workflow:")
-        self.log_message("  1. Select a file and click 'Preview Chapters'")
-        self.log_message("  2. If chapters are wrong, click 'Export & Edit'")
-        self.log_message("  3. Edit the .txt file to fix chapter markers")
-        self.log_message("  4. Click 'Convert Text to Audio' to finish")
-        self.log_message("─" * 40)
 
 
 def main(path: str = ".") -> None:

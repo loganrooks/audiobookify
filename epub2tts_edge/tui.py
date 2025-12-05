@@ -1191,8 +1191,8 @@ class ChapterPreviewItem(ListItem):
 
     def _build_label(self) -> str:
         """Build the display label for this chapter."""
-        # Selection marker (filled circle = selected, empty = not)
-        select_marker = "●" if self.is_selected else "○"
+        # Checkbox for batch selection (editing only, not export)
+        checkbox = "☑" if self.is_selected else "☐"
 
         indent = "  " * max(0, self.chapter.level - 1)
 
@@ -1204,7 +1204,7 @@ class ChapterPreviewItem(ListItem):
         # Stats
         stats = f"({self.chapter.word_count:,}w)"
 
-        return f"{select_marker} {indent}{title} {stats}"
+        return f"{checkbox} {indent}{title} {stats}"
 
     def toggle_selection(self) -> None:
         """Toggle selection for batch operations."""
@@ -1332,12 +1332,13 @@ class PreviewPanel(Vertical):
 
         # Placeholder when no preview
         yield Static(
-            "Select a file and press 'Preview Chapters' to see chapter breakdown", id="no-preview"
+            "Select a file and press 'Preview Chapters' to see chapter breakdown",
+            id="no-preview",
         )
 
-        # Instruction label for editing
+        # Instruction label for editing - CLEAR that Start processes ALL
         yield Label(
-            "💡 Click to select chapters → Merge adjacent / Delete selected | E=edit title",
+            "📝 Edit chapters: Select → Merge/Delete | Start processes ALL chapters below",
             id="preview-instructions",
         )
 
@@ -1355,7 +1356,7 @@ class PreviewPanel(Vertical):
             yield Button("🔗 Merge", id="preview-merge", disabled=True)
             yield Button("🗑️ Delete", id="preview-delete", disabled=True)
             yield Button("↩️ Undo", id="preview-undo", disabled=True)
-            yield Button("✅ Start", id="preview-approve", classes="approve", disabled=True)
+            yield Button("▶️ Start All", id="preview-approve", classes="approve", disabled=True)
 
     def on_mount(self) -> None:
         """Hide the chapter tree initially."""
@@ -1480,12 +1481,15 @@ class PreviewPanel(Vertical):
         total_words = sum(c.word_count for c in self.preview_state.chapters)
         selected_count = len(self._get_selected_items())
 
+        # Show total chapters (what will be processed) and edit selection
         if selected_count > 0:
             self.query_one("#chapter-stats", Label).update(
-                f"{total_chapters} ch, {total_words:,}w | {selected_count} selected"
+                f"{total_chapters} chapters, {total_words:,}w | {selected_count} selected for edit"
             )
         else:
-            self.query_one("#chapter-stats", Label).update(f"{total_chapters} ch, {total_words:,}w")
+            self.query_one("#chapter-stats", Label).update(
+                f"{total_chapters} chapters, {total_words:,}w"
+            )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""

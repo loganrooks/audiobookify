@@ -64,12 +64,24 @@
 - [x] **Compact FilePanel layout** - Merge title/mode/count into single row to maximize file list
 - [x] **Multi-select jobs** - Select multiple jobs for batch operations (delete, resume)
 - [x] **Job queue reordering** - Move jobs up/down in queue priority
+- [x] **Preview chapter editing** - Merge/delete chapters with undo, batch operations
+- [x] **Chapter title editing** - Inline title editing with E key
 - [ ] **Directory browser** - Add DirectoryTree modal for easier folder selection
 - [x] **Parent navigation** - Backspace key navigates to parent directory
 - [ ] **Path autocomplete** - Tab completion for directory input
-- [ ] **Preview tab** - Enhanced chapter preview with tree view, word counts, estimated duration
 - [ ] **Collapsible settings** - Group settings into collapsible sections (Voice, Timing, Advanced)
 - [ ] **Settings reorganization** - Move action buttons out of Settings panel
+
+#### TUI Architecture Improvements (P1)
+- [ ] **Multi-file preview** - Tabbed interface to preview/edit multiple books before processing
+- [ ] **Book reordering** - Drag-and-drop or buttons to reorder books in processing queue
+- [ ] **Jobs panel integration** - Connect Preview workflow to JobManager for unified tracking
+- [ ] **Unified job tracking** - Single source of truth for all processing jobs (QueuePanel + JobsPanel)
+
+#### TUI Architecture Improvements (P2)
+- [ ] **Parallel job processing** - Process multiple books concurrently (configurable)
+- [ ] **Job persistence** - Save/restore job queue across TUI sessions
+- [ ] **Progress estimation** - Estimate time remaining based on word count and processing speed
 
 #### TUI Improvements (Medium Priority)
 - [ ] **Estimated duration** - Show per-chapter and total estimated audio time
@@ -105,6 +117,12 @@
 2. **Large files** - Memory usage for very large EPUBs
 3. **Complex layouts** - Tables, sidebars may not extract well
 4. **Non-English** - Some languages have limited voice options
+
+### TUI Architecture Limitations
+1. **Preview is single-file only** - When multiple files selected, only first is previewed
+2. **Jobs panel disconnected from Preview** - Preview→Start workflow doesn't create entries in Jobs panel
+3. **Two tracking systems** - QueuePanel (current processing) and JobsPanel (persistent jobs) are separate
+4. **No multi-book preview editing** - Cannot preview/edit multiple books before batch processing
 
 ### Planned Fixes
 - [ ] Better error handling for network issues

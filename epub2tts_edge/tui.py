@@ -734,6 +734,10 @@ class SettingsPanel(VerticalScroll):
             yield Label("Voice Map:")
             yield Input(placeholder="Path to voice mapping", id="voice-mapping-input")
 
+        with Horizontal(classes="setting-row"):
+            yield Label("Parallel:")
+            yield Input(value="5", placeholder="1-10", id="concurrency-input")
+
     def get_config(self) -> dict:
         """Get current settings as a dictionary."""
         rate_val = self.query_one("#rate-select", Select).value
@@ -743,6 +747,13 @@ class SettingsPanel(VerticalScroll):
         voice_mapping_val = self.query_one("#voice-mapping-input", Input).value.strip()
         sentence_pause_val = self.query_one("#sentence-pause-select", Select).value
         paragraph_pause_val = self.query_one("#paragraph-pause-select", Select).value
+        concurrency_val = self.query_one("#concurrency-input", Input).value.strip()
+
+        # Parse concurrency as int, default to 5, clamp to 1-15
+        try:
+            max_concurrent = max(1, min(15, int(concurrency_val)))
+        except ValueError:
+            max_concurrent = 5
 
         return {
             "speaker": self.query_one("#voice-select", Select).value,
@@ -763,6 +774,7 @@ class SettingsPanel(VerticalScroll):
             "trim_silence": self.query_one("#trim-silence-switch", Switch).value,
             "pronunciation": pronunciation_val if pronunciation_val else None,
             "voice_mapping": voice_mapping_val if voice_mapping_val else None,
+            "max_concurrent": max_concurrent,
         }
 
 
@@ -2728,6 +2740,8 @@ class AudiobookifyApp(App):
                     # Pause settings
                     sentence_pause=config_dict.get("sentence_pause", 1200),
                     paragraph_pause=config_dict.get("paragraph_pause", 1200),
+                    # Parallelization
+                    max_concurrent=config_dict.get("max_concurrent", 5),
                 )
 
                 processor = BatchProcessor(config)
@@ -2855,6 +2869,8 @@ class AudiobookifyApp(App):
                 # Pause settings
                 sentence_pause=config_dict.get("sentence_pause", 1200),
                 paragraph_pause=config_dict.get("paragraph_pause", 1200),
+                # Parallelization
+                max_concurrent=config_dict.get("max_concurrent", 5),
             )
 
             processor = BatchProcessor(config)
@@ -3025,6 +3041,7 @@ class AudiobookifyApp(App):
                     config.get("sentence_pause", 1200),
                     rate=config.get("tts_rate"),
                     volume=config.get("tts_volume"),
+                    max_concurrent=config.get("max_concurrent", 5),
                     progress_callback=progress_callback,
                     cancellation_check=check_cancelled,
                 )
@@ -3140,6 +3157,7 @@ class AudiobookifyApp(App):
                 hierarchy_style="flat",
                 skip_existing=False,
                 export_only=False,
+                max_concurrent=5,  # Use default for resumed jobs
             )
 
             processor = BatchProcessor(config)

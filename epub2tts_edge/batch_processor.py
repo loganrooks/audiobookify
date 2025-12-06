@@ -106,6 +106,7 @@ class BatchConfig:
     # TTS parameters
     tts_rate: str | None = None  # Speech rate (e.g., "+20%", "-10%")
     tts_volume: str | None = None  # Volume adjustment (e.g., "+50%", "-25%")
+    max_concurrent: int = 5  # Max parallel TTS tasks (1-15)
 
     # Chapter selection
     chapters: str | None = None  # Chapter selection (e.g., "1-5", "1,3,7")
@@ -615,6 +616,7 @@ class BatchProcessor:
                     self.config.sentence_pause,
                     rate=self.config.tts_rate,
                     volume=self.config.tts_volume,
+                    max_concurrent=self.config.max_concurrent,
                     progress_callback=job_progress_callback,
                     cancellation_check=cancellation_check,
                 )

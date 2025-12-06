@@ -705,8 +705,8 @@ Hierarchy Styles:
     parser.add_argument(
         "--max-concurrent",
         type=int,
-        default=1,
-        help="Maximum concurrent TTS tasks (default: 1, sequential)",
+        default=5,
+        help="Maximum concurrent TTS tasks (default: 5)",
     )
 
     # Logging options

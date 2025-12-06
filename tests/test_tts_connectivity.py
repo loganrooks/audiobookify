@@ -87,6 +87,51 @@ class TestEdgeTTSConnectivity:
         assert "en-US-AndrewNeural" in voice_names, "Should have en-US-AndrewNeural voice"
 
 
+class TestEdgeTTSParallel:
+    """Test parallel TTS execution."""
+
+    @pytest.mark.integration
+    @pytest.mark.slow
+    async def test_edge_tts_parallel_execution(self):
+        """Verify edge-tts can handle multiple parallel requests."""
+        import edge_tts
+
+        texts = [
+            "First sentence for parallel test.",
+            "Second sentence for parallel test.",
+            "Third sentence for parallel test.",
+        ]
+
+        output_files = []
+        for _ in range(len(texts)):
+            f = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+            output_files.append(f.name)
+            f.close()
+
+        async def generate_audio(text: str, output: str):
+            communicate = edge_tts.Communicate(text, "en-US-AndrewNeural")
+            await communicate.save(output)
+
+        try:
+            # Run all 3 in parallel
+            await asyncio.gather(
+                *[
+                    generate_audio(text, output)
+                    for text, output in zip(texts, output_files, strict=True)
+                ]
+            )
+
+            # Verify all generated successfully
+            for output_file in output_files:
+                size = os.path.getsize(output_file)
+                assert size > 0, f"Generated file {output_file} should not be empty"
+
+        finally:
+            for output_file in output_files:
+                if os.path.exists(output_file):
+                    os.remove(output_file)
+
+
 class TestEdgeTTSVersion:
     """Test edge-tts version compatibility."""
 

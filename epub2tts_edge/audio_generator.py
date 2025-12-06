@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 # Default configuration
 DEFAULT_RETRY_COUNT = 3
 DEFAULT_RETRY_DELAY = 2  # seconds (base delay for exponential backoff)
-DEFAULT_CONCURRENT_TASKS = 1  # Sequential processing to avoid rate limiting
+DEFAULT_CONCURRENT_TASKS = 5  # Parallel TTS tasks (safe with edge-tts <7.1.0)
 RATE_LIMIT_COOLDOWN = 30  # seconds to wait before final retry on rate-limit errors
 
 

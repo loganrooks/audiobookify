@@ -82,7 +82,7 @@ The following design documents detail implementation plans for major features:
 - [x] **Keyboard navigation** - More shortcuts for common operations (1-4 tabs, /, Backspace, R, X, F1)
 
 #### TUI Improvements (Next)
-- [ ] **Shift-click range selection** - Select range of chapters for batch operations
+- [x] **Range/batch selection** - Enter key for anchor-based range, V key for toggle mode
 - [ ] **Directory browser** - Add DirectoryTree modal for easier folder selection
 - [ ] **Path autocomplete** - Tab completion for directory input
 - [ ] **Settings panel redesign** - Tabbed settings with actions separation (see [design doc](./claudedocs/SETTINGS_PANEL_REDESIGN.md))

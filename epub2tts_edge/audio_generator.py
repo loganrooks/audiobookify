@@ -88,7 +88,13 @@ def get_duration(file_path: str) -> int:
     return len(audio)
 
 
-def generate_metadata(files: list[str], author: str, title: str, chapter_titles: list[str]) -> None:
+def generate_metadata(
+    files: list[str],
+    author: str,
+    title: str,
+    chapter_titles: list[str],
+    output_dir: str | None = None,
+) -> str:
     """Generate FFmpeg metadata file for M4B chapters.
 
     Args:
@@ -96,10 +102,19 @@ def generate_metadata(files: list[str], author: str, title: str, chapter_titles:
         author: Book author name
         title: Book title
         chapter_titles: List of chapter titles
+        output_dir: Optional directory for metadata file. If None, uses current directory.
+
+    Returns:
+        Path to the generated metadata file
     """
+    if output_dir:
+        metadata_path = os.path.join(output_dir, "FFMETADATAFILE")
+    else:
+        metadata_path = "FFMETADATAFILE"
+
     chap = 0
     start_time = 0
-    with open("FFMETADATAFILE", "w", encoding="utf-8") as file:
+    with open(metadata_path, "w", encoding="utf-8") as file:
         file.write(";FFMETADATA1\n")
         file.write(f"ARTIST={author}\n")
         file.write(f"ALBUM={title}\n")
@@ -114,6 +129,8 @@ def generate_metadata(files: list[str], author: str, title: str, chapter_titles:
             file.write(f"title={chapter_titles[chap]}\n")
             chap += 1
             start_time += duration
+
+    return metadata_path
 
 
 def run_save(communicate: edge_tts.Communicate, filename: str) -> None:
@@ -260,15 +277,15 @@ async def parallel_edgespeak(
     """
     semaphore = asyncio.Semaphore(max_concurrent)
 
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        tasks = []
-        for sentence, speaker, filename in zip(sentences, speakers, filenames, strict=False):
-            async with semaphore:
-                loop = asyncio.get_running_loop()
-                # Clean up excessive punctuation
-                sentence = re.sub(r"[!]+", "!", sentence)
-                sentence = re.sub(r"[?]+", "?", sentence)
-                task = loop.run_in_executor(
+    async def limited_edgespeak(sentence: str, speaker: str, filename: str) -> None:
+        """Run TTS with semaphore limiting concurrency."""
+        async with semaphore:
+            loop = asyncio.get_running_loop()
+            # Clean up excessive punctuation
+            sentence = re.sub(r"[!]+", "!", sentence)
+            sentence = re.sub(r"[?]+", "?", sentence)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                await loop.run_in_executor(
                     executor,
                     run_edgespeak,
                     sentence,
@@ -279,8 +296,12 @@ async def parallel_edgespeak(
                     retry_count,
                     retry_delay,
                 )
-                tasks.append(task)
-        await asyncio.gather(*tasks)
+
+    tasks = [
+        limited_edgespeak(sentence, speaker, filename)
+        for sentence, speaker, filename in zip(sentences, speakers, filenames, strict=False)
+    ]
+    await asyncio.gather(*tasks)
 
 
 def read_book(
@@ -474,7 +495,12 @@ def read_book(
 
 
 def make_m4b(
-    files: list[str], sourcefile: str, speaker: str, normalizer=None, silence_detector=None
+    files: list[str],
+    sourcefile: str,
+    speaker: str,
+    normalizer=None,
+    silence_detector=None,
+    output_dir: str | None = None,
 ) -> str:
     """Create M4B audiobook from chapter files.
 
@@ -484,6 +510,7 @@ def make_m4b(
         speaker: Speaker voice ID
         normalizer: Optional AudioNormalizer instance for volume normalization
         silence_detector: Optional SilenceDetector instance for trimming silence
+        output_dir: Optional directory for output M4B file. If None, uses sourcefile directory.
 
     Returns:
         Path to the created M4B file
@@ -507,10 +534,21 @@ def make_m4b(
         normalized_files = normalizer.normalize_files(files_to_use, norm_temp_dir, unified=True)
         files_to_use = normalized_files
 
-    filelist = "filelist.txt"
-    basefile = sourcefile.replace(".txt", "")
-    outputm4a = f"{basefile} ({speaker}).m4a"
-    outputm4b = f"{basefile} ({speaker}).m4b"
+    # Determine output paths
+    basefile = os.path.basename(sourcefile).replace(".txt", "")
+    if output_dir:
+        out_path = Path(output_dir)
+        out_path.mkdir(parents=True, exist_ok=True)
+        outputm4a = str(out_path / f"{basefile} ({speaker}).m4a")
+        outputm4b = str(out_path / f"{basefile} ({speaker}).m4b")
+        filelist = str(out_path / "filelist.txt")
+        metadata_file = str(out_path / "FFMETADATAFILE")
+    else:
+        basefile_with_dir = sourcefile.replace(".txt", "")
+        outputm4a = f"{basefile_with_dir} ({speaker}).m4a"
+        outputm4b = f"{basefile_with_dir} ({speaker}).m4b"
+        filelist = "filelist.txt"
+        metadata_file = "FFMETADATAFILE"
 
     with open(filelist, "w", encoding="utf-8") as f:
         for filename in files_to_use:
@@ -543,7 +581,7 @@ def make_m4b(
         "-i",
         outputm4a,
         "-i",
-        "FFMETADATAFILE",
+        metadata_file,
         "-map_metadata",
         "1",
         "-codec",
@@ -554,7 +592,7 @@ def make_m4b(
 
     # Cleanup
     os.remove(filelist)
-    os.remove("FFMETADATAFILE")
+    os.remove(metadata_file)
     os.remove(outputm4a)
     for f in files:
         os.remove(f)

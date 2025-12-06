@@ -87,11 +87,18 @@ git push
 4. **PUSH to remote**
 5. Verify push succeeded
 
-### 5. Terminal Shift+Click Interception
-**Learning**: Many terminal emulators intercept Shift+Click for text selection
-**Pattern**: Shift+Click in TUI apps may not work - the terminal grabs it first
-**Fix**: Always provide keyboard-based alternatives (Shift+Arrow keys) as fallback
-**Example**: For range selection, use Shift+Up/Down instead of relying on Shift+Click
+### 5. Terminal Modifier Key Limitations
+**Learning**: Terminals have significant limitations with modifier keys:
+- Shift+Click is intercepted by many terminals for text selection
+- Shift+Space is not reliably detected (space has no shifted variant)
+- Shift+Arrow may work but varies by terminal
+
+**Pattern**: Modifier+key combinations are unreliable in terminal apps
+**Fix**: Use distinct keys instead of modifiers for important actions
+**Example**: Instead of Shift+Space for range select, use Enter key
+- Space = toggle selection (sets anchor)
+- Enter = select range from anchor to current
+- This is more reliable across all terminals
 
 ---
 Last updated: 2025-12-05

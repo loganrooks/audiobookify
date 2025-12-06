@@ -1350,9 +1350,8 @@ class PreviewPanel(Vertical):
         super().__init__(**kwargs)
         self.preview_state: ChapterPreviewState | None = None
         self._undo_stack: list[list[PreviewChapter]] = []  # Stack of chapter snapshots
-        self._last_selected_index: int | None = (
-            None  # Anchor for shift-click range select  # Track if shift key is held  # Stack of chapter snapshots
-        )
+        self._last_selected_index: int | None = None  # Anchor for range selection
+        self._selection_mode: bool = False  # Visual selection mode (V key)
 
     def compose(self) -> ComposeResult:
         # Header with book info
@@ -1369,7 +1368,7 @@ class PreviewPanel(Vertical):
 
         # Instruction label for editing - CLEAR that Start processes ALL
         yield Label(
-            "📝 Space=select, Enter=range, M=merge, X=delete, U=undo | Start=ALL",
+            "📝 V=select mode, Space=toggle, M=merge, X=delete, U=undo | Start=ALL",
             id="preview-instructions",
         )
 
@@ -1522,6 +1521,36 @@ class PreviewPanel(Vertical):
                 f"{total_chapters} chapters, {total_words:,}w"
             )
 
+    def _enter_selection_mode(self) -> None:
+        """Enter visual selection mode."""
+        self._selection_mode = True
+        # Select the currently highlighted item to start the selection
+        highlighted = self._get_highlighted_item()
+        if highlighted:
+            highlighted.set_selected(True)
+            self._update_stats()
+            self._update_action_buttons()
+        # Update instructions to show selection mode
+        self._update_selection_mode_instructions()
+
+    def _exit_selection_mode(self) -> None:
+        """Exit visual selection mode."""
+        self._selection_mode = False
+        # Update instructions back to normal
+        self._update_selection_mode_instructions()
+
+    def _update_selection_mode_instructions(self) -> None:
+        """Update instructions based on selection mode state."""
+        instructions = self.query_one("#preview-instructions", Label)
+        if self._selection_mode:
+            instructions.update(
+                "🔵 VISUAL SELECT: ↑↓=extend selection, V/Esc=exit | M=merge, X=delete"
+            )
+        else:
+            instructions.update(
+                "📝 V=select mode, Space=toggle, M=merge, X=delete, U=undo | Start=ALL"
+            )
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
         if event.button.id == "preview-select-all":
@@ -1577,8 +1606,14 @@ class PreviewPanel(Vertical):
         self._update_action_buttons()
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
-        """Update buttons when highlight changes."""
+        """Update buttons when highlight changes, and select in visual mode."""
         self._update_action_buttons()
+
+        # In visual selection mode, select items as user navigates
+        if self._selection_mode and isinstance(event.item, ChapterPreviewItem):
+            event.item.set_selected(True)
+            self._update_stats()
+            self._update_action_buttons()
 
     @on(Click, "#chapter-tree")
     def _on_chapter_tree_click(self, event: Click) -> None:
@@ -1986,36 +2021,38 @@ class PreviewPanel(Vertical):
 
         Supports:
         - e/E: Edit chapter title
-        - Escape: Cancel title edit
-        - Space: Toggle selection and set anchor
-        - Enter: Select range from anchor to current
+        - Escape: Cancel title edit / exit selection mode
+        - Space: Toggle selection on current item
+        - V: Toggle visual selection mode (select while navigating)
         """
         if event.key == "e" or event.key == "E":
             # Edit highlighted chapter title
             self.edit_highlighted_title()
             event.stop()
         elif event.key == "escape":
-            # Cancel title edit if active
-            try:
-                input_widget = self.query_one("#title-edit-input", Input)
-                chapter_item = input_widget.chapter_item
-                input_widget.remove()
-                label = chapter_item.query_one(Label)
-                label.display = True
+            # Exit selection mode or cancel title edit
+            if self._selection_mode:
+                self._exit_selection_mode()
                 event.stop()
-            except Exception:
-                pass  # No edit in progress
-        elif event.key == "enter":
-            # Enter: select range from anchor to current (if anchor set)
-            highlighted = self._get_highlighted_item()
-            if highlighted and self._last_selected_index is not None:
-                # Range selection from anchor to current
-                self._select_range(self._last_selected_index, highlighted.index)
-                self._update_stats()
-                self._update_action_buttons()
-                event.stop()
+            else:
+                try:
+                    input_widget = self.query_one("#title-edit-input", Input)
+                    chapter_item = input_widget.chapter_item
+                    input_widget.remove()
+                    label = chapter_item.query_one(Label)
+                    label.display = True
+                    event.stop()
+                except Exception:
+                    pass  # No edit in progress
+        elif event.key == "v" or event.key == "V":
+            # Toggle visual selection mode
+            if self._selection_mode:
+                self._exit_selection_mode()
+            else:
+                self._enter_selection_mode()
+            event.stop()
         elif event.key == "space":
-            # Space toggles selection on highlighted - track anchor
+            # Space toggles selection on highlighted item
             highlighted = self._get_highlighted_item()
             if highlighted:
                 highlighted.toggle_selection()

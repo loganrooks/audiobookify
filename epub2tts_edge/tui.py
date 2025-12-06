@@ -26,6 +26,7 @@ from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
     DataTable,
+    DirectoryTree,
     Footer,
     Header,
     Input,
@@ -316,6 +317,150 @@ class JobItem(ListItem):
         self.query_one(Label).update(self._build_label())
 
 
+class PathInput(Input):
+    """Input widget with Tab completion for file paths."""
+
+    class PathCompleted(Message):
+        """Message sent when path completion occurs."""
+
+        def __init__(self, path: Path) -> None:
+            super().__init__()
+            self.path = path
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._completion_matches: list[Path] = []
+        self._completion_index: int = 0
+
+    def _get_completions(self, partial_path: str) -> list[Path]:
+        """Get matching paths for the given partial path."""
+        if not partial_path:
+            return []
+
+        path = Path(partial_path).expanduser()
+
+        # Handle absolute vs relative paths
+        if partial_path.startswith("/") or partial_path.startswith("~"):
+            # Absolute path
+            if path.exists() and path.is_dir():
+                # If path is a complete directory, list its contents
+                if partial_path.endswith("/"):
+                    parent = path
+                    prefix = ""
+                else:
+                    parent = path.parent
+                    prefix = path.name.lower()
+            else:
+                parent = path.parent
+                prefix = path.name.lower()
+        else:
+            # Relative path - treat as relative to current value's parent
+            parent = path.parent if path.parent != path else Path(".")
+            prefix = path.name.lower() if str(path) != "." else ""
+
+        if not parent.exists():
+            return []
+
+        # Find matching entries
+        try:
+            matches = []
+            for entry in parent.iterdir():
+                # Skip hidden files unless user is explicitly typing a dot
+                if entry.name.startswith(".") and not prefix.startswith("."):
+                    continue
+                if entry.name.lower().startswith(prefix):
+                    matches.append(entry)
+            # Sort: directories first, then alphabetically
+            return sorted(matches, key=lambda p: (not p.is_dir(), p.name.lower()))
+        except PermissionError:
+            return []
+
+    def _find_common_prefix(self, paths: list[Path]) -> str:
+        """Find the longest common prefix among path names."""
+        if not paths:
+            return ""
+        if len(paths) == 1:
+            return paths[0].name
+
+        names = [p.name for p in paths]
+        min_len = min(len(n) for n in names)
+
+        common = ""
+        for i in range(min_len):
+            char = names[0][i].lower()
+            if all(n[i].lower() == char for n in names):
+                common += names[0][i]  # Preserve original case
+            else:
+                break
+        return common
+
+    def _apply_completion(self, completed_path: Path) -> None:
+        """Apply the completed path to the input."""
+        result = str(completed_path)
+        # Add trailing slash for directories to continue completion
+        if completed_path.is_dir():
+            result = result.rstrip("/") + "/"
+        self.value = result
+        self.cursor_position = len(result)
+        self.post_message(self.PathCompleted(completed_path))
+
+    def _key_tab(self, event) -> None:
+        """Handle Tab key for path completion."""
+        event.prevent_default()
+        event.stop()
+
+        current = self.value.strip()
+        if not current:
+            current = "."
+
+        # Get fresh completions
+        matches = self._get_completions(current)
+
+        if not matches:
+            self.app.bell()
+            return
+
+        if len(matches) == 1:
+            # Single match - complete it
+            self._apply_completion(matches[0])
+            self._completion_matches = []
+            self._completion_index = 0
+        else:
+            # Multiple matches
+            # Check if we're cycling through previous matches
+            if self._completion_matches and matches == self._completion_matches:
+                # Cycle to next match
+                self._completion_index = (self._completion_index + 1) % len(matches)
+                self._apply_completion(matches[self._completion_index])
+            else:
+                # New completion - try common prefix first
+                path = Path(current).expanduser()
+                parent = path.parent if not current.endswith("/") else path
+                common = self._find_common_prefix(matches)
+
+                if common and len(common) > (len(path.name) if not current.endswith("/") else 0):
+                    # Complete to common prefix
+                    completed = parent / common
+                    self.value = str(completed)
+                    self.cursor_position = len(self.value)
+                    self._completion_matches = matches
+                    self._completion_index = 0
+                else:
+                    # No common prefix longer than current - start cycling
+                    self._completion_matches = matches
+                    self._completion_index = 0
+                    self._apply_completion(matches[0])
+
+    async def _on_key(self, event) -> None:
+        """Handle key events."""
+        if event.key == "tab":
+            self._key_tab(event)
+        else:
+            # Reset completion state on other keys
+            self._completion_matches = []
+            self._completion_index = 0
+
+
 class FilePanel(Vertical):
     """Panel for browsing and selecting files (EPUB/MOBI or TXT)."""
 
@@ -357,9 +502,23 @@ class FilePanel(Vertical):
         color: $text;
     }
 
-    FilePanel > #path-input {
+    FilePanel > #path-row {
+        height: auto;
+        margin-bottom: 0;
+    }
+
+    FilePanel > #path-row > #path-input {
+        width: 1fr;
         margin-bottom: 0;
         border: round $primary-darken-1;
+    }
+
+    FilePanel > #path-row > .browse-btn {
+        min-width: 4;
+        width: auto;
+        height: auto;
+        padding: 0;
+        margin-left: 1;
     }
 
     FilePanel > #file-list {
@@ -409,9 +568,13 @@ class FilePanel(Vertical):
             yield Label("(0)", classes="file-count", id="file-count")
             yield Button("📚", id="mode-books", classes="active")
             yield Button("📝", id="mode-text")
-        yield Input(
-            placeholder="Enter folder path...", value=str(self.current_path), id="path-input"
-        )
+        with Horizontal(id="path-row"):
+            yield PathInput(
+                placeholder="Enter folder path (Tab to complete)...",
+                value=str(self.current_path),
+                id="path-input",
+            )
+            yield Button("📂", id="browse-btn", classes="browse-btn")
         yield ListView(id="file-list")
         with Horizontal(id="file-actions"):
             yield Button("All", id="select-all", classes="sel-btn")
@@ -512,8 +675,21 @@ class FilePanel(Vertical):
                 if item.is_selected:
                     item.toggle()
         elif event.button.id == "refresh":
-            path_input = self.query_one("#path-input", Input)
+            path_input = self.query_one("#path-input", PathInput)
             self.current_path = Path(path_input.value).resolve()
+            self.scan_directory()
+        elif event.button.id == "browse-btn":
+            self.app.push_screen(
+                DirectoryBrowserScreen(self.current_path),
+                self._on_directory_selected,
+            )
+
+    def _on_directory_selected(self, path: Path | None) -> None:
+        """Handle directory selection from browser modal."""
+        if path is not None:
+            self.current_path = path
+            path_input = self.query_one("#path-input", PathInput)
+            path_input.value = str(path)
             self.scan_directory()
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
@@ -2140,7 +2316,9 @@ class HelpScreen(ModalScreen):
             yield Label("── File Selection ──", classes="section")
             yield Static("  a              Select all files")
             yield Static("  d              Deselect all")
+            yield Static("  b              Browse directories")
             yield Static("  /              Focus path input")
+            yield Static("  Tab            Autocomplete path (in input)")
             yield Static("  Backspace      Go to parent directory")
 
             yield Label("── Preview Tab ──", classes="section")
@@ -2168,6 +2346,106 @@ class HelpScreen(ModalScreen):
     def action_dismiss(self) -> None:
         """Close the help screen."""
         self.dismiss()
+
+
+class FilteredDirectoryTree(DirectoryTree):
+    """DirectoryTree that filters out hidden files and shows only directories."""
+
+    def filter_paths(self, paths: list[Path]) -> list[Path]:
+        """Filter out hidden files and non-directories."""
+        return sorted(
+            [p for p in paths if not p.name.startswith(".") and p.is_dir()],
+            key=lambda p: p.name.lower(),
+        )
+
+
+class DirectoryBrowserScreen(ModalScreen[Path | None]):
+    """Modal screen for browsing and selecting directories."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("enter", "select", "Select"),
+    ]
+
+    DEFAULT_CSS = """
+    DirectoryBrowserScreen {
+        align: center middle;
+    }
+
+    #browser-container {
+        width: 70;
+        height: 80%;
+        background: $surface;
+        border: round $primary;
+        padding: 1 2;
+    }
+
+    #browser-container > Label.title {
+        text-style: bold;
+        text-align: center;
+        width: 100%;
+        margin-bottom: 1;
+    }
+
+    #browser-container > Label.path-label {
+        color: $text-muted;
+        margin-bottom: 1;
+    }
+
+    #browser-container FilteredDirectoryTree {
+        height: 1fr;
+        border: solid $primary-darken-2;
+        margin-bottom: 1;
+    }
+
+    #browser-actions {
+        height: auto;
+        align: center middle;
+    }
+
+    #browser-actions Button {
+        margin: 0 1;
+    }
+    """
+
+    def __init__(self, start_path: Path | None = None) -> None:
+        super().__init__()
+        self.start_path = start_path or Path.home()
+        self.selected_path: Path | None = None
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="browser-container"):
+            yield Label("📁 Select Directory", classes="title")
+            yield Label(f"Current: {self.start_path}", id="current-path", classes="path-label")
+            yield FilteredDirectoryTree(str(self.start_path))
+            with Horizontal(id="browser-actions"):
+                yield Button("Select", id="select-btn", variant="primary")
+                yield Button("Cancel", id="cancel-btn", variant="default")
+
+    def on_directory_tree_directory_selected(self, event: DirectoryTree.DirectorySelected) -> None:
+        """Update selected path when directory is clicked."""
+        self.selected_path = event.path
+        path_label = self.query_one("#current-path", Label)
+        path_label.update(f"Current: {event.path}")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses."""
+        if event.button.id == "select-btn":
+            self.action_select()
+        elif event.button.id == "cancel-btn":
+            self.action_cancel()
+
+    def action_select(self) -> None:
+        """Confirm selection and close."""
+        if self.selected_path:
+            self.dismiss(self.selected_path)
+        else:
+            # Use the start path if nothing explicitly selected
+            self.dismiss(self.start_path)
+
+    def action_cancel(self) -> None:
+        """Cancel and close without selection."""
+        self.dismiss(None)
 
 
 class AudiobookifyApp(App):
@@ -2242,6 +2520,7 @@ class AudiobookifyApp(App):
         # File selection
         Binding("a", "select_all", "Select All"),
         Binding("d", "deselect_all", "Deselect All"),
+        Binding("b", "browse_dir", "Browse", show=False),
         Binding("p", "preview_voice", "Preview Voice"),
         # Navigation
         Binding("slash", "focus_path", "Path", show=False),
@@ -2335,7 +2614,7 @@ class AudiobookifyApp(App):
     def action_focus_path(self) -> None:
         """Focus the path input field."""
         try:
-            path_input = self.query_one("#path-input", Input)
+            path_input = self.query_one("#path-input", PathInput)
             path_input.focus()
         except Exception:
             pass
@@ -2347,11 +2626,22 @@ class AudiobookifyApp(App):
             parent = file_panel.current_path.parent
             if parent.exists() and parent != file_panel.current_path:
                 file_panel.current_path = parent
-                file_panel.query_one("#path-input", Input).value = str(parent)
+                file_panel.query_one("#path-input", PathInput).value = str(parent)
                 file_panel.scan_directory()
                 self.log_debug(f"Navigated to parent: {parent}")
         except Exception as e:
             self.log_debug(f"Parent navigation failed: {e}")
+
+    def action_browse_dir(self) -> None:
+        """Open directory browser modal."""
+        try:
+            file_panel = self.query_one(FilePanel)
+            self.push_screen(
+                DirectoryBrowserScreen(file_panel.current_path),
+                file_panel._on_directory_selected,
+            )
+        except Exception as e:
+            self.log_debug(f"Browse failed: {e}")
 
     def action_tab_progress(self) -> None:
         """Switch to Progress tab."""

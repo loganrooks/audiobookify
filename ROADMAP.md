@@ -83,8 +83,8 @@ The following design documents detail implementation plans for major features:
 
 #### TUI Improvements (Next)
 - [x] **Range/batch selection** - Enter key for anchor-based range, V key for toggle mode
-- [ ] **Directory browser** - Add DirectoryTree modal for easier folder selection
-- [ ] **Path autocomplete** - Tab completion for directory input
+- [x] **Directory browser** - Add DirectoryTree modal for easier folder selection (📂 button, `b` key)
+- [x] **Path autocomplete** - Tab completion for directory input (Tab key in path field)
 - [ ] **Settings panel redesign** - Tabbed settings with actions separation (see [design doc](./claudedocs/SETTINGS_PANEL_REDESIGN.md))
 
 #### TUI Architecture (v2.5.0) - See [Architecture Refactor](./claudedocs/ARCHITECTURE_REFACTOR.md)

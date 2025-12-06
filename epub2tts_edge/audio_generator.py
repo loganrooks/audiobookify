@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 # Default configuration
 DEFAULT_RETRY_COUNT = 3
 DEFAULT_RETRY_DELAY = 2  # seconds (base delay for exponential backoff)
-DEFAULT_CONCURRENT_TASKS = 5  # Reduced to avoid rate limiting
+DEFAULT_CONCURRENT_TASKS = 1  # Sequential processing to avoid rate limiting
 RATE_LIMIT_COOLDOWN = 30  # seconds to wait before final retry on rate-limit errors
 
 
@@ -321,6 +321,7 @@ def read_book(
     multi_voice_processor=None,
     retry_count: int = DEFAULT_RETRY_COUNT,
     retry_delay: int = DEFAULT_RETRY_DELAY,
+    max_concurrent: int = DEFAULT_CONCURRENT_TASKS,
     progress_callback: ProgressCallback | None = None,
     cancellation_check: Callable | None = None,
     output_dir: str | None = None,
@@ -338,6 +339,7 @@ def read_book(
         multi_voice_processor: Optional MultiVoiceProcessor for different character voices
         retry_count: Number of retry attempts for TTS (default 3)
         retry_delay: Delay between retries in seconds (default 3)
+        max_concurrent: Max concurrent TTS requests (default 1 for sequential)
         progress_callback: Optional callback for progress updates
         cancellation_check: Optional callable that returns True if processing should stop
         output_dir: Directory for intermediate audio files. If None, uses current directory.
@@ -401,6 +403,7 @@ def read_book(
                         [title_audio],
                         rate,
                         volume,
+                        max_concurrent=max_concurrent,
                         retry_count=retry_count,
                         retry_delay=retry_delay,
                     )
@@ -458,6 +461,7 @@ def read_book(
                             filenames,
                             rate,
                             volume,
+                            max_concurrent=max_concurrent,
                             retry_count=retry_count,
                             retry_delay=retry_delay,
                         )

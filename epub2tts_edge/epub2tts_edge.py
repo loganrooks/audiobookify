@@ -703,7 +703,10 @@ Hierarchy Styles:
         help="Delay in seconds between retry attempts (default: 3)",
     )
     parser.add_argument(
-        "--max-concurrent", type=int, default=10, help="Maximum concurrent TTS tasks (default: 10)"
+        "--max-concurrent",
+        type=int,
+        default=1,
+        help="Maximum concurrent TTS tasks (default: 1, sequential)",
     )
 
     # Logging options
@@ -1093,6 +1096,7 @@ Hierarchy Styles:
             multi_voice_processor=multi_voice_processor,
             retry_count=args.retry_count,
             retry_delay=args.retry_delay,
+            max_concurrent=args.max_concurrent,
             output_dir=audio_output_dir,
         )
         generate_metadata(files, book_author, book_title, chapter_titles, output_dir=job_output_dir)

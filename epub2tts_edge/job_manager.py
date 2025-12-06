@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import shutil
 import time
@@ -30,6 +29,8 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
+from epub2tts_edge.config import generate_job_slug, get_config
 
 
 class JobStatus(Enum):
@@ -49,9 +50,12 @@ class Job:
     """Represents a single audiobook conversion job.
 
     Attributes:
-        job_id: Unique identifier for this job
+        job_id: Unique identifier for this job (slug-based, e.g., derrida_writing_a1b2c3)
         source_file: Path to the source EPUB/MOBI file
         job_dir: Directory containing all job files
+        audio_dir: Directory for intermediate audio files (defaults to job_dir/audio)
+        title: Book title
+        author: Book author
         status: Current job status
         created_at: Timestamp when job was created
         updated_at: Timestamp when job was last updated
@@ -67,6 +71,9 @@ class Job:
     job_id: str
     source_file: str
     job_dir: str
+    audio_dir: str | None = None  # Defaults to job_dir/audio if not specified
+    title: str | None = None
+    author: str | None = None
     status: JobStatus = JobStatus.PENDING
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
@@ -111,9 +118,16 @@ class Job:
         """Path to the job state file."""
         return Path(self.job_dir) / "job.json"
 
+    @property
+    def effective_audio_dir(self) -> Path:
+        """Get the effective audio directory for intermediate files."""
+        if self.audio_dir:
+            return Path(self.audio_dir)
+        return Path(self.job_dir) / "audio"
+
     def get_chapter_audio_path(self, chapter_num: int) -> Path:
         """Get the path for a chapter's audio file."""
-        return Path(self.job_dir) / f"chapter_{chapter_num:03d}.flac"
+        return self.effective_audio_dir / f"chapter_{chapter_num:03d}.flac"
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize job to dictionary."""
@@ -121,6 +135,9 @@ class Job:
             "job_id": self.job_id,
             "source_file": self.source_file,
             "job_dir": self.job_dir,
+            "audio_dir": self.audio_dir,
+            "title": self.title,
+            "author": self.author,
             "status": self.status.value,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -140,6 +157,9 @@ class Job:
             job_id=data["job_id"],
             source_file=data["source_file"],
             job_dir=data["job_dir"],
+            audio_dir=data.get("audio_dir"),
+            title=data.get("title"),
+            author=data.get("author"),
             status=JobStatus(data.get("status", "pending")),
             created_at=data.get("created_at", time.time()),
             updated_at=data.get("updated_at", time.time()),
@@ -156,27 +176,32 @@ class Job:
 class JobManager:
     """Manages audiobook conversion jobs.
 
-    Jobs are stored in a central directory (default: ~/.audiobookify/jobs/).
-    Each job gets a unique folder for all intermediate files.
+    Jobs are stored in a central directory configured via AppConfig.
+    Each job gets a unique folder named with a human-readable slug.
 
     Example:
         >>> manager = JobManager()
-        >>> job = manager.create_job("/path/to/book.epub", speaker="en-US-JennyNeural")
+        >>> job = manager.create_job(
+        ...     "/path/to/book.epub",
+        ...     title="Writing and Difference",
+        ...     author="Jacques Derrida",
+        ... )
+        >>> print(job.job_id)  # derrida_writing-and-difference_a1b2c3
         >>> manager.update_progress(job.job_id, completed_chapters=5)
         >>> manager.complete_job(job.job_id, "/output/book.m4b")
     """
-
-    DEFAULT_JOBS_DIR = "~/.audiobookify/jobs"
 
     def __init__(self, jobs_dir: str | None = None):
         """Initialize the job manager.
 
         Args:
-            jobs_dir: Directory for storing jobs. Defaults to ~/.audiobookify/jobs/
+            jobs_dir: Directory for storing jobs. If None, uses AppConfig.jobs_dir
         """
         if jobs_dir is None:
-            jobs_dir = os.path.expanduser(self.DEFAULT_JOBS_DIR)
-        self.jobs_dir = Path(jobs_dir)
+            config = get_config()
+            self.jobs_dir = config.jobs_dir
+        else:
+            self.jobs_dir = Path(jobs_dir)
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
 
     def _sanitize_name(self, name: str) -> str:
@@ -203,6 +228,8 @@ class JobManager:
     def create_job(
         self,
         source_file: str,
+        title: str | None = None,
+        author: str | None = None,
         speaker: str = "en-US-AndrewNeural",
         rate: str | None = None,
         volume: str | None = None,
@@ -211,6 +238,8 @@ class JobManager:
 
         Args:
             source_file: Path to the source EPUB/MOBI file
+            title: Book title (used for human-readable slug)
+            author: Book author (used for human-readable slug)
             speaker: Voice to use for TTS
             rate: Speech rate adjustment
             volume: Volume adjustment
@@ -219,16 +248,28 @@ class JobManager:
             New Job instance with a unique job directory
         """
         source_file = str(Path(source_file).resolve())
-        job_id = self._generate_job_id(source_file)
-        job_dir = self.jobs_dir / job_id
 
-        # Create job directory
+        # Generate job ID using slug if title/author available, else fallback
+        if title or author:
+            config = get_config()
+            job_id = generate_job_slug(title, author, config.job_slug_template)
+        else:
+            job_id = self._generate_job_id(source_file)
+
+        job_dir = self.jobs_dir / job_id
+        audio_dir = job_dir / "audio"
+
+        # Create job and audio directories
         job_dir.mkdir(parents=True, exist_ok=True)
+        audio_dir.mkdir(parents=True, exist_ok=True)
 
         job = Job(
             job_id=job_id,
             source_file=source_file,
             job_dir=str(job_dir),
+            audio_dir=str(audio_dir),
+            title=title,
+            author=author,
             speaker=speaker,
             rate=rate,
             volume=volume,

@@ -14,6 +14,7 @@ import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 import edge_tts
 from mutagen import mp4
@@ -295,6 +296,7 @@ def read_book(
     retry_delay: int = DEFAULT_RETRY_DELAY,
     progress_callback: ProgressCallback | None = None,
     cancellation_check: Callable | None = None,
+    output_dir: str | None = None,
 ) -> list[str]:
     """Generate audio for all chapters in a book.
 
@@ -311,13 +313,21 @@ def read_book(
         retry_delay: Delay between retries in seconds (default 3)
         progress_callback: Optional callback for progress updates
         cancellation_check: Optional callable that returns True if processing should stop
+        output_dir: Directory for intermediate audio files. If None, uses current directory.
 
     Returns:
-        List of generated FLAC segment filenames (may be partial if cancelled)
+        List of generated FLAC segment filenames (absolute paths if output_dir is set)
     """
     segments = []
     title_names_to_skip_reading = ["Title", "blank"]
     total_chapters = len(book_contents)
+
+    # Set up output directory
+    if output_dir:
+        out_path = Path(output_dir)
+        out_path.mkdir(parents=True, exist_ok=True)
+    else:
+        out_path = Path(".")
 
     for i, chapter in enumerate(book_contents, start=1):
         # Check for cancellation at chapter start
@@ -325,7 +335,7 @@ def read_book(
             logger.info("Processing cancelled by user at chapter %d", i)
             return segments
         files = []
-        partname = f"part{i}.flac"
+        partname = str(out_path / f"part{i}.flac")
         total_paragraphs = len(chapter.get("paragraphs", []))
 
         # Report chapter start
@@ -356,18 +366,19 @@ def read_book(
                 title_text = chapter["title"]
                 if pronunciation_processor:
                     title_text = pronunciation_processor.process_text(title_text)
+                title_audio = str(out_path / "sntnc0.mp3")
                 asyncio.run(
                     parallel_edgespeak(
                         [title_text],
                         [speaker],
-                        ["sntnc0.mp3"],
+                        [title_audio],
                         rate,
                         volume,
                         retry_count=retry_count,
                         retry_delay=retry_delay,
                     )
                 )
-                append_silence("sntnc0.mp3", 1200)
+                append_silence(title_audio, 1200)
 
             for pindex, paragraph in enumerate(
                 tqdm(chapter["paragraphs"], desc="Generating audio: ", unit="pg")
@@ -394,7 +405,7 @@ def read_book(
                         )
                     )
 
-                ptemp = f"pgraphs{pindex}.flac"
+                ptemp = str(out_path / f"pgraphs{pindex}.flac")
                 if os.path.isfile(ptemp):
                     logger.debug("%s exists, skipping to next paragraph", ptemp)
                 else:
@@ -412,7 +423,7 @@ def read_book(
                         sentences = sent_tokenize(processed_paragraph)
                         speakers = [speaker] * len(sentences)
 
-                    filenames = [f"sntnc{z + 1}.mp3" for z in range(len(sentences))]
+                    filenames = [str(out_path / f"sntnc{z + 1}.mp3") for z in range(len(sentences))]
                     asyncio.run(
                         parallel_edgespeak(
                             sentences,
@@ -427,8 +438,9 @@ def read_book(
                     append_silence(filenames[-1], paragraphpause)
 
                     sorted_files = sorted(filenames, key=sort_key)
-                    if os.path.exists("sntnc0.mp3"):
-                        sorted_files.insert(0, "sntnc0.mp3")
+                    title_audio_path = str(out_path / "sntnc0.mp3")
+                    if os.path.exists(title_audio_path):
+                        sorted_files.insert(0, title_audio_path)
                     combined = AudioSegment.empty()
                     for file in sorted_files:
                         combined += AudioSegment.from_file(file)

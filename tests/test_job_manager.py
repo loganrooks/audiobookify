@@ -113,15 +113,28 @@ class TestJob:
         assert job.state_file == Path("/tmp/test_job/job.json")
 
     def test_job_get_chapter_audio_path(self):
-        """Test get_chapter_audio_path returns correct path."""
+        """Test get_chapter_audio_path returns correct path in audio subdirectory."""
         job = Job(
             job_id="test",
             source_file="/path/to/book.epub",
             job_dir="/tmp/test_job",
         )
 
-        assert job.get_chapter_audio_path(1) == Path("/tmp/test_job/chapter_001.flac")
-        assert job.get_chapter_audio_path(42) == Path("/tmp/test_job/chapter_042.flac")
+        # Audio files now go in the audio/ subdirectory
+        assert job.get_chapter_audio_path(1) == Path("/tmp/test_job/audio/chapter_001.flac")
+        assert job.get_chapter_audio_path(42) == Path("/tmp/test_job/audio/chapter_042.flac")
+
+    def test_job_get_chapter_audio_path_with_audio_dir(self):
+        """Test get_chapter_audio_path with explicit audio_dir."""
+        job = Job(
+            job_id="test",
+            source_file="/path/to/book.epub",
+            job_dir="/tmp/test_job",
+            audio_dir="/custom/audio/dir",
+        )
+
+        # Should use the explicit audio_dir
+        assert job.get_chapter_audio_path(1) == Path("/custom/audio/dir/chapter_001.flac")
 
     def test_job_to_dict(self):
         """Test serialization to dictionary."""
@@ -217,6 +230,24 @@ class TestJobManager:
         assert job.speaker == "en-US-JennyNeural"
         assert job.rate == "+20%"
         assert job.volume == "-10%"
+
+    def test_create_job_with_metadata(self, manager, temp_source_file):
+        """Test creating a job with title and author generates a readable slug."""
+        job = manager.create_job(
+            temp_source_file,
+            title="Writing and Difference",
+            author="Jacques Derrida",
+        )
+
+        # Job ID should be a slug based on author and title
+        assert "derrida" in job.job_id
+        assert "writing" in job.job_id
+        assert job.title == "Writing and Difference"
+        assert job.author == "Jacques Derrida"
+
+        # Audio directory should be created
+        assert job.audio_dir is not None
+        assert Path(job.audio_dir).name == "audio"
 
     def test_load_job(self, manager, temp_source_file):
         """Test loading a job by ID."""

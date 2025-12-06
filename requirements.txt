@@ -1,6 +1,6 @@
 beautifulsoup4
 ebooklib
-edge-tts
+edge-tts>=6.1.0,<7.1.0  # Pin below 7.1.0 due to SSL fingerprinting issues
 lxml
 mobi
 mutagen

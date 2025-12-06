@@ -247,7 +247,7 @@ class TestBatchProcessor:
             epub_path = os.path.join(tmpdir, "test.epub")
             open(epub_path, "w").close()
 
-            config = BatchConfig(input_path=epub_path)
+            config = BatchConfig(input_path=epub_path, use_job_isolation=False)
             processor = BatchProcessor(config)
             books = processor.discover_books()
 
@@ -266,7 +266,7 @@ class TestBatchProcessor:
             open(epub2, "w").close()
             open(txt_file, "w").close()
 
-            config = BatchConfig(input_path=tmpdir)
+            config = BatchConfig(input_path=tmpdir, use_job_isolation=False)
             processor = BatchProcessor(config)
             books = processor.discover_books()
 
@@ -288,13 +288,13 @@ class TestBatchProcessor:
             open(epub2, "w").close()
 
             # Non-recursive should only find 1
-            config = BatchConfig(input_path=tmpdir, recursive=False)
+            config = BatchConfig(input_path=tmpdir, recursive=False, use_job_isolation=False)
             processor = BatchProcessor(config)
             books = processor.discover_books()
             assert len(books) == 1
 
             # Recursive should find 2
-            config = BatchConfig(input_path=tmpdir, recursive=True)
+            config = BatchConfig(input_path=tmpdir, recursive=True, use_job_isolation=False)
             processor = BatchProcessor(config)
             books = processor.discover_books()
             assert len(books) == 2
@@ -308,7 +308,7 @@ class TestBatchProcessor:
             open(epub_path, "w").close()
 
             # Without M4B, should not skip
-            config = BatchConfig(input_path=tmpdir, skip_existing=True)
+            config = BatchConfig(input_path=tmpdir, skip_existing=True, use_job_isolation=False)
             processor = BatchProcessor(config)
             assert not processor.should_skip(epub_path)
 
@@ -317,7 +317,7 @@ class TestBatchProcessor:
             assert processor.should_skip(epub_path)
 
             # With skip_existing=False, should not skip
-            config = BatchConfig(input_path=tmpdir, skip_existing=False)
+            config = BatchConfig(input_path=tmpdir, skip_existing=False, use_job_isolation=False)
             processor = BatchProcessor(config)
             assert not processor.should_skip(epub_path)
 
@@ -332,7 +332,7 @@ class TestBatchProcessor:
             open(epub2, "w").close()
             open(m4b, "w").close()
 
-            config = BatchConfig(input_path=tmpdir, skip_existing=True)
+            config = BatchConfig(input_path=tmpdir, skip_existing=True, use_job_isolation=False)
             processor = BatchProcessor(config)
             pending = processor.prepare()
 

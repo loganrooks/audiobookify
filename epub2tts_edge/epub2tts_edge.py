@@ -530,6 +530,14 @@ Hierarchy Styles:
         help="Duration of pause after paragraph, in milliseconds (default: 1200)",
     )
 
+    # Directory configuration options
+    parser.add_argument(
+        "--base-dir",
+        type=str,
+        default=None,
+        help="Base directory for Audiobookify data (default: platform-specific, e.g., ~/.audiobookify)",
+    )
+
     # Enhanced chapter detection options
     parser.add_argument(
         "--detect",
@@ -695,7 +703,10 @@ Hierarchy Styles:
         help="Delay in seconds between retry attempts (default: 3)",
     )
     parser.add_argument(
-        "--max-concurrent", type=int, default=10, help="Maximum concurrent TTS tasks (default: 10)"
+        "--max-concurrent",
+        type=int,
+        default=5,
+        help="Maximum concurrent TTS tasks (default: 5)",
     )
 
     # Logging options
@@ -717,6 +728,13 @@ Hierarchy Styles:
         setup_logging(level=logging.WARNING)
     else:
         setup_logging(level=logging.INFO)
+
+    # Initialize configuration with custom base directory if provided
+    if args.base_dir:
+        from .config import init_config
+
+        config = init_config(args.base_dir)
+        logger.debug("Using custom base directory: %s", config.base_dir)
 
     # Handle voice listing
     if args.list_voices:
@@ -930,21 +948,41 @@ Hierarchy Styles:
             return
         logger.info("Processing %d selected chapters", len(book_contents))
 
+    # Create job in centralized directory system
+    from .config import get_config
+    from .job_manager import JobManager
+
+    config = get_config()
+    job_manager = JobManager()
+    job = job_manager.create_job(
+        source_file=args.sourcefile,
+        title=book_title,
+        author=book_author,
+        speaker=args.speaker,
+    )
+    audio_output_dir = str(job.effective_audio_dir)
+    job_output_dir = str(job.job_dir)  # Parent directory for M4B output
+    logger.info("Job created: %s", job.job_id)
+    logger.info("Job directory: %s", job_output_dir)
+    logger.info("Audio directory: %s", audio_output_dir)
+
     # State management for pause/resume
     from .pause_resume import ConversionState, StateManager
 
-    output_dir = os.path.dirname(os.path.abspath(args.sourcefile)) or "."
-    state_manager = StateManager(output_dir)
+    state_manager = StateManager(audio_output_dir)
 
     # Check for existing state
     if not args.no_resume and state_manager.has_state():
         state = state_manager.load_state()
         if state and state_manager.state_matches(args.sourcefile):
             if state.is_resumable:
-                # Check for existing intermediate files
+                # Check for existing intermediate files in audio output directory
                 existing_parts = [
                     f
-                    for f in [f"part{i}.flac" for i in range(1, len(book_contents) + 1)]
+                    for f in [
+                        os.path.join(audio_output_dir, f"part{i}.flac")
+                        for i in range(1, len(book_contents) + 1)
+                    ]
                     if os.path.isfile(f)
                 ]
                 if existing_parts:
@@ -1058,14 +1096,17 @@ Hierarchy Styles:
             multi_voice_processor=multi_voice_processor,
             retry_count=args.retry_count,
             retry_delay=args.retry_delay,
+            max_concurrent=args.max_concurrent,
+            output_dir=audio_output_dir,
         )
-        generate_metadata(files, book_author, book_title, chapter_titles)
+        generate_metadata(files, book_author, book_title, chapter_titles, output_dir=job_output_dir)
         m4bfilename = make_m4b(
             files,
             args.sourcefile,
             args.speaker,
             normalizer=normalizer,
             silence_detector=silence_detector,
+            output_dir=job_output_dir,
         )
 
         # Handle cover image

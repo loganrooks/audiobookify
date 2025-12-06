@@ -84,9 +84,9 @@ class TTSError(AudiobookifyError):
 
         super().__init__(
             message=message,
-            suggestion="Check your internet connection. If the problem persists, "
-            "try using --retry-count with a higher value or --retry-delay "
-            "with a longer delay.",
+            suggestion="Check your internet connection and edge-tts version. "
+            "For 401/SSL errors, ensure edge-tts < 7.1.0: pip install 'edge-tts>=6.1.0,<7.1.0'. "
+            "You can also try --retry-count or --retry-delay for transient failures.",
             context="; ".join(context_parts) if context_parts else None,
         )
         self.text_sample = text_sample

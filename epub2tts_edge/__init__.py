@@ -3,6 +3,8 @@ from .audio_generator import (
     DEFAULT_CONCURRENT_TASKS,
     DEFAULT_RETRY_COUNT,
     DEFAULT_RETRY_DELAY,
+    ProgressCallback,
+    ProgressInfo,
     add_cover,
     append_silence,
     generate_metadata,
@@ -62,6 +64,13 @@ from .errors import (
     ResumeError,
     TTSError,
     format_error_for_user,
+)
+
+# Job management
+from .job_manager import (
+    Job,
+    JobManager,
+    JobStatus,
 )
 
 # Logging utilities
@@ -165,6 +174,10 @@ __all__ = [
     "ConversionState",
     "StateManager",
     "STATE_FILE_NAME",
+    # Job management
+    "Job",
+    "JobManager",
+    "JobStatus",
     # Audio normalization
     "AudioNormalizer",
     "NormalizationConfig",
@@ -208,6 +221,8 @@ __all__ = [
     "DEFAULT_RETRY_COUNT",
     "DEFAULT_RETRY_DELAY",
     "DEFAULT_CONCURRENT_TASKS",
+    "ProgressInfo",
+    "ProgressCallback",
     # Custom errors
     "AudiobookifyError",
     "TTSError",

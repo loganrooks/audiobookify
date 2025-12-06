@@ -31,7 +31,7 @@ logger = get_logger(__name__)
 DEFAULT_RETRY_COUNT = 3
 DEFAULT_RETRY_DELAY = 2  # seconds (base delay for exponential backoff)
 DEFAULT_CONCURRENT_TASKS = 5  # Parallel TTS tasks (safe with edge-tts <7.1.0)
-RATE_LIMIT_COOLDOWN = 30  # seconds to wait before final retry on rate-limit errors
+AUTH_ERROR_COOLDOWN = 30  # seconds to wait before final retry on auth/SSL errors
 
 
 @dataclass
@@ -149,10 +149,17 @@ class TTSGenerationError(Exception):
     pass
 
 
-def _is_rate_limit_error(error: Exception) -> bool:
-    """Check if an error is a rate-limiting error (401, 429, etc.)."""
+def _is_auth_or_ssl_error(error: Exception) -> bool:
+    """Check if an error is an authentication/SSL error (401, 429, etc.).
+
+    Note: 401 errors from edge-tts are typically caused by SSL fingerprinting
+    issues in edge-tts versions >= 7.1.0, not actual rate limiting.
+    """
     error_str = str(error).lower()
-    return any(code in error_str for code in ["401", "429", "rate limit", "too many requests"])
+    return any(
+        code in error_str
+        for code in ["401", "429", "rate limit", "too many requests", "ssl", "handshake"]
+    )
 
 
 def run_edgespeak(
@@ -166,8 +173,11 @@ def run_edgespeak(
 ) -> None:
     """Generate speech for a sentence using edge-tts.
 
-    Uses exponential backoff for retries, with special handling for rate-limit
+    Uses exponential backoff for retries, with special handling for auth/SSL
     errors (401, 429) which get an additional cooldown retry.
+
+    Note: 401 errors are typically caused by SSL fingerprinting issues in
+    edge-tts >= 7.1.0. Ensure edge-tts version is < 7.1.0.
 
     Args:
         sentence: Text to speak
@@ -182,7 +192,7 @@ def run_edgespeak(
         TTSGenerationError: If all retry attempts fail
     """
     last_error = None
-    is_rate_limited = False
+    is_auth_error = False
 
     for speakattempt in range(retry_count):
         try:
@@ -199,7 +209,7 @@ def run_edgespeak(
             return  # Success!
         except Exception as e:
             last_error = e
-            is_rate_limited = _is_rate_limit_error(e)
+            is_auth_error = _is_auth_or_ssl_error(e)
 
             logger.warning(
                 "Attempt %d/%d failed for '%s...': %s",
@@ -214,13 +224,13 @@ def run_edgespeak(
                 logger.info("Waiting %d seconds before retry...", wait_time)
                 time.sleep(wait_time)
 
-    # If rate-limited, try one more time after a longer cooldown
-    if is_rate_limited:
+    # If auth/SSL error, try one more time after a longer cooldown
+    if is_auth_error:
         logger.warning(
-            "Rate limit detected. Waiting %d seconds for cooldown before final attempt...",
-            RATE_LIMIT_COOLDOWN,
+            "Auth/SSL error detected. Waiting %d seconds for cooldown before final attempt...",
+            AUTH_ERROR_COOLDOWN,
         )
-        time.sleep(RATE_LIMIT_COOLDOWN)
+        time.sleep(AUTH_ERROR_COOLDOWN)
         try:
             kwargs = {}
             if rate:
@@ -241,13 +251,15 @@ def run_edgespeak(
 
     # Build helpful error message
     error_msg = f"Failed to generate TTS for: '{sentence[:50]}...'. Last error: {last_error}"
-    if is_rate_limited:
+    if is_auth_error:
         error_msg += (
-            "\n\nThis appears to be a rate-limiting error from Microsoft's TTS service. "
+            "\n\nThis appears to be an authentication/SSL error from Microsoft's TTS service. "
+            "This is typically caused by edge-tts version incompatibility.\n\n"
             "Suggestions:\n"
-            "  1. Wait a few minutes and try again\n"
-            "  2. Restart the application to get a fresh session\n"
-            "  3. Try processing fewer chapters at once"
+            "  1. Check edge-tts version: pip show edge-tts\n"
+            "  2. If version >= 7.1.0, downgrade: pip install 'edge-tts>=6.1.0,<7.1.0'\n"
+            '  3. Verify connectivity: python -c "import edge_tts; print(edge_tts.__version__)"\n'
+            "  4. Run TTS test: pytest tests/test_tts_connectivity.py -v"
         )
 
     raise TTSGenerationError(error_msg)
@@ -265,8 +277,8 @@ async def parallel_edgespeak(
 ) -> None:
     """Generate speech for multiple sentences in parallel.
 
-    Uses a shared thread pool and semaphore to limit concurrent TTS requests,
-    avoiding rate limiting from Microsoft's TTS service.
+    Uses a shared thread pool and semaphore to limit concurrent TTS requests.
+    Requires edge-tts version < 7.1.0 to avoid SSL fingerprinting issues.
 
     Args:
         sentences: List of texts to speak

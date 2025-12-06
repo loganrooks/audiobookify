@@ -1351,9 +1351,7 @@ class PreviewPanel(Vertical):
         self.preview_state: ChapterPreviewState | None = None
         self._undo_stack: list[list[PreviewChapter]] = []  # Stack of chapter snapshots
         self._last_selected_index: int | None = None  # Anchor for range selection
-        self._visual_mode: bool = (
-            False  # Visual toggle mode (V key)  # Visual selection mode (V key)
-        )
+        self._toggle_mode: bool = False  # Toggle mode (V key)
 
     def compose(self) -> ComposeResult:
         # Header with book info
@@ -1370,7 +1368,7 @@ class PreviewPanel(Vertical):
 
         # Instruction label for editing - CLEAR that Start processes ALL
         yield Label(
-            "📝 V=visual mode, Space=toggle, M=merge, X=delete, U=undo",
+            "📝 V=toggle mode, Space=select, M=merge, X=delete, U=undo",
             id="preview-instructions",
         )
 
@@ -1523,9 +1521,9 @@ class PreviewPanel(Vertical):
                 f"{total_chapters} chapters, {total_words:,}w"
             )
 
-    def _enter_visual_mode(self) -> None:
+    def _enter_toggle_mode(self) -> None:
         """Enter visual toggle mode."""
-        self._visual_mode = True
+        self._toggle_mode = True
         # Toggle the currently highlighted item to start
         highlighted = self._get_highlighted_item()
         if highlighted:
@@ -1533,21 +1531,21 @@ class PreviewPanel(Vertical):
             self._update_stats()
             self._update_action_buttons()
         # Update instructions to show visual mode
-        self._update_visual_mode_instructions()
+        self._update_toggle_mode_instructions()
 
-    def _exit_visual_mode(self) -> None:
+    def _exit_toggle_mode(self) -> None:
         """Exit visual toggle mode."""
-        self._visual_mode = False
+        self._toggle_mode = False
         # Update instructions back to normal
-        self._update_visual_mode_instructions()
+        self._update_toggle_mode_instructions()
 
-    def _update_visual_mode_instructions(self) -> None:
+    def _update_toggle_mode_instructions(self) -> None:
         """Update instructions based on visual mode state."""
         instructions = self.query_one("#preview-instructions", Label)
-        if self._visual_mode:
-            instructions.update("🔵 VISUAL: ↑↓=toggle items, V/Esc=exit | M=merge, X=delete")
+        if self._toggle_mode:
+            instructions.update("🔵 TOGGLE MODE: ↑↓=toggle items, V/Esc=exit | M=merge, X=delete")
         else:
-            instructions.update("📝 V=visual mode, Space=toggle, M=merge, X=delete, U=undo")
+            instructions.update("📝 V=toggle mode, Space=select, M=merge, X=delete, U=undo")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
@@ -1608,7 +1606,7 @@ class PreviewPanel(Vertical):
         self._update_action_buttons()
 
         # In visual mode, toggle items as user navigates
-        if self._visual_mode and isinstance(event.item, ChapterPreviewItem):
+        if self._toggle_mode and isinstance(event.item, ChapterPreviewItem):
             event.item.toggle_selection()
             self._update_stats()
             self._update_action_buttons()
@@ -2029,8 +2027,8 @@ class PreviewPanel(Vertical):
             event.stop()
         elif event.key == "escape":
             # Exit visual mode or cancel title edit
-            if self._visual_mode:
-                self._exit_visual_mode()
+            if self._toggle_mode:
+                self._exit_toggle_mode()
                 event.stop()
             else:
                 try:
@@ -2044,10 +2042,10 @@ class PreviewPanel(Vertical):
                     pass  # No edit in progress
         elif event.key == "v" or event.key == "V":
             # Toggle visual mode
-            if self._visual_mode:
-                self._exit_visual_mode()
+            if self._toggle_mode:
+                self._exit_toggle_mode()
             else:
-                self._enter_visual_mode()
+                self._enter_toggle_mode()
             event.stop()
         elif event.key == "space":
             # Space toggles selection on highlighted item

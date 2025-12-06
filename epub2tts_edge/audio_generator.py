@@ -28,8 +28,9 @@ logger = get_logger(__name__)
 
 # Default configuration
 DEFAULT_RETRY_COUNT = 3
-DEFAULT_RETRY_DELAY = 3  # seconds
+DEFAULT_RETRY_DELAY = 2  # seconds (base delay for exponential backoff)
 DEFAULT_CONCURRENT_TASKS = 10
+RATE_LIMIT_COOLDOWN = 30  # seconds to wait before final retry on rate-limit errors
 
 
 @dataclass
@@ -130,6 +131,12 @@ class TTSGenerationError(Exception):
     pass
 
 
+def _is_rate_limit_error(error: Exception) -> bool:
+    """Check if an error is a rate-limiting error (401, 429, etc.)."""
+    error_str = str(error).lower()
+    return any(code in error_str for code in ["401", "429", "rate limit", "too many requests"])
+
+
 def run_edgespeak(
     sentence: str,
     speaker: str,
@@ -141,6 +148,9 @@ def run_edgespeak(
 ) -> None:
     """Generate speech for a sentence using edge-tts.
 
+    Uses exponential backoff for retries, with special handling for rate-limit
+    errors (401, 429) which get an additional cooldown retry.
+
     Args:
         sentence: Text to speak
         speaker: Voice ID (e.g., "en-US-AndrewNeural")
@@ -148,12 +158,14 @@ def run_edgespeak(
         rate: Speech rate adjustment (e.g., "+20%", "-10%")
         volume: Volume adjustment (e.g., "+50%", "-25%")
         retry_count: Number of retry attempts (default 3)
-        retry_delay: Delay between retries in seconds (default 3)
+        retry_delay: Base delay between retries in seconds (default 2, doubles each retry)
 
     Raises:
         TTSGenerationError: If all retry attempts fail
     """
     last_error = None
+    is_rate_limited = False
+
     for speakattempt in range(retry_count):
         try:
             kwargs = {}
@@ -166,9 +178,11 @@ def run_edgespeak(
             run_save(communicate, filename)
             if os.path.getsize(filename) == 0:
                 raise RuntimeError("Failed to save file from edge_tts - empty file")
-            break
+            return  # Success!
         except Exception as e:
             last_error = e
+            is_rate_limited = _is_rate_limit_error(e)
+
             logger.warning(
                 "Attempt %d/%d failed for '%s...': %s",
                 speakattempt + 1,
@@ -177,13 +191,48 @@ def run_edgespeak(
                 e,
             )
             if speakattempt < retry_count - 1:
-                time.sleep(retry_delay)
-    else:
-        logger.error("Giving up on sentence after %d attempts: '%s...'", retry_count, sentence[:50])
-        raise TTSGenerationError(
-            f"Failed to generate TTS after {retry_count} attempts for: '{sentence[:50]}...'. "
-            f"Last error: {last_error}"
+                # Exponential backoff: 2s, 4s, 8s, ...
+                wait_time = retry_delay * (2**speakattempt)
+                logger.info("Waiting %d seconds before retry...", wait_time)
+                time.sleep(wait_time)
+
+    # If rate-limited, try one more time after a longer cooldown
+    if is_rate_limited:
+        logger.warning(
+            "Rate limit detected. Waiting %d seconds for cooldown before final attempt...",
+            RATE_LIMIT_COOLDOWN,
         )
+        time.sleep(RATE_LIMIT_COOLDOWN)
+        try:
+            kwargs = {}
+            if rate:
+                kwargs["rate"] = rate
+            if volume:
+                kwargs["volume"] = volume
+            communicate = edge_tts.Communicate(sentence, speaker, **kwargs)
+            run_save(communicate, filename)
+            if os.path.getsize(filename) > 0:
+                logger.info("Cooldown retry succeeded!")
+                return  # Success after cooldown!
+        except Exception as e:
+            last_error = e
+            logger.error("Cooldown retry also failed: %s", e)
+
+    # All attempts exhausted
+    logger.error("Giving up on sentence after all attempts: '%s...'", sentence[:50])
+
+    # Build helpful error message
+    error_msg = f"Failed to generate TTS for: '{sentence[:50]}...'. Last error: {last_error}"
+    if is_rate_limited:
+        error_msg += (
+            "\n\nThis appears to be a rate-limiting error from Microsoft's TTS service. "
+            "Suggestions:\n"
+            "  1. Wait a few minutes and try again\n"
+            "  2. Restart the application to get a fresh session\n"
+            "  3. Try processing fewer chapters at once"
+        )
+
+    raise TTSGenerationError(error_msg)
 
 
 async def parallel_edgespeak(

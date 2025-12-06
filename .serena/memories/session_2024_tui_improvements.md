@@ -1,6 +1,6 @@
 # Session: TUI Improvements & Chapter Detection Fix
 
-## Date: 2025-12-04
+## Date: 2025-12-05 (continued from 2025-12-04)
 
 ## Summary
 Major improvements to the Audiobookify TUI including an Export & Edit workflow, mid-chapter stop capability, and critical chapter detection duplicate content fix.
@@ -69,6 +69,22 @@ if not start_elem and chapter.title:
 - Chapter detection for "Writing and Difference" had split titles ("Two" and "Cogito and the History of Madness")
 - Fix should prevent duplicate content, but user should verify with Preview Chapters
 - If still wrong, use Export Text → Edit → Convert workflow
+
+## Session 2025-12-05 Changes
+
+### 5. Toggle Mode for Batch Chapter Selection (tui.py)
+- Added `_toggle_mode: bool` flag for visual selection
+- V key enters toggle mode - navigating with arrow keys toggles each item's selection state
+- Escape or V again exits toggle mode
+- Methods: `_enter_toggle_mode()`, `_exit_toggle_mode()`, `_update_toggle_mode_instructions()`
+- Instructions update dynamically: "🔵 TOGGLE MODE: ↑↓=toggle items, V/Esc=exit"
+
+### Recent Commits (feature/tui-improvements-v2)
+- 1799aec: Rename visual mode to toggle mode for clarity
+- 131d91a: Simplify visual mode to single toggle behavior
+- 5401dbc: Add visual deselect mode with D key (later simplified)
+- 864e729: Implement visual selection mode with V key
+- 5afaf1f: Change range selection from Shift+Space to Enter key
 
 ## Architecture Notes
 - TUI uses `@work(exclusive=True, thread=True)` for background processing

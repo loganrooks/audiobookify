@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 # Default configuration
 DEFAULT_RETRY_COUNT = 3
 DEFAULT_RETRY_DELAY = 2  # seconds (base delay for exponential backoff)
-DEFAULT_CONCURRENT_TASKS = 10
+DEFAULT_CONCURRENT_TASKS = 5  # Reduced to avoid rate limiting
 RATE_LIMIT_COOLDOWN = 30  # seconds to wait before final retry on rate-limit errors
 
 
@@ -265,43 +265,49 @@ async def parallel_edgespeak(
 ) -> None:
     """Generate speech for multiple sentences in parallel.
 
+    Uses a shared thread pool and semaphore to limit concurrent TTS requests,
+    avoiding rate limiting from Microsoft's TTS service.
+
     Args:
         sentences: List of texts to speak
         speakers: List of voice IDs
         filenames: List of output filenames
         rate: Speech rate adjustment (e.g., "+20%", "-10%")
         volume: Volume adjustment (e.g., "+50%", "-25%")
-        max_concurrent: Maximum concurrent TTS tasks (default 10)
+        max_concurrent: Maximum concurrent TTS tasks (default 5)
         retry_count: Number of retry attempts per sentence (default 3)
-        retry_delay: Delay between retries in seconds (default 3)
+        retry_delay: Delay between retries in seconds (default 2)
     """
     semaphore = asyncio.Semaphore(max_concurrent)
+    loop = asyncio.get_running_loop()
 
-    async def limited_edgespeak(sentence: str, speaker: str, filename: str) -> None:
+    async def limited_edgespeak(
+        sentence: str, speaker: str, filename: str, executor: concurrent.futures.Executor
+    ) -> None:
         """Run TTS with semaphore limiting concurrency."""
         async with semaphore:
-            loop = asyncio.get_running_loop()
             # Clean up excessive punctuation
             sentence = re.sub(r"[!]+", "!", sentence)
             sentence = re.sub(r"[?]+", "?", sentence)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                await loop.run_in_executor(
-                    executor,
-                    run_edgespeak,
-                    sentence,
-                    speaker,
-                    filename,
-                    rate,
-                    volume,
-                    retry_count,
-                    retry_delay,
-                )
+            await loop.run_in_executor(
+                executor,
+                run_edgespeak,
+                sentence,
+                speaker,
+                filename,
+                rate,
+                volume,
+                retry_count,
+                retry_delay,
+            )
 
-    tasks = [
-        limited_edgespeak(sentence, speaker, filename)
-        for sentence, speaker, filename in zip(sentences, speakers, filenames, strict=False)
-    ]
-    await asyncio.gather(*tasks)
+    # Use a single shared executor for all tasks
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+        tasks = [
+            limited_edgespeak(sentence, speaker, filename, executor)
+            for sentence, speaker, filename in zip(sentences, speakers, filenames, strict=False)
+        ]
+        await asyncio.gather(*tasks)
 
 
 def read_book(

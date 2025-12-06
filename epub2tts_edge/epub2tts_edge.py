@@ -530,6 +530,14 @@ Hierarchy Styles:
         help="Duration of pause after paragraph, in milliseconds (default: 1200)",
     )
 
+    # Directory configuration options
+    parser.add_argument(
+        "--base-dir",
+        type=str,
+        default=None,
+        help="Base directory for Audiobookify data (default: platform-specific, e.g., ~/.audiobookify)",
+    )
+
     # Enhanced chapter detection options
     parser.add_argument(
         "--detect",
@@ -717,6 +725,13 @@ Hierarchy Styles:
         setup_logging(level=logging.WARNING)
     else:
         setup_logging(level=logging.INFO)
+
+    # Initialize configuration with custom base directory if provided
+    if args.base_dir:
+        from .config import init_config
+
+        config = init_config(args.base_dir)
+        logger.debug("Using custom base directory: %s", config.base_dir)
 
     # Handle voice listing
     if args.list_voices:

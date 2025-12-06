@@ -1351,8 +1351,9 @@ class PreviewPanel(Vertical):
         self.preview_state: ChapterPreviewState | None = None
         self._undo_stack: list[list[PreviewChapter]] = []  # Stack of chapter snapshots
         self._last_selected_index: int | None = None  # Anchor for range selection
-        # Visual mode: None=off, "select"=V mode, "deselect"=D mode
-        self._visual_mode: str | None = None  # Visual selection mode (V key)
+        self._visual_mode: bool = (
+            False  # Visual toggle mode (V key)  # Visual selection mode (V key)
+        )
 
     def compose(self) -> ComposeResult:
         # Header with book info
@@ -1369,7 +1370,7 @@ class PreviewPanel(Vertical):
 
         # Instruction label for editing - CLEAR that Start processes ALL
         yield Label(
-            "📝 V=select, D=deselect, Space=toggle, M=merge, X=delete, U=undo",
+            "📝 V=visual mode, Space=toggle, M=merge, X=delete, U=undo",
             id="preview-instructions",
         )
 
@@ -1522,37 +1523,31 @@ class PreviewPanel(Vertical):
                 f"{total_chapters} chapters, {total_words:,}w"
             )
 
-    def _enter_visual_mode(self, mode: str) -> None:
-        """Enter visual select or deselect mode.
-
-        Args:
-            mode: Either "select" or "deselect"
-        """
-        self._visual_mode = mode
-        # Apply the action to the currently highlighted item
+    def _enter_visual_mode(self) -> None:
+        """Enter visual toggle mode."""
+        self._visual_mode = True
+        # Toggle the currently highlighted item to start
         highlighted = self._get_highlighted_item()
         if highlighted:
-            highlighted.set_selected(mode == "select")
+            highlighted.toggle_selection()
             self._update_stats()
             self._update_action_buttons()
         # Update instructions to show visual mode
         self._update_visual_mode_instructions()
 
     def _exit_visual_mode(self) -> None:
-        """Exit visual select/deselect mode."""
-        self._visual_mode = None
+        """Exit visual toggle mode."""
+        self._visual_mode = False
         # Update instructions back to normal
         self._update_visual_mode_instructions()
 
     def _update_visual_mode_instructions(self) -> None:
         """Update instructions based on visual mode state."""
         instructions = self.query_one("#preview-instructions", Label)
-        if self._visual_mode == "select":
-            instructions.update("🔵 VISUAL SELECT: ↑↓=extend, V/Esc=exit | M=merge, X=delete")
-        elif self._visual_mode == "deselect":
-            instructions.update("🔴 VISUAL DESELECT: ↑↓=extend, D/Esc=exit | M=merge, X=delete")
+        if self._visual_mode:
+            instructions.update("🔵 VISUAL: ↑↓=toggle items, V/Esc=exit | M=merge, X=delete")
         else:
-            instructions.update("📝 V=select, D=deselect, Space=toggle, M=merge, X=delete, U=undo")
+            instructions.update("📝 V=visual mode, Space=toggle, M=merge, X=delete, U=undo")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
@@ -1612,9 +1607,9 @@ class PreviewPanel(Vertical):
         """Update buttons when highlight changes, and handle visual mode."""
         self._update_action_buttons()
 
-        # In visual mode, select/deselect items as user navigates
+        # In visual mode, toggle items as user navigates
         if self._visual_mode and isinstance(event.item, ChapterPreviewItem):
-            event.item.set_selected(self._visual_mode == "select")
+            event.item.toggle_selection()
             self._update_stats()
             self._update_action_buttons()
 
@@ -2026,8 +2021,7 @@ class PreviewPanel(Vertical):
         - e/E: Edit chapter title
         - Escape: Cancel title edit / exit visual mode
         - Space: Toggle selection on current item
-        - V: Visual select mode (select while navigating)
-        - D: Visual deselect mode (deselect while navigating)
+        - V: Visual toggle mode (toggle selection while navigating)
         """
         if event.key == "e" or event.key == "E":
             # Edit highlighted chapter title
@@ -2049,18 +2043,11 @@ class PreviewPanel(Vertical):
                 except Exception:
                     pass  # No edit in progress
         elif event.key == "v" or event.key == "V":
-            # Toggle visual select mode
-            if self._visual_mode == "select":
+            # Toggle visual mode
+            if self._visual_mode:
                 self._exit_visual_mode()
             else:
-                self._enter_visual_mode("select")
-            event.stop()
-        elif event.key == "d":
-            # Toggle visual deselect mode (D, but not Shift+D which might be used elsewhere)
-            if self._visual_mode == "deselect":
-                self._exit_visual_mode()
-            else:
-                self._enter_visual_mode("deselect")
+                self._enter_visual_mode()
             event.stop()
         elif event.key == "space":
             # Space toggles selection on highlighted item

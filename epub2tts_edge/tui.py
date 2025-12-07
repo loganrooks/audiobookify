@@ -1034,7 +1034,7 @@ class SettingsPanel(Vertical):
 
 
 class ProgressPanel(Vertical):
-    """Panel for displaying conversion progress."""
+    """Panel for displaying current job progress."""
 
     DEFAULT_CSS = """
     ProgressPanel {
@@ -1046,14 +1046,19 @@ class ProgressPanel(Vertical):
         background: $surface;
     }
 
-    ProgressPanel > Label.title {
-        text-style: bold;
+    ProgressPanel > #transport-controls {
+        height: auto;
         margin-bottom: 1;
-        color: $success-lighten-2;
+    }
+
+    ProgressPanel > #transport-controls > Button {
+        min-width: 8;
+        margin-right: 1;
     }
 
     ProgressPanel > #current-book {
         margin-bottom: 1;
+        text-style: bold;
     }
 
     ProgressPanel > #chapter-progress {
@@ -1073,33 +1078,25 @@ class ProgressPanel(Vertical):
     ProgressPanel > #status-text {
         color: $text-muted;
     }
-
-    ProgressPanel > #action-buttons {
-        margin-top: 1;
-    }
-
-    ProgressPanel > #action-buttons > Button {
-        margin-right: 1;
-    }
     """
 
     def compose(self) -> ComposeResult:
-        yield Label("📊 Progress", classes="title")
+        with Horizontal(id="transport-controls"):
+            yield Button("▶ Start", id="start-btn", variant="success")
+            yield Button("⏸ Pause", id="pause-btn", variant="warning", disabled=True)
+            yield Button("⏹ Stop", id="stop-btn", variant="error", disabled=True)
         yield Label("Ready to convert", id="current-book")
         yield Label("", id="chapter-progress")
         yield Label("", id="paragraph-progress")
         yield ProgressBar(total=100, show_eta=False, id="progress-bar")
         yield Label("Select files and press Start", id="status-text")
-        with Horizontal(id="action-buttons"):
-            yield Button("▶ Start", id="start-btn", variant="success")
-            yield Button("⏹ Stop", id="stop-btn", variant="error", disabled=True)
 
     def set_progress(self, current: int, total: int, book_name: str = "", status: str = "") -> None:
         """Update progress display."""
         progress = (current / total * 100) if total > 0 else 0
         self.query_one("#progress-bar", ProgressBar).update(progress=progress)
         self.query_one("#current-book", Label).update(
-            f"Processing: {book_name}" if book_name else "Ready to convert"
+            f"📖 {book_name}" if book_name else "Ready to convert"
         )
         self.query_one("#status-text", Label).update(status or f"{current}/{total} books processed")
 
@@ -1119,7 +1116,7 @@ class ProgressPanel(Vertical):
 
         self.query_one("#progress-bar", ProgressBar).update(progress=overall)
         self.query_one("#chapter-progress", Label).update(
-            f"📖 Chapter {chapter_num}/{total_chapters}: {chapter_title[:40]}"
+            f"Chapter {chapter_num}/{total_chapters}: {chapter_title[:40]}"
         )
         self.query_one("#paragraph-progress", Label).update(
             f"   Paragraph {paragraph_num}/{total_paragraphs}"
@@ -1133,7 +1130,16 @@ class ProgressPanel(Vertical):
     def set_running(self, running: bool) -> None:
         """Update button states based on running status."""
         self.query_one("#start-btn", Button).disabled = running
+        self.query_one("#pause-btn", Button).disabled = not running
         self.query_one("#stop-btn", Button).disabled = not running
+
+    def set_paused(self, paused: bool) -> None:
+        """Update pause button state."""
+        pause_btn = self.query_one("#pause-btn", Button)
+        if paused:
+            pause_btn.label = "▶ Resume"
+        else:
+            pause_btn.label = "⏸ Pause"
 
 
 class QueuePanel(Vertical):
@@ -1271,6 +1277,16 @@ class JobsPanel(Vertical):
         background: $surface;
     }
 
+    JobsPanel > #jobs-transport {
+        height: auto;
+        margin-bottom: 1;
+    }
+
+    JobsPanel > #jobs-transport > Button {
+        min-width: 8;
+        margin-right: 1;
+    }
+
     JobsPanel > #jobs-header {
         height: auto;
         margin-bottom: 0;
@@ -1326,6 +1342,11 @@ class JobsPanel(Vertical):
         self.job_manager = job_manager or JobManager()
 
     def compose(self) -> ComposeResult:
+        # Transport controls for queue processing
+        with Horizontal(id="jobs-transport"):
+            yield Button("▶ Start", id="jobs-start-btn", variant="success")
+            yield Button("⏸ Pause", id="jobs-pause-btn", variant="warning", disabled=True)
+            yield Button("⏹ Stop", id="jobs-stop-btn", variant="error", disabled=True)
         with Horizontal(id="jobs-header"):
             yield Label("💼 Jobs", classes="title")
             yield Label("(0)", id="job-count", classes="count")
@@ -1438,6 +1459,20 @@ class JobsPanel(Vertical):
         jobs_list.clear()
         for item in items:
             jobs_list.append(JobItem(item.job, selected=item.is_selected))
+
+    def set_running(self, running: bool) -> None:
+        """Update transport button states based on running status."""
+        self.query_one("#jobs-start-btn", Button).disabled = running
+        self.query_one("#jobs-pause-btn", Button).disabled = not running
+        self.query_one("#jobs-stop-btn", Button).disabled = not running
+
+    def set_paused(self, paused: bool) -> None:
+        """Update pause button state."""
+        pause_btn = self.query_one("#jobs-pause-btn", Button)
+        if paused:
+            pause_btn.label = "▶ Resume"
+        else:
+            pause_btn.label = "⏸ Pause"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2632,6 +2667,7 @@ class AudiobookifyApp(App):
         self.initial_path = initial_path
         self.is_processing = False
         self.should_stop = False
+        self.is_paused = False
         self.current_worker: Worker | None = None
         self.job_manager = JobManager()
         self.debug_mode = False
@@ -2874,9 +2910,11 @@ class AudiobookifyApp(App):
 
         self.is_processing = True
         self.should_stop = False
+        self.is_paused = False
 
         progress_panel = self.query_one(ProgressPanel)
         progress_panel.set_running(True)
+        self.query_one(JobsPanel).set_running(True)
 
         queue_panel = self.query_one(QueuePanel)
         queue_panel.clear_queue()
@@ -2894,6 +2932,8 @@ class AudiobookifyApp(App):
             self.action_start()
         elif event.button.id == "stop-btn":
             self.action_stop()
+        elif event.button.id == "pause-btn":
+            self.action_pause()
         elif event.button.id == "preview-voice-btn":
             self.action_preview_voice()
         elif event.button.id == "job-resume":
@@ -2910,6 +2950,13 @@ class AudiobookifyApp(App):
             self.query_one(JobsPanel).move_selected_up()
         elif event.button.id == "job-move-down":
             self.query_one(JobsPanel).move_selected_down()
+        # Jobs panel transport controls (mirrored from ProgressPanel)
+        elif event.button.id == "jobs-start-btn":
+            self.action_start()
+        elif event.button.id == "jobs-pause-btn":
+            self.action_pause()
+        elif event.button.id == "jobs-stop-btn":
+            self.action_stop()
         elif event.button.id == "preview-chapters-btn":
             self.action_preview_chapters()
         elif event.button.id == "export-text-btn":
@@ -3021,9 +3068,11 @@ class AudiobookifyApp(App):
 
         self.is_processing = True
         self.should_stop = False
+        self.is_paused = False
 
         progress_panel = self.query_one(ProgressPanel)
         progress_panel.set_running(True)
+        self.query_one(JobsPanel).set_running(True)
 
         queue_panel = self.query_one(QueuePanel)
         queue_panel.clear_queue()
@@ -3042,10 +3091,26 @@ class AudiobookifyApp(App):
             return
 
         self.should_stop = True
+        self.is_paused = False  # Clear pause state when stopping
         self.log_message("⏹️ Stopping... (will stop after current paragraph)")
 
         if self.current_worker:
             self.current_worker.cancel()
+
+    def action_pause(self) -> None:
+        """Toggle pause state for processing."""
+        if not self.is_processing:
+            return
+
+        self.is_paused = not self.is_paused
+        progress_panel = self.query_one(ProgressPanel)
+        progress_panel.set_paused(self.is_paused)
+        self.query_one(JobsPanel).set_paused(self.is_paused)
+
+        if self.is_paused:
+            self.log_message("⏸️ Paused - processing will pause after current operation")
+        else:
+            self.log_message("▶️ Resumed")
 
     @work(exclusive=True, thread=True)
     def process_files(self, files: list[Path]) -> None:
@@ -3473,14 +3538,19 @@ class AudiobookifyApp(App):
         """Called when processing is complete."""
         self.is_processing = False
         self.should_stop = False
+        self.is_paused = False
 
         progress_panel = self.query_one(ProgressPanel)
         progress_panel.set_running(False)
+        progress_panel.set_paused(False)  # Reset pause button state
         progress_panel.set_progress(total, total, "", "Complete!")
         progress_panel.clear_chapter_progress()
 
         # Refresh Jobs panel and file list to show updated state
-        self.query_one(JobsPanel).refresh_jobs()
+        jobs_panel = self.query_one(JobsPanel)
+        jobs_panel.set_running(False)
+        jobs_panel.set_paused(False)
+        jobs_panel.refresh_jobs()
         self.query_one(FilePanel).scan_directory()
 
         self.log_message("Processing complete!")
@@ -3689,9 +3759,11 @@ class AudiobookifyApp(App):
         # Start processing
         self.is_processing = True
         self.should_stop = False
+        self.is_paused = False
         progress_panel = self.query_one(ProgressPanel)
         progress_panel.set_running(True)
         progress_panel.set_progress(0, 1, source_path.name, "Resuming...")
+        self.query_one(JobsPanel).set_running(True)
 
         # Switch to Current tab
         tabs = self.query_one("#bottom-tabs", TabbedContent)

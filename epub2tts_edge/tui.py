@@ -46,6 +46,7 @@ from textual.worker import Worker
 
 # Import our modules
 from .batch_processor import BatchConfig, BatchProcessor, BookTask, ProcessingStatus
+from .config import get_config
 from .job_manager import Job, JobManager, JobStatus
 from .voice_preview import AVAILABLE_VOICES, VoicePreview, VoicePreviewConfig
 
@@ -3016,8 +3017,13 @@ class AudiobookifyApp(App):
                 self.call_from_thread(self.log_message, "  📝 Exporting to text...")
 
                 # Create config for single file
+                # Get app config for output directory
+                app_config = get_config()
+                output_dir = str(app_config.output_dir) if app_config.output_dir else None
+
                 config = BatchConfig(
                     input_path=str(epub_path),
+                    output_dir=output_dir,
                     speaker=config_dict["speaker"],
                     detection_method=config_dict["detection_method"],
                     hierarchy_style=config_dict["hierarchy_style"],
@@ -3104,6 +3110,9 @@ class AudiobookifyApp(App):
             # Update queue display
             self.call_from_thread(self.query_one(QueuePanel).update_task, task)
 
+            # Refresh jobs panel to show newly created/updated jobs
+            self.call_from_thread(self.query_one(JobsPanel).refresh_jobs)
+
         # Processing complete
         self.call_from_thread(self._processing_complete, total)
 
@@ -3144,8 +3153,13 @@ class AudiobookifyApp(App):
             self.call_from_thread(self.log_message, "  📝 Exporting to text...")
 
             # Create config with chapter selection override
+            # Get app config for output directory
+            app_config = get_config()
+            output_dir = str(app_config.output_dir) if app_config.output_dir else None
+
             config = BatchConfig(
                 input_path=str(epub_path),
+                output_dir=output_dir,
                 speaker=config_dict["speaker"],
                 detection_method=config_dict["detection_method"],
                 hierarchy_style=config_dict["hierarchy_style"],
@@ -3437,8 +3451,13 @@ class AudiobookifyApp(App):
                 )
 
             # Create config using job's saved settings for consistency
+            # Get app config for output directory
+            app_config = get_config()
+            output_dir = str(app_config.output_dir) if app_config.output_dir else None
+
             config = BatchConfig(
                 input_path=str(source_path),
+                output_dir=output_dir,
                 speaker=job.speaker,
                 tts_rate=job.rate,
                 tts_volume=job.volume,

@@ -2,388 +2,309 @@
 
 ## Overview
 
-Redesign the current monolithic SettingsPanel into a more organized, tabbed interface with clear separation between configuration (settings) and operations (actions).
+Redesign the TUI into a more organized, tabbed interface with clear separation between configuration (settings) and operations (actions). This includes reorganizing both the settings panel and the bottom tabs.
+
+---
 
 ## Current State
 
 ### Problems
 
-1. **Mixed Concerns**: Settings and action buttons are combined in one scrolling panel
+1. **Mixed Concerns**: Settings and action buttons combined in one scrolling panel
 2. **Overwhelming Options**: All settings visible at once, regardless of relevance
 3. **No Logical Grouping**: Voice settings mixed with detection settings mixed with output options
 4. **Poor Discoverability**: Advanced options hidden among common ones
-
-### Current Layout (SettingsPanel)
-
-```
-┌─────────────────────────────┐
-│ Voice Selection             │
-│ Rate                        │
-│ Volume                      │
-│ Detection Method            │
-│ Hierarchy Style             │
-│ Paragraph Pause             │
-│ Sentence Pause              │
-│ Normalize Audio             │
-│ Trim Silence                │
-│ ... more settings ...       │
-│                             │
-│ [Preview Chapters]          │
-│ [Process Selected]          │
-│ [Clear Selection]           │
-└─────────────────────────────┘
-```
+5. **Redundant Tabs**: Queue and Jobs are conceptually similar
+6. **Action Placement**: Buttons like "Preview Chapters" are in settings, not near files
 
 ---
 
 ## Proposed Design
 
-### Structure: Split Panel + Tabbed Settings
+### High-Level Structure
 
 ```
-┌─────────────────────────────┐
-│ ═══ SETTINGS ═══            │
-│ ┌─────────────────────────┐ │
-│ │ Voice │ Timing │ Output │ │  ← Tab bar
-│ ├─────────────────────────┤ │
-│ │                         │ │
-│ │   (Tab Content)         │ │  ← Settings for selected tab
-│ │                         │ │
-│ │                         │ │
-│ └─────────────────────────┘ │
-│                             │
-│ ═══ ACTIONS ═══             │
-│ ┌─────────────────────────┐ │
-│ │ [Preview Chapters]      │ │
-│ │ [Process Selected]      │ │
-│ │ [Clear Selection]       │ │
-│ │ [Export to Text]        │ │
-│ └─────────────────────────┘ │
-└─────────────────────────────┘
+┌─────────────────────────────────────┬─────────────────────────────┐
+│                                     │ ⚙️ Settings                 │
+│  📁 Files                           │ ┌───────────────────────────┤
+│  ┌─────────────────────────────┐    │ │ 🎙️│🎵│📖│⚙️              │
+│  │ [path input______] [📂]     │    │ ├───────────────────────────┤
+│  │                             │    │ │                           │
+│  │ ☑ Book One.epub             │    │ │   [Tab Content]           │
+│  │ ☐ Book Two.epub             │    │ │                           │
+│  │ ☑ Book Three.epub           │    │ │                           │
+│  └─────────────────────────────┘    │ └───────────────────────────┤
+│  [All][None][⟳][📋 Preview][📝 Export]│                             │
+│                                     │  (Profile selector - future) │
+├─────────────────────────────────────┴─────────────────────────────┤
+│ 📋 Preview │ ▶️ Current │ 📊 Jobs │ 📜 Log                         │
+├───────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│                    [Bottom Tab Content]                           │
+│                                                                   │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Tab Organization
+## Settings Panel (4 Emoji Tabs)
 
-### Tab 1: Voice
+### Tab 1: 🎙️ Voice
 
 Primary voice and speech settings.
 
-```python
-# Contents
-- Voice Selection (dropdown with search)
-- Speech Rate (-50% to +50%)
-- Volume (-50% to +50%)
-- Voice Preview button (inline sample)
+| Setting | Type | Default | Notes |
+|---------|------|---------|-------|
+| Voice | Select | en-US-AndrewNeural | Dropdown with all voices |
+| Rate | Select | Normal | -50% to +50% |
+| Volume | Select | Normal | -50% to +50% |
+| Narrator Voice | Input | (empty) | For multi-voice mode |
+| [🔊 Preview] | Button | - | Inline voice preview |
+
+### Tab 2: 🎵 Audio
+
+Sound quality and timing settings.
+
+| Setting | Type | Default | Notes |
+|---------|------|---------|-------|
+| Sentence Pause | Select | 1200ms | Pause after sentences |
+| Paragraph Pause | Select | 1200ms | Pause after paragraphs |
+| Trim Silence | Toggle | Off | Remove excessive silence |
+| ↳ Threshold | Input | -40 dBFS | *Shown when Trim enabled* |
+| ↳ Max Duration | Input | 2000ms | *Shown when Trim enabled* |
+| Normalize | Toggle | Off | Consistent volume levels |
+| ↳ Target | Input | -16 dBFS | *Shown when Normalize enabled* |
+| ↳ Method | Select | peak | *Shown when Normalize enabled* |
+
+### Tab 3: 📖 Chapters
+
+Chapter detection and selection settings.
+
+| Setting | Type | Default | Notes |
+|---------|------|---------|-------|
+| Detection | Select | combined | toc/headings/combined/auto |
+| Hierarchy | Select | flat | flat/numbered/indented/arrow/breadcrumb |
+| Max Depth | Input | (all) | Limit chapter nesting depth |
+| Chapters | Input | (all) | e.g., "1-5", "1,3,7", "5-" |
+
+### Tab 4: ⚙️ Advanced
+
+Power user and batch processing settings.
+
+| Setting | Type | Default | Notes |
+|---------|------|---------|-------|
+| Pronunciation | Input | (empty) | Path to dictionary file |
+| Voice Mapping | Input | (empty) | Path to voice mapping JSON |
+| Parallel Workers | Input | 5 | 1-15 concurrent tasks |
+| Recursive Scan | Toggle | Off | Scan subdirectories |
+| Skip Existing | Toggle | On | Skip already processed |
+| Text Only | Toggle | Off | Export text, no audio |
+| Retry Count | Input | 3 | TTS retry attempts |
+| Retry Delay | Input | 3s | Delay between retries |
+
+---
+
+## FilePanel Updates
+
+Move file-related actions to FilePanel:
+
+```
+┌─────────────────────────────────────┐
+│ 📁 Files (3)           [📚] [📝]    │  ← Mode buttons (Books/Text)
+├─────────────────────────────────────┤
+│ [path input_______________] [📂]    │  ← Path + Browse button
+├─────────────────────────────────────┤
+│ ☑ Book One.epub                     │
+│ ☐ Book Two.epub                     │
+│ ☑ Book Three.epub                   │
+├─────────────────────────────────────┤
+│[All][None][⟳] [📋 Preview][📝 Export]│  ← Actions moved here
+└─────────────────────────────────────┘
 ```
 
-### Tab 2: Timing
+**Moved to FilePanel:**
+- 📋 Preview Chapters - loads selected file's chapters
+- 📝 Export & Edit - exports to text file
 
-Pause and silence settings.
+---
 
-```python
-# Contents
-- Paragraph Pause (ms)
-- Sentence Pause (ms)
-- Trim Silence (checkbox)
-- Silence Threshold (dBFS, shown if Trim enabled)
-- Max Silence Duration (ms, shown if Trim enabled)
+## Bottom Tabs (4 Tabs)
+
+### Tab 1: 📋 Preview
+
+Chapter editing before conversion.
+
+```
+┌─────────────────────────────────────┐
+│ Preview: Book One.epub              │
+├─────────────────────────────────────┤
+│ [▶️ Start All]                      │  ← Start conversion
+├─────────────────────────────────────┤
+│ ☑ Chapter 1: Introduction     1.2k  │
+│ ☑ Chapter 2: The Beginning    3.4k  │
+│ ☐ Chapter 3: (Excluded)       0.5k  │
+│ ☑ Chapter 4: The Journey      5.1k  │
+├─────────────────────────────────────┤
+│ [Space] Toggle [M] Merge [X] Delete │
+└─────────────────────────────────────┘
 ```
 
-### Tab 3: Output
+### Tab 2: ▶️ Current
 
-Output format and quality settings.
+Detailed progress of active conversion.
 
-```python
-# Contents
-- Normalize Audio (checkbox)
-- Normalization Target (dBFS, shown if Normalize enabled)
-- Normalization Method (peak/rms, shown if Normalize enabled)
-- Output Format (future: m4b/mp3/opus)
-- Output Naming Template (future)
+```
+┌─────────────────────────────────────┐
+│ Current Job                         │
+├─────────────────────────────────────┤
+│ [▶️ Start] [⏸️ Pause] [⏹️ Stop]      │
+├─────────────────────────────────────┤
+│ 📖 Book One.epub                    │
+│                                     │
+│ Chapter 3/12: "The Journey"         │
+│ ████████████████░░░░░░░░ 67%        │
+│                                     │
+│ Elapsed: 4:21  |  ETA: ~2:10        │
+│                                     │
+│ ✓ Ch.1  ✓ Ch.2  ● Ch.3  ○ Ch.4  ... │
+│                                     │
+│ Processing: "The sun rose slowly..."│
+└─────────────────────────────────────┘
 ```
 
-### Tab 4: Detection (Context-Sensitive)
+### Tab 3: 📊 Jobs
 
-Chapter detection settings. Only shown when relevant.
+Combined queue and job history.
 
-```python
-# Contents
-- Detection Method (toc/headings/combined/auto)
-- Hierarchy Style (flat/numbered/arrow/breadcrumb/indented)
-- Include Empty Chapters (checkbox)
+```
+┌─────────────────────────────────────┐
+│ Jobs                                │
+├─────────────────────────────────────┤
+│ [▶️ Start] [⏸️ Pause] [⏹️ Stop]      │
+├─────────────────────────────────────┤
+│ ● Book One.epub       Converting 67%│
+│ ○ Book Two.epub       Pending       │
+│ ○ Book Three.epub     Pending       │
+│ ⏸ Book Four.epub      Paused @ Ch.5 │
+│ ✗ Book Five.epub      Failed        │
+│ ✓ Book Six.epub       Completed     │
+├─────────────────────────────────────┤
+│ [↑↓ Move] [R Resume] [X Delete]     │
+└─────────────────────────────────────┘
 ```
 
-### Tab 5: Advanced (Optional)
+**Status Icons:**
+- ● In Progress (with percentage)
+- ○ Pending
+- ⏸ Paused (with chapter info)
+- ✗ Failed
+- ✓ Completed
 
-Power user settings.
+### Tab 4: 📜 Log
 
-```python
-# Contents
-- Pronunciation Dictionary
-- Voice Mapping (multi-voice)
-- Narrator Voice
-- Processing Concurrency (future)
+Debug and verbose output.
+
+```
+┌─────────────────────────────────────┐
+│ Log                    [Clear]      │
+├─────────────────────────────────────┤
+│ [12:34:01] Starting Book One.epub   │
+│ [12:34:02] Detected 12 chapters     │
+│ [12:34:03] Processing Chapter 1...  │
+│ [12:34:15] Chapter 1 complete (12s) │
+│ [12:34:16] Processing Chapter 2...  │
+│ ...                                 │
+└─────────────────────────────────────┘
 ```
 
 ---
 
-## Actions Panel
+## Controls Distribution
 
-Separate, always-visible section for operations.
+Transport controls appear in multiple locations for convenience:
 
-### Primary Actions
+| Location | Controls | Context |
+|----------|----------|---------|
+| 📋 Preview | [▶️ Start All] | Convert previewed chapters |
+| ▶️ Current | [▶️][⏸️][⏹️] | Control + detailed view |
+| 📊 Jobs | [▶️][⏸️][⏹️] | Control queue processing |
 
-```python
-# File context (files selected in FilePanel)
-- "Preview Chapters" - Load chapters for editing
-- "Process Selected" - Start processing selected files
-
-# Preview context (chapters loaded in PreviewPanel)
-- "Start All" - Process all remaining chapters
-- "Export Text" - Export to text file only
-
-# Common
-- "Clear Selection" - Clear file selection
-```
-
-### Contextual Visibility
-
-Actions should enable/disable based on context:
-
-```python
-class ActionsPanel(Widget):
-    def update_context(self, context: str):
-        """Update button states based on current context."""
-        if context == "file_selection":
-            self.preview_btn.disabled = not self.has_files_selected
-            self.process_btn.disabled = not self.has_files_selected
-            self.start_all_btn.disabled = True
-
-        elif context == "preview_editing":
-            self.preview_btn.disabled = True
-            self.process_btn.disabled = True
-            self.start_all_btn.disabled = not self.has_chapters
-```
-
----
-
-## Implementation
-
-### Component Structure
-
-```python
-# New files in tui/panels/
-├── settings/
-│   ├── __init__.py
-│   ├── settings_panel.py      # Main tabbed container
-│   ├── voice_tab.py           # Voice settings
-│   ├── timing_tab.py          # Timing settings
-│   ├── output_tab.py          # Output settings
-│   ├── detection_tab.py       # Detection settings
-│   └── advanced_tab.py        # Advanced settings
-├── actions_panel.py           # Actions section
-```
-
-### Textual Implementation
-
-```python
-# settings_panel.py
-from textual.widgets import TabbedContent, TabPane
-
-class SettingsPanel(Widget):
-    """Tabbed settings panel."""
-
-    def compose(self) -> ComposeResult:
-        yield Static("═══ SETTINGS ═══", classes="section-header")
-
-        with TabbedContent():
-            with TabPane("Voice", id="voice-tab"):
-                yield VoiceTab()
-            with TabPane("Timing", id="timing-tab"):
-                yield TimingTab()
-            with TabPane("Output", id="output-tab"):
-                yield OutputTab()
-            with TabPane("Detection", id="detection-tab"):
-                yield DetectionTab()
-
-
-class ActionsPanel(Widget):
-    """Always-visible actions section."""
-
-    def compose(self) -> ComposeResult:
-        yield Static("═══ ACTIONS ═══", classes="section-header")
-
-        with Container(id="actions-container"):
-            yield Button("Preview Chapters", id="preview-btn")
-            yield Button("Process Selected", id="process-btn")
-            yield Button("Start All", id="start-all-btn", disabled=True)
-            yield Button("Export Text", id="export-btn", disabled=True)
-            yield Button("Clear Selection", id="clear-btn")
-```
-
-### CSS Styling
-
-```css
-/* Settings tabs */
-SettingsPanel TabbedContent {
-    height: auto;
-    max-height: 60%;
-}
-
-SettingsPanel TabPane {
-    padding: 1;
-}
-
-/* Actions section */
-ActionsPanel {
-    height: auto;
-    dock: bottom;
-    padding: 1;
-}
-
-ActionsPanel Button {
-    width: 100%;
-    margin-bottom: 1;
-}
-
-ActionsPanel Button.primary {
-    background: $primary;
-}
-```
+Keyboard shortcuts (global):
+- `s` - Start conversion
+- `Escape` - Stop conversion
+- (Consider: `p` for pause?)
 
 ---
 
 ## Progressive Disclosure
 
-### Conditional Visibility
+Show sub-settings only when parent toggle is enabled:
 
-Show advanced options only when relevant:
-
-```python
-class TimingTab(Widget):
-    def on_checkbox_changed(self, event: Checkbox.Changed):
-        if event.checkbox.id == "trim-silence":
-            # Show/hide silence threshold controls
-            self.query_one("#silence-options").display = event.value
+```
+OFF state:                      ON state:
+┌─────────────────────┐         ┌─────────────────────┐
+│ [ ] Normalize Audio │         │ [✓] Normalize Audio │
+└─────────────────────┘         │     Target: -16 dBFS│
+                                │     Method: [peak ▼]│
+                                └─────────────────────┘
 ```
 
-### Tooltips / Help
-
-Add inline help for complex settings:
-
-```python
-yield Static("Normalization Target", classes="label")
-yield Input(id="norm-target", value="-16.0")
-yield Static("(dBFS, -20 to -10 typical)", classes="help-text")
-```
+Settings with progressive disclosure:
+- Trim Silence → Threshold, Max Duration
+- Normalize → Target, Method
 
 ---
 
 ## Settings Profiles (Future)
 
-### Profile System
+Profile selector above tabs for quick switching:
 
-```python
-@dataclass
-class SettingsProfile:
-    name: str
-    voice: str
-    rate: str | None
-    volume: str | None
-    paragraph_pause: int
-    sentence_pause: int
-    normalize: bool
-    trim_silence: bool
-    # ... other settings
-
-# Built-in profiles
-PROFILES = {
-    "default": SettingsProfile(...),
-    "quick_draft": SettingsProfile(rate="+20%", ...),
-    "high_quality": SettingsProfile(normalize=True, trim_silence=True, ...),
-}
+```
+┌─────────────────────────────────────┐
+│ Profile: [Default ▼]    [💾 Save]   │
+├─────────────────────────────────────┤
+│ 🎙️ │ 🎵 │ 📖 │ ⚙️                   │
+├─────────────────────────────────────┤
 ```
 
-### Profile Selector
-
-```python
-class SettingsPanel(Widget):
-    def compose(self) -> ComposeResult:
-        yield Static("═══ SETTINGS ═══", classes="section-header")
-
-        # Profile selector at top
-        yield Select(
-            options=[(name, name) for name in PROFILES.keys()],
-            id="profile-selector",
-            prompt="Profile: Custom",
-        )
-
-        # Tabs below
-        with TabbedContent():
-            # ...
-```
+**Built-in profiles:**
+- Default - Standard settings
+- Quick Draft - Faster rate, less processing
+- High Quality - Normalize, trim silence, careful pacing
+- Accessibility - Slower rate, longer pauses
 
 ---
 
-## Migration Strategy
+## Implementation Phases
 
-### Phase 1: Structural Split
+### Phase 1: Structural Changes
+- [ ] Create new SettingsPanel with TabbedContent (4 emoji tabs)
+- [ ] Move 📋 Preview Chapters button to FilePanel
+- [ ] Move 📝 Export & Edit button to FilePanel
+- [ ] Move 🔊 Preview Voice to Voice tab (inline)
+- [ ] Combine Queue + Jobs into single Jobs tab
+- [ ] Add ▶️ Current tab for detailed progress
+- [ ] Update tab labels to use emojis
 
-1. Create ActionsPanel as separate widget
-2. Move action buttons from SettingsPanel to ActionsPanel
-3. Update layout in AudiobookifyApp
-4. Test all action functionality
-
-### Phase 2: Tab Implementation
-
-1. Add TabbedContent to SettingsPanel
-2. Group existing settings into tabs
-3. Update CSS for new layout
-4. Test settings persistence
+### Phase 2: Settings Organization
+- [ ] Implement 🎙️ Voice tab
+- [ ] Implement 🎵 Audio tab
+- [ ] Implement 📖 Chapters tab
+- [ ] Implement ⚙️ Advanced tab
+- [ ] Add transport controls to Current and Jobs tabs
+- [ ] Add Start All to Preview tab
 
 ### Phase 3: Progressive Disclosure
+- [ ] Trim Silence sub-settings (threshold, max duration)
+- [ ] Normalize sub-settings (target, method)
+- [ ] Smooth show/hide animations
 
-1. Add conditional visibility
-2. Implement context-sensitive actions
-3. Add help text / tooltips
-4. User testing and refinement
+### Phase 4: Polish
+- [ ] Keyboard shortcuts for tab switching
+- [ ] Context-sensitive button enabling/disabling
+- [ ] Help text / tooltips for complex settings
 
-### Phase 4: Profiles (v2.5.0+)
-
-1. Implement SettingsProfile dataclass
-2. Create profile management
-3. Add profile selector UI
-4. Enable save/load custom profiles
-
----
-
-## Implementation Checklist
-
-### Phase 1: Structural Split
-- [ ] Create ActionsPanel widget
-- [ ] Move action buttons
-- [ ] Update AudiobookifyApp.compose()
-- [ ] Wire up action handlers
-- [ ] Test all buttons work
-
-### Phase 2: Tab Implementation
-- [ ] Add TabbedContent to SettingsPanel
-- [ ] Create VoiceTab
-- [ ] Create TimingTab
-- [ ] Create OutputTab
-- [ ] Create DetectionTab
-- [ ] Update CSS
-- [ ] Test settings changes apply
-
-### Phase 3: Enhancements
-- [ ] Conditional visibility for dependent settings
-- [ ] Context-sensitive action enabling
-- [ ] Help text / tooltips
-- [ ] Keyboard shortcuts for tabs
-
-### Phase 4: Profiles
+### Phase 5: Profiles (Future)
 - [ ] SettingsProfile dataclass
 - [ ] Built-in profiles
 - [ ] Profile selector UI
@@ -391,22 +312,44 @@ class SettingsPanel(Widget):
 
 ---
 
-## Dependencies
+## Migration Notes
 
-```
-Phase 1 (Structural Split) - Can start immediately
-    ↓
-Phase 2 (Tabs) - Requires Phase 1
-    ↓
-Phase 3 (Enhancements) - Requires Phase 2
-    ↓
-Phase 4 (Profiles) - Requires Phase 3
-```
+### Settings Mapping
+
+| Old Location | New Location |
+|--------------|--------------|
+| Voice Selection | 🎙️ Voice tab |
+| Rate/Volume | 🎙️ Voice tab |
+| Preview Voice btn | 🎙️ Voice tab (inline) |
+| Sentence/Paragraph Pause | 🎵 Audio tab |
+| Trim Silence | 🎵 Audio tab |
+| Normalize | 🎵 Audio tab |
+| Detection/Hierarchy | 📖 Chapters tab |
+| Chapter Selection | 📖 Chapters tab |
+| Pronunciation/Voice Mapping | ⚙️ Advanced tab |
+| Parallel Workers | ⚙️ Advanced tab |
+| Recursive/Skip Existing | ⚙️ Advanced tab |
+| Preview Chapters btn | FilePanel |
+| Export & Edit btn | FilePanel |
+
+### Bottom Tab Changes
+
+| Old | New |
+|-----|-----|
+| Progress | ▶️ Current (enhanced) |
+| Preview | 📋 Preview (unchanged) |
+| Queue | *(merged into Jobs)* |
+| Jobs | 📊 Jobs (queue + history) |
+| Log | 📜 Log (unchanged) |
+
+---
 
 ## Benefits
 
-1. **Clearer Organization**: Related settings grouped together
-2. **Reduced Cognitive Load**: See only relevant options
-3. **Better Discoverability**: Tabs make sections obvious
-4. **Separation of Concerns**: Settings vs Actions clearly distinct
-5. **Future Extensibility**: Easy to add new tabs or profile system
+1. **Clearer Organization**: Related settings grouped in tabs
+2. **Reduced Cognitive Load**: See only relevant options per tab
+3. **Better Discoverability**: Emoji tabs are scannable
+4. **Separation of Concerns**: Settings vs file actions vs conversion controls
+5. **Fewer Tabs**: 5 → 4 bottom tabs by combining Queue/Jobs
+6. **Contextual Actions**: Buttons near the things they operate on
+7. **Future Extensibility**: Easy to add profiles, new tabs

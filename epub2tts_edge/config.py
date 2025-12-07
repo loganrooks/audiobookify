@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import platform
+import random
 import re
 import time
 from dataclasses import dataclass
@@ -74,7 +75,8 @@ def slugify_title(title: str | None, max_length: int = 30) -> str:
 
 def generate_short_id() -> str:
     """Generate 6-character unique identifier."""
-    hash_input = f"{time.time()}"
+    # Use time + random to ensure uniqueness even on Windows (low time resolution)
+    hash_input = f"{time.time()}{random.randint(0, 999999)}"
     return hashlib.md5(hash_input.encode()).hexdigest()[:6]
 
 

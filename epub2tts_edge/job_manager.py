@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 import re
 import shutil
 import time
@@ -220,8 +221,8 @@ class JobManager:
         source_path = Path(source_file)
         name = self._sanitize_name(source_path.stem)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # Add a short hash for uniqueness
-        hash_input = f"{source_file}{time.time()}"
+        # Add a short hash for uniqueness (include random for Windows low time resolution)
+        hash_input = f"{source_file}{time.time()}{random.randint(0, 999999)}"
         short_hash = hashlib.md5(hash_input.encode()).hexdigest()[:6]
         return f"{name}_{timestamp}_{short_hash}"
 

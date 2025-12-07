@@ -1320,13 +1320,15 @@ class JobsPanel(Vertical):
             yield Label("💼 Jobs", classes="title")
             yield Label("(0)", id="job-count", classes="count")
         yield ListView(id="jobs-list")
-        # Combined transport + job actions in single row
+        # Combined selection + transport + job actions in single row
         with Horizontal(id="jobs-buttons"):
+            yield Button("All", id="job-select-all")
+            yield Button("None", id="job-deselect-all")
             yield Button("▶ Start", id="jobs-start-btn", variant="success")
-            yield Button("⏸ Pause", id="jobs-pause-btn", variant="warning", disabled=True)
-            yield Button("⏹ Stop", id="jobs-stop-btn", variant="error", disabled=True)
+            yield Button("⏸", id="jobs-pause-btn", variant="warning", disabled=True)
+            yield Button("⏹", id="jobs-stop-btn", variant="error", disabled=True)
             yield Button("Resume", id="job-resume", variant="primary")
-            yield Button("Delete", id="job-delete", variant="error")
+            yield Button("Del", id="job-delete", variant="error")
             yield Button("⟳", id="job-refresh")
 
     def on_mount(self) -> None:
@@ -2911,6 +2913,10 @@ class AudiobookifyApp(App):
             self.action_delete_job()
         elif event.button.id == "job-refresh":
             self.action_refresh_jobs()
+        elif event.button.id == "job-select-all":
+            self.query_one(JobsPanel).select_all()
+        elif event.button.id == "job-deselect-all":
+            self.query_one(JobsPanel).deselect_all()
         # Jobs panel transport controls
         elif event.button.id == "jobs-start-btn":
             self.action_start()

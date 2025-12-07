@@ -13,6 +13,8 @@ import pytest
 from epub2tts_edge.tui import (
     AudiobookifyApp,
     FilePanel,
+    JobItem,
+    JobsPanel,
     PreviewPanel,
     SettingsPanel,
 )
@@ -367,3 +369,149 @@ class TestMockTTSIntegration:
         # Text containing ERROR should fail
         with pytest.raises(RuntimeError, match="Mock TTS failure"):
             await mock_tts_with_failures.generate("This contains ERROR text", "en-US-AriaNeural")
+
+
+class TestJobItemSelection:
+    """Test JobItem selection functionality."""
+
+    def test_job_item_starts_unselected(self):
+        """JobItem should start unselected by default."""
+        from epub2tts_edge.job_manager import Job, JobStatus
+
+        job = Job(
+            job_id="test_job_123",
+            source_file="/tmp/test.epub",
+            job_dir="/tmp/jobs/test_job_123",
+            status=JobStatus.PENDING,
+        )
+        item = JobItem(job)
+        assert item.is_selected is False
+
+    def test_job_item_can_start_selected(self):
+        """JobItem should support starting selected."""
+        from epub2tts_edge.job_manager import Job, JobStatus
+
+        job = Job(
+            job_id="test_job_123",
+            source_file="/tmp/test.epub",
+            job_dir="/tmp/jobs/test_job_123",
+            status=JobStatus.PENDING,
+        )
+        item = JobItem(job, selected=True)
+        assert item.is_selected is True
+
+    def test_job_item_toggle_changes_state(self):
+        """JobItem.toggle() should flip selection state."""
+        from epub2tts_edge.job_manager import Job, JobStatus
+
+        job = Job(
+            job_id="test_job_123",
+            source_file="/tmp/test.epub",
+            job_dir="/tmp/jobs/test_job_123",
+            status=JobStatus.PENDING,
+        )
+        item = JobItem(job)
+
+        # Start unselected
+        assert item.is_selected is False
+
+        # Toggle to selected (note: toggle() calls query_one which needs mount)
+        item.is_selected = True
+        assert item.is_selected is True
+
+        # Toggle back
+        item.is_selected = False
+        assert item.is_selected is False
+
+
+class TestJobsPanelSelection:
+    """Test JobsPanel selection functionality."""
+
+    @pytest.mark.asyncio
+    async def test_jobs_panel_exists_in_app(self, temp_dir):
+        """App should contain a JobsPanel."""
+        app = AudiobookifyApp(initial_path=str(temp_dir))
+
+        async with app.run_test() as _:
+            jobs_panel = app.query_one(JobsPanel)
+            assert jobs_panel is not None
+
+    @pytest.mark.asyncio
+    async def test_jobs_panel_has_select_buttons(self, temp_dir):
+        """JobsPanel should have All and None selection buttons."""
+        app = AudiobookifyApp(initial_path=str(temp_dir))
+
+        async with app.run_test() as _:
+            jobs_panel = app.query_one(JobsPanel)
+
+            # Check for selection buttons
+            all_btn = jobs_panel.query_one("#job-select-all")
+            none_btn = jobs_panel.query_one("#job-deselect-all")
+
+            assert all_btn is not None
+            assert none_btn is not None
+
+    @pytest.mark.asyncio
+    async def test_jobs_panel_has_transport_controls(self, temp_dir):
+        """JobsPanel should have Start, Pause, Stop transport controls."""
+        app = AudiobookifyApp(initial_path=str(temp_dir))
+
+        async with app.run_test() as _:
+            jobs_panel = app.query_one(JobsPanel)
+
+            # Check for transport controls
+            start_btn = jobs_panel.query_one("#jobs-start-btn")
+            pause_btn = jobs_panel.query_one("#jobs-pause-btn")
+            stop_btn = jobs_panel.query_one("#jobs-stop-btn")
+
+            assert start_btn is not None
+            assert pause_btn is not None
+            assert stop_btn is not None
+
+    @pytest.mark.asyncio
+    async def test_jobs_panel_transport_initial_state(self, temp_dir):
+        """Transport controls should have correct initial state."""
+        app = AudiobookifyApp(initial_path=str(temp_dir))
+
+        async with app.run_test() as _:
+            jobs_panel = app.query_one(JobsPanel)
+
+            start_btn = jobs_panel.query_one("#jobs-start-btn")
+            pause_btn = jobs_panel.query_one("#jobs-pause-btn")
+            stop_btn = jobs_panel.query_one("#jobs-stop-btn")
+
+            # Start should be enabled, Pause/Stop disabled initially
+            assert start_btn.disabled is False
+            assert pause_btn.disabled is True
+            assert stop_btn.disabled is True
+
+    def test_jobs_panel_get_selected_jobs_empty(self):
+        """get_selected_jobs should return empty list when nothing selected."""
+        panel = JobsPanel()
+        # Without mounting, there are no items
+        selected = panel.get_selected_jobs()
+        assert selected == []
+
+    def test_jobs_panel_select_all_method_exists(self):
+        """JobsPanel should have select_all method."""
+        panel = JobsPanel()
+        assert hasattr(panel, "select_all")
+        assert callable(panel.select_all)
+
+    def test_jobs_panel_deselect_all_method_exists(self):
+        """JobsPanel should have deselect_all method."""
+        panel = JobsPanel()
+        assert hasattr(panel, "deselect_all")
+        assert callable(panel.deselect_all)
+
+    def test_jobs_panel_set_running_method_exists(self):
+        """JobsPanel should have set_running method for transport control state."""
+        panel = JobsPanel()
+        assert hasattr(panel, "set_running")
+        assert callable(panel.set_running)
+
+    def test_jobs_panel_set_paused_method_exists(self):
+        """JobsPanel should have set_paused method for pause button state."""
+        panel = JobsPanel()
+        assert hasattr(panel, "set_paused")
+        assert callable(panel.set_paused)

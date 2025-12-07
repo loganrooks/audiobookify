@@ -580,8 +580,8 @@ class FilePanel(Vertical):
             yield Button("All", id="select-all", classes="sel-btn")
             yield Button("None", id="deselect-all", classes="sel-btn")
             yield Button("⟳", id="refresh")
-            yield Button("📋", id="preview-chapters-btn", classes="action-btn")
-            yield Button("📝", id="export-text-btn", classes="action-btn")
+            yield Button("Preview", id="preview-chapters-btn", classes="action-btn")
+            yield Button("Export", id="export-text-btn", classes="action-btn")
 
     def on_mount(self) -> None:
         self.scan_directory()
@@ -1277,16 +1277,6 @@ class JobsPanel(Vertical):
         background: $surface;
     }
 
-    JobsPanel > #jobs-transport {
-        height: auto;
-        margin-bottom: 1;
-    }
-
-    JobsPanel > #jobs-transport > Button {
-        min-width: 8;
-        margin-right: 1;
-    }
-
     JobsPanel > #jobs-header {
         height: auto;
         margin-bottom: 0;
@@ -1313,27 +1303,11 @@ class JobsPanel(Vertical):
         margin-top: 0;
     }
 
-    JobsPanel Button {
-        min-width: 4;
+    JobsPanel > #jobs-buttons > Button {
+        min-width: 6;
         height: auto;
         padding: 0;
         margin: 0 1 0 0;
-    }
-
-    JobsPanel Button.resume {
-        background: $success-darken-1;
-    }
-
-    JobsPanel Button.delete {
-        background: $error-darken-1;
-    }
-
-    JobsPanel Button.move {
-        background: $primary-darken-1;
-    }
-
-    JobsPanel Button.sel-btn {
-        min-width: 6;
     }
     """
 
@@ -1342,22 +1316,17 @@ class JobsPanel(Vertical):
         self.job_manager = job_manager or JobManager()
 
     def compose(self) -> ComposeResult:
-        # Transport controls for queue processing
-        with Horizontal(id="jobs-transport"):
-            yield Button("▶ Start", id="jobs-start-btn", variant="success")
-            yield Button("⏸ Pause", id="jobs-pause-btn", variant="warning", disabled=True)
-            yield Button("⏹ Stop", id="jobs-stop-btn", variant="error", disabled=True)
         with Horizontal(id="jobs-header"):
             yield Label("💼 Jobs", classes="title")
             yield Label("(0)", id="job-count", classes="count")
         yield ListView(id="jobs-list")
+        # Combined transport + job actions in single row
         with Horizontal(id="jobs-buttons"):
-            yield Button("All", id="job-select-all", classes="sel-btn")
-            yield Button("None", id="job-deselect-all", classes="sel-btn")
-            yield Button("↑", id="job-move-up", classes="move")
-            yield Button("↓", id="job-move-down", classes="move")
-            yield Button("▶", id="job-resume", classes="resume")
-            yield Button("🗑", id="job-delete", classes="delete")
+            yield Button("▶ Start", id="jobs-start-btn", variant="success")
+            yield Button("⏸ Pause", id="jobs-pause-btn", variant="warning", disabled=True)
+            yield Button("⏹ Stop", id="jobs-stop-btn", variant="error", disabled=True)
+            yield Button("Resume", id="job-resume", variant="primary")
+            yield Button("Delete", id="job-delete", variant="error")
             yield Button("⟳", id="job-refresh")
 
     def on_mount(self) -> None:
@@ -2942,15 +2911,7 @@ class AudiobookifyApp(App):
             self.action_delete_job()
         elif event.button.id == "job-refresh":
             self.action_refresh_jobs()
-        elif event.button.id == "job-select-all":
-            self.query_one(JobsPanel).select_all()
-        elif event.button.id == "job-deselect-all":
-            self.query_one(JobsPanel).deselect_all()
-        elif event.button.id == "job-move-up":
-            self.query_one(JobsPanel).move_selected_up()
-        elif event.button.id == "job-move-down":
-            self.query_one(JobsPanel).move_selected_down()
-        # Jobs panel transport controls (mirrored from ProgressPanel)
+        # Jobs panel transport controls
         elif event.button.id == "jobs-start-btn":
             self.action_start()
         elif event.button.id == "jobs-pause-btn":

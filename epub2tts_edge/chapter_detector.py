@@ -1025,7 +1025,17 @@ class ChapterDetector:
 
                         # External heading - check if we should stop
                         if start_level is None or sibling_level <= start_level:
-                            # Same or more important heading - stop here
+                            # Same or higher level heading
+                            # BUT: If we haven't found any paragraphs yet, this might
+                            # be a subtitle/epigraph - continue past it
+                            if not paragraphs:
+                                logger.debug(
+                                    "Chapter '%s': continuing past <%s> (no content yet)",
+                                    chapter.title[:30],
+                                    sibling.name,
+                                )
+                                continue
+                            # We have content, so stop here
                             stop_reason = f"hit external <{sibling.name}> (level {sibling_level} <= {start_level})"
                             break
                         # Otherwise, this is a sub-heading - continue past it

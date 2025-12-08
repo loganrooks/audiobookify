@@ -169,21 +169,68 @@ class TOCParser:
                 basename = os.path.basename(href)
                 self._item_map[basename] = item
 
+    def get_toc_debug(self) -> dict:
+        """Get debug info about TOC parsing."""
+        debug_info = {
+            "toc_items": [],
+            "nav_found": False,
+            "nav_name": None,
+            "nav_children": 0,
+            "ncx_found": False,
+            "ncx_name": None,
+            "ncx_children": 0,
+        }
+
+        # Find TOC-related items
+        for item in self.book.get_items():
+            item_type = item.get_type()
+            item_name = item.get_name()
+            if "toc" in item_name.lower() or "ncx" in item_name.lower():
+                debug_info["toc_items"].append({"name": item_name, "type": item_type})
+
+        # Check NAV
+        nav_item = self._find_nav_document()
+        if nav_item:
+            debug_info["nav_found"] = True
+            debug_info["nav_name"] = nav_item.get_name()
+
+        # Check NCX
+        ncx_item = self._find_ncx()
+        if ncx_item:
+            debug_info["ncx_found"] = True
+            debug_info["ncx_name"] = ncx_item.get_name()
+
+        return debug_info
+
     def parse(self) -> ChapterNode:
         """Parse the TOC and return the chapter hierarchy."""
         root = ChapterNode(title="Root", level=0)
 
+        # Debug: log what items we find
+        logger.debug("TOC Parser: scanning EPUB items...")
+        for item in self.book.get_items():
+            item_type = item.get_type()
+            item_name = item.get_name()
+            if "toc" in item_name.lower() or "ncx" in item_name.lower():
+                logger.debug("  Found TOC-related item: %s (type=%s)", item_name, item_type)
+
         # Try EPUB3 NAV first (preferred)
         nav_item = self._find_nav_document()
+        logger.debug("TOC Parser: NAV document found: %s", nav_item is not None)
         if nav_item:
+            logger.debug("  NAV item name: %s", nav_item.get_name())
             self._parse_nav(nav_item, root)
+            logger.debug("  After NAV parse: %d children", len(root.children))
             if root.children:
                 return root
 
         # Fall back to EPUB2 NCX
         ncx_item = self._find_ncx()
+        logger.debug("TOC Parser: NCX item found: %s", ncx_item is not None)
         if ncx_item:
+            logger.debug("  NCX item name: %s", ncx_item.get_name())
             self._parse_ncx(ncx_item, root)
+            logger.debug("  After NCX parse: %d children", len(root.children))
 
         return root
 
@@ -523,6 +570,10 @@ class ChapterDetector:
         - stop_reason: Why extraction stopped
         """
         return self._content_debug
+
+    def get_toc_debug(self) -> dict:
+        """Get debug info about TOC parsing from the TOCParser."""
+        return self.toc_parser.get_toc_debug()
 
     def get_content_stats(self) -> dict[str, int] | None:
         """Return content extraction statistics.

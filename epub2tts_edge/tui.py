@@ -4109,6 +4109,21 @@ class AudiobookifyApp(App):
                     f"heading={content_stats['heading_match']}, full_file={content_stats['full_file']}",
                 )
 
+                # Show TOC debug info if there are problems
+                if content_stats["no_paragraphs"] > 0:
+                    toc_debug = detector.get_toc_debug()
+                    self.call_from_thread(
+                        self.log_message,
+                        f"   📖 TOC DEBUG: nav_found={toc_debug['nav_found']}, "
+                        f"ncx_found={toc_debug['ncx_found']}",
+                    )
+                    if toc_debug["toc_items"]:
+                        for item in toc_debug["toc_items"]:
+                            self.call_from_thread(
+                                self.log_message,
+                                f"      • {item['name']} (type={item['type']})",
+                            )
+
                 # Show what detection found BEFORE content population
                 detection_debug = detector.get_detection_debug()
                 if detection_debug and content_stats["no_paragraphs"] > 0:

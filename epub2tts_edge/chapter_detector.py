@@ -8,6 +8,7 @@ This module provides intelligent chapter detection from EPUB files by:
 4. Providing flexible output formats for audiobook generation
 """
 
+import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -18,6 +19,8 @@ import ebooklib
 from bs4 import BeautifulSoup, Tag
 from ebooklib import epub
 from lxml import etree
+
+logger = logging.getLogger(__name__)
 
 
 class DetectionMethod(Enum):
@@ -495,6 +498,23 @@ class ChapterDetector:
         self.heading_detector = HeadingDetector()
 
         self._chapter_tree: ChapterNode | None = None
+        self._content_stats: dict[str, int] | None = None
+
+    def get_content_stats(self) -> dict[str, int] | None:
+        """Return content extraction statistics.
+
+        Returns dict with keys:
+        - total: Total chapters processed
+        - with_content: Chapters that have content
+        - no_href: Chapters with no href attribute
+        - href_not_found: Chapters where href wasn't found in EPUB
+        - anchor_found: Chapters extracted via anchor
+        - heading_match: Chapters extracted via heading match
+        - full_file: Chapters extracted as full file
+        - file_already_processed: Chapters skipped (file already used)
+        - no_paragraphs: Chapters with no extracted paragraphs
+        """
+        return self._content_stats
 
     def detect(self) -> ChapterNode:
         """
@@ -689,15 +709,35 @@ class ChapterDetector:
                 # Also map by basename
                 content_map[os.path.basename(item.get_name())] = item.get_content()
 
+        logger.debug("Content map has %d documents", len(content_map) // 2)
+
         # Track which files have been fully processed (to avoid duplicate content)
         files_fully_processed: set[str] = set()
 
+        # Track content extraction stats for debugging
+        stats = {
+            "total": 0,
+            "no_href": 0,
+            "href_not_found": 0,
+            "anchor_found": 0,
+            "heading_match": 0,
+            "full_file": 0,
+            "file_already_processed": 0,
+            "no_paragraphs": 0,
+            "with_content": 0,
+        }
+
         for chapter in root.flatten():
+            stats["total"] += 1
+
             if chapter.paragraphs:  # Already has content
+                stats["with_content"] += 1
                 continue
 
             href = chapter.href
             if not href:
+                logger.debug("Chapter '%s': no href", chapter.title[:50])
+                stats["no_href"] += 1
                 continue
 
             # Find content
@@ -706,6 +746,12 @@ class ChapterDetector:
                 content = content_map.get(os.path.basename(href))
 
             if not content:
+                logger.debug(
+                    "Chapter '%s': href '%s' not found in content map",
+                    chapter.title[:50],
+                    href,
+                )
+                stats["href_not_found"] += 1
                 continue
 
             # Normalize href for tracking
@@ -716,8 +762,18 @@ class ChapterDetector:
 
             # If there's an anchor, try to find content after it
             start_elem = None
+            extraction_method = "none"
+
             if chapter.anchor:
                 start_elem = soup.find(id=chapter.anchor)
+                if start_elem:
+                    extraction_method = "anchor"
+                    stats["anchor_found"] += 1
+                    logger.debug(
+                        "Chapter '%s': found anchor #%s",
+                        chapter.title[:50],
+                        chapter.anchor,
+                    )
 
             # If no anchor, try to find a heading that matches the chapter title
             if not start_elem and chapter.title:
@@ -731,6 +787,13 @@ class ChapterDetector:
                         or heading_text.lower() in chapter.title.lower()
                     ):
                         start_elem = heading
+                        extraction_method = "heading_match"
+                        stats["heading_match"] += 1
+                        logger.debug(
+                            "Chapter '%s': matched heading '%s'",
+                            chapter.title[:50],
+                            heading_text[:50],
+                        )
                         break
 
             paragraphs = []
@@ -751,7 +814,16 @@ class ChapterDetector:
                 if href_key in files_fully_processed:
                     # This file's content was already assigned to another chapter
                     # Skip to avoid duplicate content
+                    logger.debug(
+                        "Chapter '%s': file '%s' already processed",
+                        chapter.title[:50],
+                        href_key,
+                    )
+                    stats["file_already_processed"] += 1
                     continue
+
+                extraction_method = "full_file"
+                stats["full_file"] += 1
 
                 # Get all paragraphs from the file
                 # Remove link-only text (footnotes)
@@ -776,6 +848,38 @@ class ChapterDetector:
                     files_fully_processed.add(href_key)
 
             chapter.paragraphs = paragraphs
+
+            if paragraphs:
+                stats["with_content"] += 1
+                logger.debug(
+                    "Chapter '%s': extracted %d paragraphs via %s",
+                    chapter.title[:50],
+                    len(paragraphs),
+                    extraction_method,
+                )
+            else:
+                stats["no_paragraphs"] += 1
+                logger.warning(
+                    "Chapter '%s': NO PARAGRAPHS extracted (href=%s, anchor=%s, method=%s)",
+                    chapter.title[:50],
+                    href,
+                    chapter.anchor,
+                    extraction_method,
+                )
+
+        # Log summary stats
+        logger.info(
+            "Content extraction stats: %d total chapters, %d with content, "
+            "%d no paragraphs, %d no href, %d href not found",
+            stats["total"],
+            stats["with_content"],
+            stats["no_paragraphs"],
+            stats["no_href"],
+            stats["href_not_found"],
+        )
+
+        # Store stats for external access
+        self._content_stats = stats
 
     def get_flat_chapters(self) -> list[dict[str, Any]]:
         """

@@ -4085,6 +4085,30 @@ class AudiobookifyApp(App):
             )
             chapter_tree = detector.detect()
 
+            # Log content extraction stats for debugging
+            content_stats = detector.get_content_stats()
+            if content_stats:
+                self.call_from_thread(
+                    self.log_message,
+                    f"   📊 Content extraction: {content_stats['with_content']}/{content_stats['total']} chapters have content",
+                )
+                if content_stats["no_paragraphs"] > 0:
+                    self.call_from_thread(
+                        self.log_message,
+                        f"   ⚠️ {content_stats['no_paragraphs']} chapters have NO content extracted!",
+                    )
+                if content_stats["no_href"] > 0:
+                    self.call_from_thread(
+                        self.log_message,
+                        f"   ⚠️ {content_stats['no_href']} chapters have no href (no link to content)",
+                    )
+                # Detailed breakdown for debugging
+                self.call_from_thread(
+                    self.log_message,
+                    f"   📝 Extraction methods: anchor={content_stats['anchor_found']}, "
+                    f"heading={content_stats['heading_match']}, full_file={content_stats['full_file']}",
+                )
+
             # Extract book metadata from detector's book object
             book_title = "Unknown"
             book_author = "Unknown"

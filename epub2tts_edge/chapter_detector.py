@@ -600,15 +600,20 @@ class ChapterDetector:
         # Start with TOC structure
         toc_tree = self._detect_from_toc()
 
-        # If TOC is empty or shallow, enhance with headings
-        if not toc_tree.children or toc_tree.get_depth() < 2:
+        # If TOC has chapters with hrefs, prefer it - the TOC has authoritative
+        # links to actual content files, while headings might find matching titles
+        # in notes/index files with wrong hrefs
+        if toc_tree.children:
+            # TOC has content - only use headings to add subsections, never replace
             headings_tree = self._detect_from_headings()
-
-            if headings_tree.get_depth() > toc_tree.get_depth():
-                return headings_tree
-
-            # Merge heading info into TOC
             self._merge_headings_into_toc(toc_tree, headings_tree)
+            return toc_tree
+
+        # TOC is empty - fall back to headings detection
+        headings_tree = self._detect_from_headings()
+        if headings_tree.children:
+            logger.info("TOC empty, using headings detection")
+            return headings_tree
 
         return toc_tree
 

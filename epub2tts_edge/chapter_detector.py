@@ -967,6 +967,17 @@ class ChapterDetector:
                         )
                         break
 
+            # Collect child stop markers to avoid content duplication
+            # If this chapter has children in the same file, stop at first child
+            child_stop_anchors: set[str] = set()
+            child_stop_titles: set[str] = set()
+            for child in chapter.children:
+                if child.href and os.path.basename(child.href) == href_key:
+                    if child.anchor:
+                        child_stop_anchors.add(child.anchor)
+                    if child.title:
+                        child_stop_titles.add(child.title.lower())
+
             paragraphs = []
             elements_seen = 0
             stop_reason = None
@@ -1009,6 +1020,20 @@ class ChapterDetector:
                 stop_reason = None
                 for sibling in start_elem.find_all_next():
                     elements_seen += 1
+
+                    # Check for child chapter stop markers (to avoid content duplication)
+                    # Stop at child anchor
+                    if child_stop_anchors and sibling.get("id") in child_stop_anchors:
+                        stop_reason = f"hit child anchor #{sibling.get('id')}"
+                        break
+
+                    # Stop at child heading title
+                    if child_stop_titles and sibling.name in HeadingDetector.HEADING_TAGS:
+                        sibling_text = sibling.get_text(strip=True).lower()
+                        if sibling_text in child_stop_titles:
+                            stop_reason = f"hit child heading '{sibling_text[:30]}'"
+                            break
+
                     if sibling.name in HeadingDetector.HEADING_TAGS:
                         sibling_level = int(sibling.name[1])
 

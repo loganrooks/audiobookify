@@ -484,14 +484,21 @@ class ChapterDetector:
     def __init__(
         self,
         epub_path: str,
-        method: DetectionMethod = DetectionMethod.COMBINED,
+        method: DetectionMethod | str = DetectionMethod.COMBINED,
         max_depth: int | None = None,
-        hierarchy_style: HierarchyStyle = HierarchyStyle.FLAT,
+        hierarchy_style: HierarchyStyle | str = HierarchyStyle.FLAT,
     ):
         self.epub_path = epub_path
-        self.method = method
+        # Convert string to enum if needed
+        if isinstance(method, str):
+            self.method = DetectionMethod(method)
+        else:
+            self.method = method
         self.max_depth = max_depth
-        self.hierarchy_style = hierarchy_style
+        if isinstance(hierarchy_style, str):
+            self.hierarchy_style = HierarchyStyle(hierarchy_style)
+        else:
+            self.hierarchy_style = hierarchy_style
 
         self.book = epub.read_epub(epub_path)
         self.toc_parser = TOCParser(epub_path)
@@ -568,9 +575,10 @@ class ChapterDetector:
             )
 
         # Debug: Log what detection returned BEFORE content population
+        method_name = self.method.value if hasattr(self.method, "value") else self.method
         logger.debug(
             "Detection method %s returned %d chapters",
-            self.method.value,
+            method_name,
             len(self._chapter_tree.flatten()),
         )
         for ch in self._chapter_tree.flatten()[:5]:

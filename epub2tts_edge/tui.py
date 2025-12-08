@@ -4109,12 +4109,26 @@ class AudiobookifyApp(App):
                     f"heading={content_stats['heading_match']}, full_file={content_stats['full_file']}",
                 )
 
+                # Show what detection found BEFORE content population
+                detection_debug = detector.get_detection_debug()
+                if detection_debug and content_stats["no_paragraphs"] > 0:
+                    self.call_from_thread(
+                        self.log_message,
+                        "   🔎 DETECTION RESULTS (before content extraction):",
+                    )
+                    # Show first 5 chapters to verify correct hrefs
+                    for dbg in detection_debug[:5]:
+                        self.call_from_thread(
+                            self.log_message,
+                            f"      • '{dbg['title'][:25]}': href={dbg.get('href', '?')}, anchor={dbg['anchor']}",
+                        )
+
                 # Show detailed debug info for chapters that failed
                 content_debug = detector.get_content_debug()
                 if content_debug:
                     self.call_from_thread(
                         self.log_message,
-                        "   🔍 DEBUG: Chapters with no content:",
+                        "   🔍 CONTENT EXTRACTION FAILURES:",
                     )
                     for dbg in content_debug[:10]:  # Limit to first 10
                         p_count = dbg.get("p_tags_in_file", "?")

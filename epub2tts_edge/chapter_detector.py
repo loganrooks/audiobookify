@@ -533,6 +533,13 @@ class ChapterDetector:
         """
         return self._content_stats
 
+    def get_detection_debug(self) -> list[dict]:
+        """Get raw detection results (hrefs/anchors before content population).
+
+        Useful for debugging to see what the detection method found.
+        """
+        return getattr(self, "_detection_debug", [])
+
     def detect(self) -> ChapterNode:
         """
         Detect chapters using the configured method.
@@ -548,6 +555,31 @@ class ChapterDetector:
             self._chapter_tree = self._detect_combined()
         else:  # AUTO
             self._chapter_tree = self._detect_auto()
+
+        # Store detection results BEFORE content population for debugging
+        self._detection_debug = []
+        for ch in self._chapter_tree.flatten():
+            self._detection_debug.append(
+                {
+                    "title": ch.title[:40],
+                    "href": os.path.basename(ch.href) if ch.href else None,
+                    "anchor": ch.anchor,
+                }
+            )
+
+        # Debug: Log what detection returned BEFORE content population
+        logger.debug(
+            "Detection method %s returned %d chapters",
+            self.method.value,
+            len(self._chapter_tree.flatten()),
+        )
+        for ch in self._chapter_tree.flatten()[:5]:
+            logger.debug(
+                "  BEFORE populate: '%s' -> href=%s, anchor=%s",
+                ch.title[:30],
+                ch.href,
+                ch.anchor,
+            )
 
         # Populate content for all chapters
         self._populate_content(self._chapter_tree)

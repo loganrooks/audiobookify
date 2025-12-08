@@ -4117,11 +4117,16 @@ class AudiobookifyApp(App):
                         "   🔍 DEBUG: Chapters with no content:",
                     )
                     for dbg in content_debug[:10]:  # Limit to first 10
+                        p_count = dbg.get("p_tags_in_file", "?")
                         self.call_from_thread(
                             self.log_message,
-                            f"      • '{dbg['title'][:30]}': anchor={dbg['anchor']}, "
-                            f"elem=<{dbg['element_type']}>, level={dbg['start_level']}, "
-                            f"scanned={dbg['elements_scanned']}, stop={dbg['stop_reason']}",
+                            f"      • '{dbg['title'][:25]}': file={dbg.get('href', '?')}, "
+                            f"anchor={dbg['anchor']}, p_in_file={p_count}",
+                        )
+                        self.call_from_thread(
+                            self.log_message,
+                            f"        → elem=<{dbg['element_type']}>, scanned={dbg['elements_scanned']}, "
+                            f"stop={dbg['stop_reason']}",
                         )
 
             # Extract book metadata from detector's book object

@@ -942,16 +942,18 @@ class ChapterDetector:
             # Collect debug info for chapters without content
             if not paragraphs:
                 stats["no_paragraphs"] += 1
+                # Count p tags in the document to see if we're missing them
+                all_p_tags = len(soup.find_all("p")) if soup else 0
                 debug_info = {
                     "title": chapter.title[:50],
-                    "href": href,
+                    "href": os.path.basename(href) if href else None,
                     "anchor": chapter.anchor,
                     "method": extraction_method,
                     "element_type": start_elem.name if start_elem else None,
-                    "has_internal_heading": start_level is not None if start_elem else None,
-                    "start_level": start_level if start_elem else None,
-                    "elements_scanned": elements_seen if start_elem else 0,
-                    "stop_reason": stop_reason if start_elem else "no start element",
+                    "start_level": start_level,
+                    "elements_scanned": elements_seen,
+                    "stop_reason": stop_reason if stop_reason else "end of doc",
+                    "p_tags_in_file": all_p_tags,
                 }
                 self._content_debug.append(debug_info)
                 logger.warning(

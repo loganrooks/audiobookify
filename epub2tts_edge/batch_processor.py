@@ -648,21 +648,25 @@ class BatchProcessor:
                     # Don't mark job as failed - leave it in CONVERTING state
                     # so it can be resumed later. The progress is already saved.
                     return False
-                generate_metadata(files, book_author, book_title, chapter_titles)
-                m4b_filename = make_m4b(files, txt_path, self.config.speaker)
+
+                # Generate M4B in working_dir with explicit paths (no reliance on chdir)
+                generate_metadata(
+                    files, book_author, book_title, chapter_titles, output_dir=working_dir
+                )
+                m4b_path = make_m4b(files, txt_path, self.config.speaker, output_dir=working_dir)
 
                 if task.cover_path:
-                    add_cover(task.cover_path, m4b_filename)
+                    add_cover(task.cover_path, m4b_path)
 
                 # Move M4B to final output location if using job isolation
                 if task.job_dir and working_dir != output_dir:
-                    src_m4b = os.path.join(working_dir, m4b_filename)
+                    m4b_filename = os.path.basename(m4b_path)
                     dst_m4b = os.path.join(output_dir, m4b_filename)
-                    shutil.move(src_m4b, dst_m4b)
+                    shutil.move(m4b_path, dst_m4b)
                     task.m4b_path = dst_m4b
                     print(f"  Moved output to: {dst_m4b}")
                 else:
-                    task.m4b_path = os.path.join(output_dir, m4b_filename)
+                    task.m4b_path = m4b_path
 
             finally:
                 os.chdir(original_dir)

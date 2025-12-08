@@ -3705,19 +3705,13 @@ class AudiobookifyApp(App):
                 self.call_from_thread(self.log_message, "  📦 Creating M4B file...")
                 job_manager.update_status(job.job_id, JobStatus.FINALIZING)
 
-                # Generate M4B in the job directory
-                # Note: generate_metadata and make_m4b need to work with explicit paths
-                # For now we chdir to job_dir for these operations
-                original_dir = os.getcwd()
-                os.chdir(job.job_dir)
-                try:
-                    generate_metadata(audio_files, book_author, book_title, chapter_titles)
-                    m4b_filename = make_m4b(audio_files, str(txt_path), config["speaker"])
-                finally:
-                    os.chdir(original_dir)
-
-                # Full path to M4B in job directory
-                m4b_path = os.path.join(job.job_dir, m4b_filename)
+                # Generate M4B in the job directory with explicit paths (no chdir!)
+                generate_metadata(
+                    audio_files, book_author, book_title, chapter_titles, output_dir=job.job_dir
+                )
+                m4b_path = make_m4b(
+                    audio_files, str(txt_path), config["speaker"], output_dir=job.job_dir
+                )
 
                 # Check for cover image
                 cover_path = txt_path.with_suffix(".png")
@@ -3726,9 +3720,13 @@ class AudiobookifyApp(App):
                     self.call_from_thread(self.log_message, "  🖼️ Added cover image")
 
                 # Move M4B to original text file's directory
+                m4b_filename = os.path.basename(m4b_path)
                 final_output = txt_path.parent / m4b_filename
                 shutil.move(m4b_path, final_output)
                 self.call_from_thread(self.log_message, f"  📁 Output: {final_output}")
+                self.call_from_thread(
+                    self.log_message, f"  📂 Intermediate files: {job.effective_audio_dir}"
+                )
 
                 # Complete the job
                 job_manager.complete_job(job.job_id, str(final_output))

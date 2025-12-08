@@ -3359,15 +3359,20 @@ class AudiobookifyApp(App):
 
     @work(exclusive=True, thread=True)
     def process_text_files(self, files: list[Path]) -> None:
-        """Process text files in background thread."""
+        """Process text files in background thread using proper job isolation."""
         import os
+        import shutil
 
         from .audio_generator import read_book
         from .epub2tts_edge import add_cover, generate_metadata, get_book, make_m4b
+        from .job_manager import JobManager, JobStatus
 
         settings_panel = self.query_one(SettingsPanel)
         config = settings_panel.get_config()
         total = len(files)
+
+        # Create job manager for proper isolation
+        job_manager = JobManager()
 
         for i, txt_path in enumerate(files):
             if self.should_stop:
@@ -3389,13 +3394,22 @@ class AudiobookifyApp(App):
 
             self.call_from_thread(self.log_message, f"Processing: {txt_path.name}")
 
-            original_dir = os.getcwd()
-            working_dir = txt_path.parent
+            # Create job for this text file (provides isolated directory)
+            job = job_manager.create_job(
+                source_file=str(txt_path),
+                speaker=config["speaker"],
+                rate=config.get("tts_rate"),
+                volume=config.get("tts_volume"),
+            )
+            task.job_id = job.job_id
+            task.job_dir = job.job_dir
+
+            self.call_from_thread(self.log_message, f"  📁 Job: {job.job_id}")
 
             try:
-                os.chdir(working_dir)
                 task.status = ProcessingStatus.EXPORTING
                 self.call_from_thread(self.query_one(QueuePanel).update_task, task)
+                job_manager.update_status(job.job_id, JobStatus.EXTRACTING)
                 self.call_from_thread(self.log_message, "  📖 Reading text file...")
 
                 book_contents, book_title, book_author, chapter_titles = get_book(str(txt_path))
@@ -3423,10 +3437,15 @@ class AudiobookifyApp(App):
 
                 task.status = ProcessingStatus.CONVERTING
                 self.call_from_thread(self.query_one(QueuePanel).update_task, task)
+                job_manager.update_status(job.job_id, JobStatus.CONVERTING)
+                job_manager.update_progress(job.job_id, total_chapters=total_chapters)
                 self.call_from_thread(self.log_message, "  🔊 Generating audio...")
 
-                # Progress callback
-                def progress_callback(info):
+                # Progress callback that also updates job progress
+                # Capture job_id to avoid late binding issue
+                current_job_id = job.job_id
+
+                def progress_callback(info, job_id=current_job_id):
                     self.call_from_thread(
                         self.query_one(ProgressPanel).set_chapter_progress,
                         info.chapter_num,
@@ -3440,15 +3459,21 @@ class AudiobookifyApp(App):
                             self.log_message,
                             f"  📖 Chapter {info.chapter_num}/{info.total_chapters}: {info.chapter_title[:50]}",
                         )
+                    if info.status == "chapter_done":
+                        job_manager.update_progress(job_id, completed_chapters=info.chapter_num)
 
                 def check_cancelled():
                     return self.should_stop
+
+                # Use job's isolated audio directory
+                audio_output_dir = str(job.effective_audio_dir)
 
                 audio_files = read_book(
                     book_contents,
                     config["speaker"],
                     config.get("paragraph_pause", 1200),
                     config.get("sentence_pause", 1200),
+                    output_dir=audio_output_dir,
                     rate=config.get("tts_rate"),
                     volume=config.get("tts_volume"),
                     max_concurrent=config.get("max_concurrent", 5),
@@ -3463,21 +3488,43 @@ class AudiobookifyApp(App):
                 if not audio_files:
                     task.status = ProcessingStatus.FAILED
                     task.error_message = "No audio files generated"
+                    job_manager.set_error(job.job_id, "No audio files generated")
                     self.call_from_thread(self.log_message, "❌ No audio files generated")
                     continue
 
                 self.call_from_thread(self.log_message, "  📦 Creating M4B file...")
+                job_manager.update_status(job.job_id, JobStatus.FINALIZING)
 
-                generate_metadata(audio_files, book_author, book_title, chapter_titles)
-                m4b_filename = make_m4b(audio_files, str(txt_path), config["speaker"])
+                # Generate M4B in the job directory
+                # Note: generate_metadata and make_m4b need to work with explicit paths
+                # For now we chdir to job_dir for these operations
+                original_dir = os.getcwd()
+                os.chdir(job.job_dir)
+                try:
+                    generate_metadata(audio_files, book_author, book_title, chapter_titles)
+                    m4b_filename = make_m4b(audio_files, str(txt_path), config["speaker"])
+                finally:
+                    os.chdir(original_dir)
+
+                # Full path to M4B in job directory
+                m4b_path = os.path.join(job.job_dir, m4b_filename)
 
                 # Check for cover image
                 cover_path = txt_path.with_suffix(".png")
                 if cover_path.exists():
-                    add_cover(str(cover_path), m4b_filename)
+                    add_cover(str(cover_path), m4b_path)
                     self.call_from_thread(self.log_message, "  🖼️ Added cover image")
 
+                # Move M4B to original text file's directory
+                final_output = txt_path.parent / m4b_filename
+                shutil.move(m4b_path, final_output)
+                self.call_from_thread(self.log_message, f"  📁 Output: {final_output}")
+
+                # Complete the job
+                job_manager.complete_job(job.job_id, str(final_output))
+
                 task.status = ProcessingStatus.COMPLETED
+                task.m4b_path = str(final_output)
                 task.chapter_count = len(book_contents)
                 self.call_from_thread(self.log_message, f"✅ Completed: {txt_path.name}")
 
@@ -3486,6 +3533,8 @@ class AudiobookifyApp(App):
 
                 task.status = ProcessingStatus.FAILED
                 task.error_message = str(e)
+                if job:
+                    job_manager.set_error(job.job_id, str(e))
                 # Log detailed error with traceback
                 self.call_from_thread(self.log_message, f"❌ Error: {txt_path.name}")
                 self.call_from_thread(self.log_message, f"   Exception: {type(e).__name__}: {e}")
@@ -3495,7 +3544,6 @@ class AudiobookifyApp(App):
                     self.call_from_thread(self.log_message, f"   {line}")
 
             finally:
-                os.chdir(original_dir)
                 self.call_from_thread(self.query_one(QueuePanel).update_task, task)
 
         # Processing complete

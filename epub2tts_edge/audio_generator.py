@@ -322,11 +322,32 @@ async def parallel_edgespeak(
         await asyncio.gather(*tasks)
 
 
+def clean_intermediate_files(output_dir: str | Path) -> None:
+    """Remove intermediate audio files from directory.
+
+    This is called before generating audio to ensure no stale files
+    from previous jobs can be accidentally reused.
+
+    Args:
+        output_dir: Directory containing intermediate files
+    """
+    out_path = Path(output_dir)
+    patterns = ["part*.flac", "pgraphs*.flac", "sntnc*.mp3"]
+    for pattern in patterns:
+        for f in out_path.glob(pattern):
+            try:
+                f.unlink()
+                logger.debug("Cleaned up intermediate file: %s", f)
+            except OSError as e:
+                logger.warning("Failed to remove intermediate file %s: %s", f, e)
+
+
 def read_book(
     book_contents: list[dict],
     speaker: str,
     paragraphpause: int,
     sentencepause: int,
+    output_dir: str,
     rate: str | None = None,
     volume: str | None = None,
     pronunciation_processor=None,
@@ -336,15 +357,21 @@ def read_book(
     max_concurrent: int = DEFAULT_CONCURRENT_TASKS,
     progress_callback: ProgressCallback | None = None,
     cancellation_check: Callable | None = None,
-    output_dir: str | None = None,
+    skip_completed: int = 0,
 ) -> list[str]:
     """Generate audio for all chapters in a book.
+
+    IMPORTANT: output_dir MUST be a job's audio directory from JobManager.
+    This ensures proper isolation - each job has its own directory, and files
+    in that directory belong to that job. Source file validation via hash
+    is handled by JobManager before calling this function.
 
     Args:
         book_contents: List of chapter dicts with 'title' and 'paragraphs'
         speaker: Voice ID (e.g., "en-US-AndrewNeural")
         paragraphpause: Pause duration after paragraphs in milliseconds
         sentencepause: Pause duration after sentences in milliseconds
+        output_dir: REQUIRED. Must be a job's audio directory for isolation.
         rate: Speech rate adjustment (e.g., "+20%", "-10%")
         volume: Volume adjustment (e.g., "+50%", "-25%")
         pronunciation_processor: Optional PronunciationProcessor for custom pronunciations
@@ -354,21 +381,19 @@ def read_book(
         max_concurrent: Max concurrent TTS requests (default 1 for sequential)
         progress_callback: Optional callback for progress updates
         cancellation_check: Optional callable that returns True if processing should stop
-        output_dir: Directory for intermediate audio files. If None, uses current directory.
+        skip_completed: Number of chapters already completed (for resume). Files for
+            chapters 1..skip_completed are trusted to exist in output_dir.
 
     Returns:
-        List of generated FLAC segment filenames (absolute paths if output_dir is set)
+        List of generated FLAC segment filenames (absolute paths)
     """
     segments = []
     title_names_to_skip_reading = ["Title", "blank"]
     total_chapters = len(book_contents)
 
-    # Set up output directory
-    if output_dir:
-        out_path = Path(output_dir)
-        out_path.mkdir(parents=True, exist_ok=True)
-    else:
-        out_path = Path(".")
+    # output_dir is required - it should be a job's audio directory
+    out_path = Path(output_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
 
     for i, chapter in enumerate(book_contents, start=1):
         # Check for cancellation at chapter start
@@ -392,10 +417,13 @@ def read_book(
                 )
             )
 
-        if os.path.isfile(partname):
-            logger.info("%s exists, skipping to next chapter", partname)
+        # Resume logic: skip chapters that were already completed in this job
+        # The caller (via JobManager) has validated the source file hasn't changed
+        if i <= skip_completed and os.path.isfile(partname):
+            logger.info("Resuming: chapter %d already completed, reusing %s", i, partname)
             segments.append(partname)
         else:
+            # Generate new audio for this chapter
             if chapter["title"] in title_names_to_skip_reading:
                 logger.debug("Chapter name: '%s' - will not be read into audio", chapter["title"])
             else:

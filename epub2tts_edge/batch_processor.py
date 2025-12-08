@@ -500,10 +500,16 @@ class BatchProcessor:
             if not job:
                 job = self._job_manager.find_job_for_source(task.epub_path)
                 if job:
-                    print(f"  Resuming job: {job.job_id}")
-                    task.job_id = job.job_id
-                    task.job_dir = job.job_dir
-                else:
+                    # Validate source file hasn't changed before resuming
+                    if self._job_manager.validate_job_source(job):
+                        print(f"  Resuming job: {job.job_id}")
+                        task.job_id = job.job_id
+                        task.job_dir = job.job_dir
+                    else:
+                        print("  Source file changed since job started, creating new job")
+                        self._job_manager.delete_job(job.job_id)
+                        job = None
+                if not job:
                     # Create new job
                     job = self._job_manager.create_job(
                         task.epub_path,
@@ -609,16 +615,29 @@ class BatchProcessor:
                             job.job_id, completed_chapters=info.chapter_num
                         )
 
+                # Determine audio output directory and resume state
+                # For job isolation: use job's audio directory
+                # Otherwise fall back to working_dir (legacy behavior)
+                if job:
+                    audio_output_dir = str(job.effective_audio_dir)
+                    # For resume: skip chapters that are already completed
+                    skip_completed = job.completed_chapters
+                else:
+                    audio_output_dir = working_dir
+                    skip_completed = 0
+
                 files = read_book(
                     book_contents,
                     self.config.speaker,
                     self.config.paragraph_pause,
                     self.config.sentence_pause,
+                    output_dir=audio_output_dir,
                     rate=self.config.tts_rate,
                     volume=self.config.tts_volume,
                     max_concurrent=self.config.max_concurrent,
                     progress_callback=job_progress_callback,
                     cancellation_check=cancellation_check,
+                    skip_completed=skip_completed,
                 )
 
                 # Check if cancelled - keep job in CONVERTING state for resume

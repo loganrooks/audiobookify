@@ -85,6 +85,7 @@ class Job:
     volume: str | None = None
     output_path: str | None = None
     error_message: str | None = None
+    source_hash: str | None = None  # SHA256 hash for source file validation
 
     @property
     def is_resumable(self) -> bool:
@@ -149,6 +150,7 @@ class Job:
             "volume": self.volume,
             "output_path": self.output_path,
             "error_message": self.error_message,
+            "source_hash": self.source_hash,
         }
 
     @classmethod
@@ -171,6 +173,7 @@ class Job:
             volume=data.get("volume"),
             output_path=data.get("output_path"),
             error_message=data.get("error_message"),
+            source_hash=data.get("source_hash"),
         )
 
 
@@ -226,6 +229,23 @@ class JobManager:
         short_hash = hashlib.md5(hash_input.encode()).hexdigest()[:6]
         return f"{name}_{timestamp}_{short_hash}"
 
+    def _compute_source_hash(self, source_file: str) -> str:
+        """Compute hash of source file for validation.
+
+        Uses first 1MB of file for speed while maintaining uniqueness.
+
+        Args:
+            source_file: Path to the source file
+
+        Returns:
+            First 16 characters of SHA256 hash
+        """
+        hasher = hashlib.sha256()
+        with open(source_file, "rb") as f:
+            # Read first 1MB for speed
+            hasher.update(f.read(1024 * 1024))
+        return hasher.hexdigest()[:16]
+
     def create_job(
         self,
         source_file: str,
@@ -264,6 +284,9 @@ class JobManager:
         job_dir.mkdir(parents=True, exist_ok=True)
         audio_dir.mkdir(parents=True, exist_ok=True)
 
+        # Compute source hash for validation during resume
+        source_hash = self._compute_source_hash(source_file)
+
         job = Job(
             job_id=job_id,
             source_file=source_file,
@@ -274,6 +297,7 @@ class JobManager:
             speaker=speaker,
             rate=rate,
             volume=volume,
+            source_hash=source_hash,
         )
 
         self._save_job(job)
@@ -360,6 +384,30 @@ class JobManager:
                 return job
 
         return None
+
+    def validate_job_source(self, job: Job) -> bool:
+        """Verify job's source file matches stored hash.
+
+        This prevents resuming a job with a different file that has the same name,
+        which would cause wrong audio to be used.
+
+        Args:
+            job: The job to validate
+
+        Returns:
+            True if source file matches (or no hash stored for old jobs)
+        """
+        # Old jobs without hash - allow resume with permissive behavior
+        if not job.source_hash:
+            return True
+
+        # Source file no longer exists
+        if not Path(job.source_file).exists():
+            return False
+
+        # Compare hashes
+        current_hash = self._compute_source_hash(job.source_file)
+        return current_hash == job.source_hash
 
     def update_status(self, job_id: str, status: JobStatus) -> None:
         """Update job status.

@@ -499,6 +499,23 @@ class ChapterDetector:
 
         self._chapter_tree: ChapterNode | None = None
         self._content_stats: dict[str, int] | None = None
+        self._content_debug: list[dict] = []  # Detailed debug info per chapter
+
+    def get_content_debug(self) -> list[dict]:
+        """Return detailed debug info for content extraction.
+
+        Each entry contains:
+        - title: Chapter title
+        - href: Chapter href
+        - anchor: Chapter anchor (if any)
+        - method: Extraction method used
+        - element_type: Type of element anchor points to
+        - has_internal_heading: Whether container has heading inside
+        - elements_scanned: Number of elements scanned
+        - paragraphs_found: Number of paragraphs extracted
+        - stop_reason: Why extraction stopped
+        """
+        return self._content_debug
 
     def get_content_stats(self) -> dict[str, int] | None:
         """Return content extraction statistics.
@@ -727,6 +744,9 @@ class ChapterDetector:
             "with_content": 0,
         }
 
+        # Clear and collect detailed debug info
+        self._content_debug = []
+
         for chapter in root.flatten():
             stats["total"] += 1
 
@@ -770,9 +790,10 @@ class ChapterDetector:
                     extraction_method = "anchor"
                     stats["anchor_found"] += 1
                     logger.debug(
-                        "Chapter '%s': found anchor #%s",
+                        "Chapter '%s': found anchor #%s -> <%s>",
                         chapter.title[:50],
                         chapter.anchor,
+                        start_elem.name,
                     )
 
             # If no anchor, try to find a heading that matches the chapter title
@@ -797,16 +818,23 @@ class ChapterDetector:
                         break
 
             paragraphs = []
+            elements_seen = 0
+            stop_reason = None
+            start_level = None
 
             if start_elem:
                 # Determine the heading level to know when to stop
                 # If anchor points to a container (section/div), the first heading
                 # INSIDE that container is "our" heading - we should skip past it
-                start_level = None
 
                 if start_elem.name in HeadingDetector.HEADING_TAGS:
                     # Start element IS a heading, use its level
                     start_level = int(start_elem.name[1])
+                    logger.debug(
+                        "Chapter '%s': start_elem IS heading h%d",
+                        chapter.title[:30],
+                        start_level,
+                    )
                 else:
                     # Start element is a container - look for heading INSIDE it
                     # Only skip headings that are descendants of start_elem
@@ -814,13 +842,23 @@ class ChapterDetector:
                     if own_heading:
                         start_level = int(own_heading.name[1])
                         logger.debug(
-                            "Chapter '%s': found own heading (h%d) inside container",
+                            "Chapter '%s': container <%s> has heading h%d inside",
                             chapter.title[:30],
+                            start_elem.name,
                             start_level,
+                        )
+                    else:
+                        logger.debug(
+                            "Chapter '%s': container <%s> has NO heading inside",
+                            chapter.title[:30],
+                            start_elem.name,
                         )
 
                 # Get content after the anchor/heading element
+                elements_seen = 0
+                stop_reason = None
                 for sibling in start_elem.find_all_next():
+                    elements_seen += 1
                     if sibling.name in HeadingDetector.HEADING_TAGS:
                         sibling_level = int(sibling.name[1])
 
@@ -828,11 +866,17 @@ class ChapterDetector:
                         # Check by seeing if start_elem contains this sibling
                         if start_elem in sibling.parents or start_elem == sibling:
                             # This heading is our own or we ARE the heading
+                            logger.debug(
+                                "Chapter '%s': skipping internal heading <%s>",
+                                chapter.title[:30],
+                                sibling.name,
+                            )
                             continue
 
                         # External heading - check if we should stop
                         if start_level is None or sibling_level <= start_level:
                             # Same or more important heading - stop here
+                            stop_reason = f"hit external <{sibling.name}> (level {sibling_level} <= {start_level})"
                             break
                         # Otherwise, this is a sub-heading - continue past it
 
@@ -846,6 +890,14 @@ class ChapterDetector:
                             text = p.get_text(strip=True)
                             if text:
                                 paragraphs.append(text)
+
+                logger.debug(
+                    "Chapter '%s': scanned %d elements, found %d paragraphs, stop=%s",
+                    chapter.title[:30],
+                    elements_seen,
+                    len(paragraphs),
+                    stop_reason or "end of doc",
+                )
             else:
                 # No anchor and no matching heading found
                 # Only process if this file hasn't been fully processed yet
@@ -887,21 +939,32 @@ class ChapterDetector:
 
             chapter.paragraphs = paragraphs
 
-            if paragraphs:
+            # Collect debug info for chapters without content
+            if not paragraphs:
+                stats["no_paragraphs"] += 1
+                debug_info = {
+                    "title": chapter.title[:50],
+                    "href": href,
+                    "anchor": chapter.anchor,
+                    "method": extraction_method,
+                    "element_type": start_elem.name if start_elem else None,
+                    "has_internal_heading": start_level is not None if start_elem else None,
+                    "start_level": start_level if start_elem else None,
+                    "elements_scanned": elements_seen if start_elem else 0,
+                    "stop_reason": stop_reason if start_elem else "no start element",
+                }
+                self._content_debug.append(debug_info)
+                logger.warning(
+                    "Chapter '%s': NO PARAGRAPHS - %s",
+                    chapter.title[:50],
+                    debug_info,
+                )
+            else:
                 stats["with_content"] += 1
                 logger.debug(
                     "Chapter '%s': extracted %d paragraphs via %s",
                     chapter.title[:50],
                     len(paragraphs),
-                    extraction_method,
-                )
-            else:
-                stats["no_paragraphs"] += 1
-                logger.warning(
-                    "Chapter '%s': NO PARAGRAPHS extracted (href=%s, anchor=%s, method=%s)",
-                    chapter.title[:50],
-                    href,
-                    chapter.anchor,
                     extraction_method,
                 )
 

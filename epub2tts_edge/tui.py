@@ -4109,6 +4109,21 @@ class AudiobookifyApp(App):
                     f"heading={content_stats['heading_match']}, full_file={content_stats['full_file']}",
                 )
 
+                # Show detailed debug info for chapters that failed
+                content_debug = detector.get_content_debug()
+                if content_debug:
+                    self.call_from_thread(
+                        self.log_message,
+                        "   🔍 DEBUG: Chapters with no content:",
+                    )
+                    for dbg in content_debug[:10]:  # Limit to first 10
+                        self.call_from_thread(
+                            self.log_message,
+                            f"      • '{dbg['title'][:30]}': anchor={dbg['anchor']}, "
+                            f"elem=<{dbg['element_type']}>, level={dbg['start_level']}, "
+                            f"scanned={dbg['elements_scanned']}, stop={dbg['stop_reason']}",
+                        )
+
             # Extract book metadata from detector's book object
             book_title = "Unknown"
             book_author = "Unknown"

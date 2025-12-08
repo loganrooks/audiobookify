@@ -12,7 +12,6 @@ Usage:
 
 # Type alias for chapter nodes (to avoid circular imports)
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -279,16 +278,16 @@ class EPUBFileItem(ListItem):
 class JobItem(ListItem):
     """A list item representing a saved job with checkbox selection."""
 
-    STATUS_ICONS = {
-        JobStatus.PREVIEW: "📋",  # Preview/editing
-        JobStatus.PENDING: "⏳",
-        JobStatus.EXTRACTING: "📝",
-        JobStatus.CONVERTING: "🔊",
-        JobStatus.PAUSED: "⏸️",  # Paused mid-conversion
-        JobStatus.FINALIZING: "📦",
-        JobStatus.COMPLETED: "✅",
-        JobStatus.FAILED: "❌",
-        JobStatus.CANCELLED: "🚫",
+    STATUS_DISPLAY = {
+        JobStatus.PREVIEW: ("📋", "Preview"),
+        JobStatus.PENDING: ("⏳", "Pending"),
+        JobStatus.EXTRACTING: ("📝", "Extracting"),
+        JobStatus.CONVERTING: ("🔊", "Converting"),
+        JobStatus.PAUSED: ("⏸️", "Paused"),
+        JobStatus.FINALIZING: ("📦", "Finalizing"),
+        JobStatus.COMPLETED: ("✅", "Completed"),
+        JobStatus.FAILED: ("❌", "Failed"),
+        JobStatus.CANCELLED: ("🚫", "Cancelled"),
     }
 
     def __init__(self, job: Job, selected: bool = False) -> None:
@@ -308,24 +307,26 @@ class JobItem(ListItem):
     def _build_label(self) -> str:
         """Build the display label for this job item."""
         checkbox = "☑" if self.is_selected else "☐"
-        status_icon = self.STATUS_ICONS.get(self.job.status, "?")
-        book_name = Path(self.job.source_file).stem[:20]
+        icon, status_text = self.STATUS_DISPLAY.get(self.job.status, ("?", "Unknown"))
+        book_name = Path(self.job.source_file).stem[:25]
 
         # Progress display varies by status
-        if self.job.status == JobStatus.PREVIEW:
-            progress = "Preview"
-        elif self.job.status in (JobStatus.CONVERTING, JobStatus.PAUSED):
+        if self.job.status in (JobStatus.CONVERTING, JobStatus.PAUSED):
             pct = self.job.progress_percentage
             bar = self._progress_bar(pct)
             progress = f"{bar} {pct:.0f}%"
         elif self.job.status == JobStatus.COMPLETED:
-            progress = f"{self.job.total_chapters}/{self.job.total_chapters}"
-        else:
             progress = f"{self.job.completed_chapters}/{self.job.total_chapters}"
+        elif self.job.total_chapters > 0:
+            progress = f"{self.job.completed_chapters}/{self.job.total_chapters}"
+        else:
+            progress = ""
 
-        created = datetime.fromtimestamp(self.job.created_at).strftime("%m/%d %H:%M")
-        resumable = " 🔄" if self.job.is_resumable else ""
-        return f"{checkbox} {status_icon} {book_name} [{progress}] {created}{resumable}"
+        # Format: checkbox icon book_name | status_text progress
+        if progress:
+            return f"{checkbox} {icon} {book_name} | {status_text} {progress}"
+        else:
+            return f"{checkbox} {icon} {book_name} | {status_text}"
 
     def toggle(self) -> None:
         """Toggle selection state."""
@@ -1334,6 +1335,7 @@ class JobsPanel(Vertical):
     def __init__(self, job_manager: JobManager | None = None, **kwargs) -> None:
         super().__init__(**kwargs)
         self.job_manager = job_manager or JobManager()
+        self._auto_refresh_timer = None  # Timer for auto-refresh during processing
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="jobs-header"):
@@ -1458,6 +1460,13 @@ class JobsPanel(Vertical):
         self.query_one("#jobs-pause-btn", Button).disabled = not running
         self.query_one("#jobs-stop-btn", Button).disabled = not running
 
+        # Start/stop auto-refresh based on processing state
+        if running:
+            self.start_auto_refresh(interval=1.0)  # Refresh every second
+        else:
+            self.stop_auto_refresh()
+            self.refresh_jobs()  # Final refresh when stopped
+
     def set_paused(self, paused: bool) -> None:
         """Update pause button state."""
         pause_btn = self.query_one("#jobs-pause-btn", Button)
@@ -1465,6 +1474,29 @@ class JobsPanel(Vertical):
             pause_btn.label = "▶ Resume"
         else:
             pause_btn.label = "⏸ Pause"
+
+    def start_auto_refresh(self, interval: float = 1.0) -> None:
+        """Start auto-refreshing the jobs list periodically."""
+        self.stop_auto_refresh()  # Cancel any existing timer
+        self._auto_refresh_timer = self.set_interval(interval, self._auto_refresh_jobs)
+
+    def stop_auto_refresh(self) -> None:
+        """Stop auto-refreshing the jobs list."""
+        if self._auto_refresh_timer:
+            self._auto_refresh_timer.stop()
+            self._auto_refresh_timer = None
+
+    def _auto_refresh_jobs(self) -> None:
+        """Auto-refresh callback - updates job displays without full refresh."""
+        jobs_list = self.query_one("#jobs-list", ListView)
+        # Update each job item's display from disk
+        for item in jobs_list.children:
+            if isinstance(item, JobItem):
+                # Reload job data from disk
+                updated_job = self.job_manager.load_job(item.job.job_id)
+                if updated_job:
+                    item.job = updated_job
+                    item.refresh_display()
 
     def update_play_button(self) -> None:
         """Update play button label and state based on selected jobs."""

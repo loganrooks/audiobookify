@@ -2974,14 +2974,25 @@ class AudiobookifyApp(App):
             job.total_chapters = len(included)
             self.job_manager._save_job(job)
             self.log_message(f"   📋 Using preview job: {job.job_id}")
-
-            # Export to job directory
-            text_file = Path(job.job_dir) / f"{source_file.stem}.txt"
         else:
-            # Fallback: export to source file directory
-            text_file = source_file.with_suffix(".txt")
+            # No preview job - create one now
+            settings_panel = self.query_one(SettingsPanel)
+            config = settings_panel.get_config()
+            job = self.job_manager.create_job(
+                source_file=str(source_file),
+                speaker=config["speaker"],
+                rate=config.get("tts_rate"),
+                volume=config.get("tts_volume"),
+            )
+            job.total_chapters = len(included)
+            self.job_manager.update_status(job.job_id, JobStatus.EXTRACTING)
+            self.job_manager._save_job(job)
+            self._current_preview_job = job
+            self.log_message(f"   📋 Created job: {job.job_id}")
 
-        self.log_message(f"   📝 Exporting preview to: {text_file.name}")
+        # Export to job directory (always use job directory now)
+        text_file = Path(job.job_dir) / f"{source_file.stem}.txt"
+        self.log_message(f"   📝 Exporting preview to: {text_file}")
 
         try:
             preview_state.export_to_text(text_file)
@@ -2990,8 +3001,8 @@ class AudiobookifyApp(App):
             self.log_message(f"❌ Export failed: {e}")
             return
 
-        # Extract cover image if not already present
-        cover_path = source_file.with_suffix(".png")
+        # Extract cover image to job directory
+        cover_path = Path(job.job_dir) / f"{source_file.stem}.png"
         if not cover_path.exists() and source_file.suffix.lower() == ".epub":
             try:
                 from PIL import Image

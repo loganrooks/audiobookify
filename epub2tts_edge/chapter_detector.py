@@ -801,34 +801,37 @@ class ChapterDetector:
             if start_elem:
                 # Determine the heading level to know when to stop
                 # If anchor points to a container (section/div), the first heading
-                # inside is "our" heading - we should skip past it
+                # INSIDE that container is "our" heading - we should skip past it
                 start_level = None
-                found_own_heading = False
 
                 if start_elem.name in HeadingDetector.HEADING_TAGS:
                     # Start element IS a heading, use its level
                     start_level = int(start_elem.name[1])
-                    found_own_heading = True
+                else:
+                    # Start element is a container - look for heading INSIDE it
+                    # Only skip headings that are descendants of start_elem
+                    own_heading = start_elem.find(HeadingDetector.HEADING_TAGS)
+                    if own_heading:
+                        start_level = int(own_heading.name[1])
+                        logger.debug(
+                            "Chapter '%s': found own heading (h%d) inside container",
+                            chapter.title[:30],
+                            start_level,
+                        )
 
                 # Get content after the anchor/heading element
                 for sibling in start_elem.find_all_next():
                     if sibling.name in HeadingDetector.HEADING_TAGS:
                         sibling_level = int(sibling.name[1])
 
-                        if not found_own_heading:
-                            # First heading we encounter - this is "our" chapter heading
-                            # Skip past it and use its level as reference
-                            start_level = sibling_level
-                            found_own_heading = True
-                            logger.debug(
-                                "Chapter '%s': skipping own heading (h%d)",
-                                chapter.title[:30],
-                                sibling_level,
-                            )
+                        # If this heading is inside our container, skip it (it's "ours")
+                        # Check by seeing if start_elem contains this sibling
+                        if start_elem in sibling.parents or start_elem == sibling:
+                            # This heading is our own or we ARE the heading
                             continue
 
-                        # Subsequent heading - check if we should stop
-                        if sibling_level <= start_level:
+                        # External heading - check if we should stop
+                        if start_level is None or sibling_level <= start_level:
                             # Same or more important heading - stop here
                             break
                         # Otherwise, this is a sub-heading - continue past it

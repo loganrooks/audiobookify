@@ -172,16 +172,30 @@ class TOCParser:
     def get_toc_debug(self) -> dict:
         """Get debug info about TOC parsing."""
         debug_info = {
+            "book_toc_count": 0,
+            "book_toc_items": [],
             "toc_items": [],
             "nav_found": False,
             "nav_name": None,
-            "nav_children": 0,
             "ncx_found": False,
             "ncx_name": None,
-            "ncx_children": 0,
         }
 
-        # Find TOC-related items
+        # Check ebooklib's pre-parsed TOC
+        if hasattr(self.book, "toc") and self.book.toc:
+            debug_info["book_toc_count"] = len(self.book.toc)
+            for item in self.book.toc[:5]:  # First 5 items
+                if isinstance(item, tuple):
+                    section, children = item
+                    debug_info["book_toc_items"].append(
+                        f"Section: {getattr(section, 'title', '?')} ({len(children)} children)"
+                    )
+                elif hasattr(item, "title"):
+                    debug_info["book_toc_items"].append(
+                        f"Link: {item.title} -> {getattr(item, 'href', '?')}"
+                    )
+
+        # Find TOC-related items in EPUB
         for item in self.book.get_items():
             item_type = item.get_type()
             item_name = item.get_name()
@@ -206,13 +220,15 @@ class TOCParser:
         """Parse the TOC and return the chapter hierarchy."""
         root = ChapterNode(title="Root", level=0)
 
-        # Debug: log what items we find
-        logger.debug("TOC Parser: scanning EPUB items...")
-        for item in self.book.get_items():
-            item_type = item.get_type()
-            item_name = item.get_name()
-            if "toc" in item_name.lower() or "ncx" in item_name.lower():
-                logger.debug("  Found TOC-related item: %s (type=%s)", item_name, item_type)
+        # Use ebooklib's pre-parsed TOC structure (most reliable method)
+        if hasattr(self.book, "toc") and self.book.toc:
+            logger.debug("TOC Parser: using ebooklib toc (%d items)", len(self.book.toc))
+            self._parse_ebooklib_toc(self.book.toc, root, play_order=[0])
+            if root.children:
+                return root
+
+        # Fall back to manual parsing if book.toc is empty
+        logger.debug("TOC Parser: book.toc empty, trying manual NAV/NCX parsing...")
 
         # Try EPUB3 NAV first (preferred)
         nav_item = self._find_nav_document()
@@ -233,6 +249,44 @@ class TOCParser:
             logger.debug("  After NCX parse: %d children", len(root.children))
 
         return root
+
+    def _parse_ebooklib_toc(self, toc_items: list, parent: ChapterNode, play_order: list[int]):
+        """Parse ebooklib's pre-parsed TOC structure.
+
+        ebooklib parses NAV/NCX into book.toc which contains:
+        - Link objects with title and href attributes
+        - Tuples of (Section, [children]) for nested chapters
+        """
+        for item in toc_items:
+            if isinstance(item, tuple):
+                # Nested section: (Section, [children])
+                section, children = item
+                title = getattr(section, "title", str(section))
+                href = getattr(section, "href", "")
+
+                file_href, anchor = self._split_href(href) if href else ("", None)
+
+                play_order[0] += 1
+                chapter = ChapterNode(
+                    title=title, href=file_href, anchor=anchor, play_order=play_order[0]
+                )
+                parent.add_child(chapter)
+
+                # Recursively parse children
+                if children:
+                    self._parse_ebooklib_toc(children, chapter, play_order)
+            elif hasattr(item, "title") and hasattr(item, "href"):
+                # Link object
+                title = item.title
+                href = item.href
+
+                file_href, anchor = self._split_href(href) if href else ("", None)
+
+                play_order[0] += 1
+                chapter = ChapterNode(
+                    title=title, href=file_href, anchor=anchor, play_order=play_order[0]
+                )
+                parent.add_child(chapter)
 
     def _find_nav_document(self) -> Any | None:
         """Find the EPUB3 navigation document."""

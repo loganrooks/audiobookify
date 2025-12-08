@@ -37,9 +37,11 @@ from epub2tts_edge.config import generate_job_slug, get_config
 class JobStatus(Enum):
     """Status of a conversion job."""
 
-    PENDING = "pending"
+    PREVIEW = "preview"  # Job created, user editing chapters in preview
+    PENDING = "pending"  # Queued, waiting to start
     EXTRACTING = "extracting"
     CONVERTING = "converting"
+    PAUSED = "paused"  # Paused mid-conversion
     FINALIZING = "finalizing"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -86,18 +88,19 @@ class Job:
     output_path: str | None = None
     error_message: str | None = None
     source_hash: str | None = None  # SHA256 hash for source file validation
+    chapter_edits: str | None = None  # JSON serialized preview chapter edits
 
     @property
     def is_resumable(self) -> bool:
         """Check if this job can be resumed.
 
         A job is resumable if:
-        - Status is EXTRACTING or CONVERTING (not completed/failed/cancelled)
+        - Status is EXTRACTING, CONVERTING, or PAUSED
         - Has some chapters to process (total_chapters > 0)
         - Not already fully completed
         """
         return (
-            self.status in (JobStatus.EXTRACTING, JobStatus.CONVERTING)
+            self.status in (JobStatus.EXTRACTING, JobStatus.CONVERTING, JobStatus.PAUSED)
             and self.total_chapters > 0
             and self.completed_chapters < self.total_chapters
         )
@@ -151,6 +154,7 @@ class Job:
             "output_path": self.output_path,
             "error_message": self.error_message,
             "source_hash": self.source_hash,
+            "chapter_edits": self.chapter_edits,
         }
 
     @classmethod
@@ -174,6 +178,7 @@ class Job:
             output_path=data.get("output_path"),
             error_message=data.get("error_message"),
             source_hash=data.get("source_hash"),
+            chapter_edits=data.get("chapter_edits"),
         )
 
 

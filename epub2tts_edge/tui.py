@@ -280,9 +280,11 @@ class JobItem(ListItem):
     """A list item representing a saved job with checkbox selection."""
 
     STATUS_ICONS = {
+        JobStatus.PREVIEW: "📋",  # Preview/editing
         JobStatus.PENDING: "⏳",
         JobStatus.EXTRACTING: "📝",
         JobStatus.CONVERTING: "🔊",
+        JobStatus.PAUSED: "⏸️",  # Paused mid-conversion
         JobStatus.FINALIZING: "📦",
         JobStatus.COMPLETED: "✅",
         JobStatus.FAILED: "❌",
@@ -297,12 +299,30 @@ class JobItem(ListItem):
     def compose(self) -> ComposeResult:
         yield Label(self._build_label())
 
+    def _progress_bar(self, percentage: float, width: int = 8) -> str:
+        """Generate a text progress bar."""
+        filled = int(width * percentage / 100)
+        empty = width - filled
+        return "█" * filled + "░" * empty
+
     def _build_label(self) -> str:
         """Build the display label for this job item."""
         checkbox = "☑" if self.is_selected else "☐"
         status_icon = self.STATUS_ICONS.get(self.job.status, "?")
-        book_name = Path(self.job.source_file).stem[:25]
-        progress = f"{self.job.completed_chapters}/{self.job.total_chapters}"
+        book_name = Path(self.job.source_file).stem[:20]
+
+        # Progress display varies by status
+        if self.job.status == JobStatus.PREVIEW:
+            progress = "Preview"
+        elif self.job.status in (JobStatus.CONVERTING, JobStatus.PAUSED):
+            pct = self.job.progress_percentage
+            bar = self._progress_bar(pct)
+            progress = f"{bar} {pct:.0f}%"
+        elif self.job.status == JobStatus.COMPLETED:
+            progress = f"{self.job.total_chapters}/{self.job.total_chapters}"
+        else:
+            progress = f"{self.job.completed_chapters}/{self.job.total_chapters}"
+
         created = datetime.fromtimestamp(self.job.created_at).strftime("%m/%d %H:%M")
         resumable = " 🔄" if self.job.is_resumable else ""
         return f"{checkbox} {status_icon} {book_name} [{progress}] {created}{resumable}"
@@ -1324,10 +1344,9 @@ class JobsPanel(Vertical):
         with Horizontal(id="jobs-buttons"):
             yield Button("All", id="job-select-all")
             yield Button("None", id="job-deselect-all")
-            yield Button("▶ Start", id="jobs-start-btn", variant="success")
+            yield Button("▶ Play", id="jobs-play-btn", variant="success", disabled=True)
             yield Button("⏸", id="jobs-pause-btn", variant="warning", disabled=True)
             yield Button("⏹", id="jobs-stop-btn", variant="error", disabled=True)
-            yield Button("Resume", id="job-resume", variant="primary")
             yield Button("Del", id="job-delete", variant="error")
             yield Button("⟳", id="job-refresh")
 
@@ -1338,6 +1357,7 @@ class JobsPanel(Vertical):
         """Handle item selection (toggle checkbox)."""
         if isinstance(event.item, JobItem):
             event.item.toggle()
+            self.update_play_button()
 
     def refresh_jobs(self) -> None:
         """Refresh the job list from disk."""
@@ -1433,7 +1453,8 @@ class JobsPanel(Vertical):
 
     def set_running(self, running: bool) -> None:
         """Update transport button states based on running status."""
-        self.query_one("#jobs-start-btn", Button).disabled = running
+        play_btn = self.query_one("#jobs-play-btn", Button)
+        play_btn.disabled = running
         self.query_one("#jobs-pause-btn", Button).disabled = not running
         self.query_one("#jobs-stop-btn", Button).disabled = not running
 
@@ -1444,6 +1465,37 @@ class JobsPanel(Vertical):
             pause_btn.label = "▶ Resume"
         else:
             pause_btn.label = "⏸ Pause"
+
+    def update_play_button(self) -> None:
+        """Update play button label and state based on selected jobs."""
+        play_btn = self.query_one("#jobs-play-btn", Button)
+        selected = self.get_selected_jobs()
+
+        if not selected:
+            play_btn.label = "▶ Play"
+            play_btn.disabled = True
+            return
+
+        # Check first selected job's status to determine button label
+        first_job = selected[0]
+        if first_job.status == JobStatus.PREVIEW:
+            play_btn.label = "▶ Start"
+            play_btn.disabled = False
+        elif first_job.status == JobStatus.PAUSED:
+            play_btn.label = "▶ Resume"
+            play_btn.disabled = False
+        elif first_job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
+            play_btn.label = "▶ Restart"
+            play_btn.disabled = False
+        elif first_job.status in (JobStatus.CONVERTING, JobStatus.EXTRACTING, JobStatus.FINALIZING):
+            play_btn.label = "▶ Play"
+            play_btn.disabled = True  # Already running
+        elif first_job.status == JobStatus.PENDING:
+            play_btn.label = "▶ Start"
+            play_btn.disabled = False
+        else:
+            play_btn.label = "▶ Play"
+            play_btn.disabled = False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2643,6 +2695,7 @@ class AudiobookifyApp(App):
         self.job_manager = JobManager()
         self.debug_mode = False
         self._pending_resume_jobs: list[Job] = []  # Jobs queued for sequential resume
+        self._current_preview_job: Job | None = None  # Job being previewed/edited
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -2785,6 +2838,7 @@ class AudiobookifyApp(App):
                 preview_panel.batch_merge()
             else:
                 preview_panel.merge_with_next()
+            self._save_preview_edits()
         except Exception:
             pass
 
@@ -2805,6 +2859,7 @@ class AudiobookifyApp(App):
                 preview_panel.batch_delete()
             else:
                 preview_panel.delete_chapter()
+            self._save_preview_edits()
         except Exception:
             pass
 
@@ -2816,8 +2871,40 @@ class AudiobookifyApp(App):
                 return
             preview_panel = self.query_one(PreviewPanel)
             preview_panel.undo()
+            self._save_preview_edits()
         except Exception:
             pass
+
+    def _save_preview_edits(self) -> None:
+        """Save current preview state (chapter edits) to the job."""
+        import json
+
+        if not self._current_preview_job:
+            return
+
+        try:
+            preview_panel = self.query_one(PreviewPanel)
+            if not preview_panel.preview_state:
+                return
+
+            # Serialize chapter edits
+            edits = [
+                {
+                    "title": ch.title,
+                    "included": ch.included,
+                    "merged_into": ch.merged_into,
+                }
+                for ch in preview_panel.preview_state.chapters
+            ]
+
+            # Update job with edits
+            job = self.job_manager.load_job(self._current_preview_job.job_id)
+            if job:
+                job.chapter_edits = json.dumps(edits)
+                self.job_manager._save_job(job)
+                self._current_preview_job = job  # Update reference
+        except Exception:
+            pass  # Don't crash on save errors
 
     # ─────────────────────────────────────────────────────────────────────────
     # Preview Panel Message Handlers
@@ -2847,8 +2934,21 @@ class AudiobookifyApp(App):
         total_chapters = len(preview_state.chapters)
         self.log_message(f"✅ Processing {len(included)}/{total_chapters} chapters from preview")
 
-        # Export preview state to text file (with merged content preserved)
-        text_file = source_file.with_suffix(".txt")
+        # Use existing preview job if available, otherwise create one
+        job = self._current_preview_job
+        if job and job.status == JobStatus.PREVIEW:
+            # Update job status to EXTRACTING
+            self.job_manager.update_status(job.job_id, JobStatus.EXTRACTING)
+            job.total_chapters = len(included)
+            self.job_manager._save_job(job)
+            self.log_message(f"   📋 Using preview job: {job.job_id}")
+
+            # Export to job directory
+            text_file = Path(job.job_dir) / f"{source_file.stem}.txt"
+        else:
+            # Fallback: export to source file directory
+            text_file = source_file.with_suffix(".txt")
+
         self.log_message(f"   📝 Exporting preview to: {text_file.name}")
 
         try:
@@ -2890,6 +2990,9 @@ class AudiobookifyApp(App):
         queue_panel = self.query_one(QueuePanel)
         queue_panel.clear_queue()
 
+        # Refresh jobs panel to show updated status
+        self.query_one(JobsPanel).refresh_jobs()
+
         # Process the exported text file using text file processor
         # (no chapter selection needed - already filtered in export)
         self.current_worker = self.process_text_files([text_file])
@@ -2907,19 +3010,21 @@ class AudiobookifyApp(App):
             self.action_pause()
         elif event.button.id == "preview-voice-btn":
             self.action_preview_voice()
-        elif event.button.id == "job-resume":
-            self.action_resume_job()
         elif event.button.id == "job-delete":
             self.action_delete_job()
         elif event.button.id == "job-refresh":
             self.action_refresh_jobs()
         elif event.button.id == "job-select-all":
-            self.query_one(JobsPanel).select_all()
+            jobs_panel = self.query_one(JobsPanel)
+            jobs_panel.select_all()
+            jobs_panel.update_play_button()
         elif event.button.id == "job-deselect-all":
-            self.query_one(JobsPanel).deselect_all()
+            jobs_panel = self.query_one(JobsPanel)
+            jobs_panel.deselect_all()
+            jobs_panel.update_play_button()
         # Jobs panel transport controls
-        elif event.button.id == "jobs-start-btn":
-            self.action_start()
+        elif event.button.id == "jobs-play-btn":
+            self.action_jobs_play()
         elif event.button.id == "jobs-pause-btn":
             self.action_pause()
         elif event.button.id == "jobs-stop-btn":
@@ -3021,6 +3126,69 @@ class AudiobookifyApp(App):
             self.call_from_thread(set_status_error, str(e)[:20])
             self.call_from_thread(self.log_message, f"   ❌ Preview failed: {e}")
 
+    def action_jobs_play(self) -> None:
+        """Context-aware play button for Jobs panel.
+
+        Based on selected job status:
+        - PREVIEW: Start conversion
+        - PAUSED: Resume conversion
+        - COMPLETED/FAILED/CANCELLED: Restart conversion
+        - PENDING: Start conversion
+        """
+        jobs_panel = self.query_one(JobsPanel)
+        selected = jobs_panel.get_selected_jobs()
+
+        if not selected:
+            self.notify("No jobs selected", severity="warning")
+            return
+
+        first_job = selected[0]
+
+        if first_job.status == JobStatus.PREVIEW:
+            # Start from PREVIEW - need to export chapters and begin processing
+            self._start_preview_job(first_job)
+        elif first_job.status == JobStatus.PAUSED:
+            # Resume paused job
+            self.action_resume_job()
+        elif first_job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
+            # Restart - delete old job files and start fresh
+            self._restart_job(first_job)
+        elif first_job.status == JobStatus.PENDING:
+            # Start pending job
+            self._start_pending_job(first_job)
+        else:
+            self.notify(
+                f"Cannot start job with status: {first_job.status.value}", severity="warning"
+            )
+
+    def _start_preview_job(self, job: Job) -> None:
+        """Start conversion from a PREVIEW job."""
+        # Load the preview panel's state and use it
+        preview_panel = self.query_one(PreviewPanel)
+
+        if (
+            not preview_panel.preview_state
+            or str(preview_panel.preview_state.epub_path) != job.source_file
+        ):
+            # Need to reload preview for this job
+            self.notify("Please preview the file first before starting", severity="warning")
+            return
+
+        # Trigger the same flow as "Start All" from preview
+        preview_panel.post_message(PreviewPanel.ApproveAndStart())
+
+    def _restart_job(self, job: Job) -> None:
+        """Restart a completed/failed job by creating fresh state."""
+        # Delete old job and let user start fresh
+        self.job_manager.delete_job(job.job_id)
+        self.query_one(JobsPanel).refresh_jobs()
+        self.notify("Job deleted. Preview the file again to restart.", severity="information")
+
+    def _start_pending_job(self, job: Job) -> None:
+        """Start a pending job."""
+        # For now, treat pending jobs similarly to resumable jobs
+        self.action_resume_job()
+
     def action_start(self) -> None:
         """Start processing selected files."""
         if self.is_processing:
@@ -3073,6 +3241,16 @@ class AudiobookifyApp(App):
         progress_panel = self.query_one(ProgressPanel)
         progress_panel.set_paused(self.is_paused)
         self.query_one(JobsPanel).set_paused(self.is_paused)
+
+        # Update job status if we have a current preview job
+        if self._current_preview_job:
+            job = self.job_manager.load_job(self._current_preview_job.job_id)
+            if job:
+                if self.is_paused:
+                    self.job_manager.update_status(job.job_id, JobStatus.PAUSED)
+                else:
+                    self.job_manager.update_status(job.job_id, JobStatus.CONVERTING)
+                self.query_one(JobsPanel).refresh_jobs()
 
         if self.is_paused:
             self.log_message("⏸️ Paused - processing will pause after current operation")
@@ -3825,6 +4003,7 @@ class AudiobookifyApp(App):
 
         detection_method = config["detection_method"]
         hierarchy_style = config["hierarchy_style"]
+        speaker = config["speaker"]
 
         self.log_message(f"📋 Loading preview: {epub_path.name}")
         self.log_message(f"   Detection: {detection_method}, Hierarchy: {hierarchy_style}")
@@ -3838,16 +4017,19 @@ class AudiobookifyApp(App):
         tabs.active = "preview-tab"
 
         # Run preview in background (exclusive to cancel any previous preview)
-        self.preview_chapters_async(epub_path, detection_method, hierarchy_style)
+        self.preview_chapters_async(epub_path, detection_method, hierarchy_style, speaker)
 
     @work(exclusive=True, thread=True, group="preview")
     def preview_chapters_async(
-        self, epub_path: Path, detection_method: str, hierarchy_style: str
+        self, epub_path: Path, detection_method: str, hierarchy_style: str, speaker: str
     ) -> None:
         """Preview chapters in background thread and load into Preview tab.
 
         Uses exclusive=True in group="preview" to cancel any previous preview worker.
+        Creates a job with PREVIEW status so it appears in the Jobs panel.
         """
+        import json
+
         from .chapter_detector import ChapterDetector
 
         try:
@@ -3888,9 +4070,42 @@ class AudiobookifyApp(App):
                 )
                 return
 
+            # Check for existing PREVIEW job for this source file
+            existing_job = self.job_manager.find_job_for_source(str(epub_path))
+            saved_edits: dict[int, dict] | None = None
+
+            if existing_job and existing_job.status == JobStatus.PREVIEW:
+                # Load existing preview edits
+                self.call_from_thread(
+                    self.log_message, f"   📋 Loading existing preview job: {existing_job.job_id}"
+                )
+                job = existing_job
+                if job.chapter_edits:
+                    try:
+                        # Parse saved edits and create a lookup by index
+                        edits_list = json.loads(job.chapter_edits)
+                        saved_edits = dict(enumerate(edits_list))
+                    except json.JSONDecodeError:
+                        pass
+            else:
+                # Create new job with PREVIEW status
+                job = self.job_manager.create_job(
+                    source_file=str(epub_path),
+                    title=book_title,
+                    author=book_author,
+                    speaker=speaker,
+                )
+                self.job_manager.update_status(job.job_id, JobStatus.PREVIEW)
+                job.total_chapters = len(chapter_list)
+                self.job_manager._save_job(job)
+                self.call_from_thread(self.log_message, f"   📋 Created preview job: {job.job_id}")
+
+            # Store reference to current preview job
+            self._current_preview_job = job
+
             # Convert to PreviewChapter objects
             preview_chapters: list[PreviewChapter] = []
-            for chapter in chapter_list:
+            for i, chapter in enumerate(chapter_list):
                 # Calculate stats from paragraphs (populated by _populate_content)
                 paragraphs = chapter.paragraphs if chapter.paragraphs else []
                 paragraph_count = len(paragraphs)
@@ -3915,14 +4130,26 @@ class AudiobookifyApp(App):
                 if word_count == 0:
                     word_count = len(chapter.title.split())  # Count words in title
 
+                # Apply saved edits if available
+                included = True
+                merged_into = None
+                title = chapter.title
+                if saved_edits and i in saved_edits:
+                    edit = saved_edits[i]
+                    included = edit.get("included", True)
+                    merged_into = edit.get("merged_into")
+                    title = edit.get("title", chapter.title)
+
                 preview_chapters.append(
                     PreviewChapter(
-                        title=chapter.title,
+                        title=title,
                         level=chapter.level,
                         word_count=word_count,
                         paragraph_count=paragraph_count,
                         content_preview=content_preview,
                         original_content=original_content,
+                        included=included,
+                        merged_into=merged_into,
                     )
                 )
 
@@ -3932,6 +4159,12 @@ class AudiobookifyApp(App):
                 preview_panel.load_chapters(
                     epub_path, preview_chapters, detection_method, book_title, book_author
                 )
+                # Refresh Jobs panel to show the new/existing preview job
+                try:
+                    jobs_panel = self.query_one(JobsPanel)
+                    jobs_panel.refresh_jobs()
+                except Exception:
+                    pass
 
             self.call_from_thread(load_preview)
             self.call_from_thread(

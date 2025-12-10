@@ -11,7 +11,6 @@ Usage:
 """
 
 # Type alias for chapter nodes (to avoid circular imports)
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -21,11 +20,9 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.events import Click
 from textual.message import Message
-from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
     DataTable,
-    DirectoryTree,
     Footer,
     Header,
     Input,
@@ -42,11 +39,15 @@ from textual.widgets import (
 )
 from textual.worker import Worker
 
-# Import our modules
-from .batch_processor import BatchConfig, BatchProcessor, BookTask, ProcessingStatus
-from .config import get_config
-from .job_manager import Job, JobManager, JobStatus
-from .voice_preview import AVAILABLE_VOICES, VoicePreview, VoicePreviewConfig
+# Import our modules (from parent package)
+from ..batch_processor import BatchConfig, BatchProcessor, BookTask, ProcessingStatus
+from ..config import get_config
+from ..job_manager import Job, JobManager, JobStatus
+from ..voice_preview import AVAILABLE_VOICES, VoicePreview, VoicePreviewConfig
+
+# Import from tui submodules (Phase 1 refactor)
+from .models import ChapterPreviewState, PreviewChapter
+from .screens import DirectoryBrowserScreen, HelpScreen
 
 if TYPE_CHECKING:
     pass
@@ -54,136 +55,9 @@ if TYPE_CHECKING:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Preview Tab Data Models
+# NOTE: PreviewChapter and ChapterPreviewState have been moved to tui/models/
+# They are imported at the top of this file from .tui.models
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-@dataclass
-class PreviewChapter:
-    """A chapter in the preview with editing state."""
-
-    title: str
-    level: int
-    word_count: int
-    paragraph_count: int
-    content_preview: str  # First 500 chars
-    included: bool = True
-    merged_into: int | None = None  # Index of chapter this merges into
-    original_content: str = ""  # Full content for processing
-
-
-@dataclass
-class ChapterPreviewState:
-    """State for the preview workflow."""
-
-    source_file: Path
-    detection_method: str
-    chapters: list[PreviewChapter] = field(default_factory=list)
-    modified: bool = False
-    book_title: str = ""
-    book_author: str = ""
-
-    def get_included_chapters(self) -> list[PreviewChapter]:
-        """Get chapters that are included (not excluded or merged)."""
-        return [c for c in self.chapters if c.included and c.merged_into is None]
-
-    def get_total_words(self) -> int:
-        """Get total word count of included chapters."""
-        return sum(c.word_count for c in self.get_included_chapters())
-
-    def get_chapter_selection_string(self) -> str | None:
-        """Convert included chapters to a selection string (e.g., '1,3,5-7').
-
-        Returns:
-            Selection string for ChapterSelector, or None if all chapters included.
-        """
-        if not self.chapters:
-            return None
-
-        # Get indices of included chapters (1-indexed for user display)
-        included_indices = [
-            i + 1  # Convert to 1-indexed
-            for i, ch in enumerate(self.chapters)
-            if ch.included and ch.merged_into is None
-        ]
-
-        # If all chapters are included, return None (means "all")
-        if len(included_indices) == len(self.chapters):
-            return None
-
-        if not included_indices:
-            return ""  # Nothing selected
-
-        # Convert to ranges for compact representation
-        # e.g., [1, 2, 3, 5, 7, 8, 9] → "1-3,5,7-9"
-        ranges: list[str] = []
-        start = included_indices[0]
-        end = start
-
-        for idx in included_indices[1:]:
-            if idx == end + 1:
-                # Consecutive
-                end = idx
-            else:
-                # Gap - emit current range
-                if start == end:
-                    ranges.append(str(start))
-                else:
-                    ranges.append(f"{start}-{end}")
-                start = end = idx
-
-        # Emit final range
-        if start == end:
-            ranges.append(str(start))
-        else:
-            ranges.append(f"{start}-{end}")
-
-        return ",".join(ranges)
-
-    def export_to_text(self, output_path: Path) -> Path:
-        """Export preview state to text file format for processing.
-
-        This exports the current preview state (with merges applied) to a text file
-        that can be processed by the audio generator.
-
-        Args:
-            output_path: Path to write the text file
-
-        Returns:
-            Path to the output file
-        """
-        import re
-
-        with open(output_path, "w", encoding="utf-8") as f:
-            # Write metadata header
-            title = self.book_title or self.source_file.stem
-            author = self.book_author or "Unknown"
-            f.write(f"Title: {title}\n")
-            f.write(f"Author: {author}\n\n")
-
-            # Write title chapter
-            f.write("# Title\n")
-            f.write(f"{title}, by {author}\n\n")
-
-            # Write included chapters
-            for chapter in self.get_included_chapters():
-                # Determine header level based on chapter level
-                markers = "#" * min(chapter.level, 6) if chapter.level > 0 else "#"
-
-                f.write(f"{markers} {chapter.title}\n\n")
-
-                # Write paragraphs from original_content
-                if chapter.original_content:
-                    # Split content into paragraphs and clean up
-                    paragraphs = chapter.original_content.split("\n\n")
-                    for paragraph in paragraphs:
-                        # Clean up text (normalize whitespace, quotes)
-                        clean = re.sub(r"[\s\n]+", " ", paragraph.strip())
-                        clean = re.sub(r"[\u201c\u201d]", '"', clean)
-                        clean = re.sub(r"[\u2018\u2019]", "'", clean)
-                        if clean:
-                            f.write(f"{clean}\n\n")
-
-        return output_path
 
 
 class VoicePreviewStatus(Static):
@@ -2464,201 +2338,11 @@ class PreviewPanel(Vertical):
         pass
 
 
-class HelpScreen(ModalScreen):
-    """Modal screen showing all keyboard shortcuts."""
-
-    BINDINGS = [
-        Binding("escape", "dismiss", "Close"),
-        Binding("?", "dismiss", "Close"),
-        Binding("f1", "dismiss", "Close"),
-    ]
-
-    DEFAULT_CSS = """
-    HelpScreen {
-        align: center middle;
-    }
-
-    #help-container {
-        width: 65;
-        height: auto;
-        max-height: 85%;
-        background: $surface;
-        border: round $primary;
-        padding: 1 2;
-    }
-
-    #help-container > Label.title {
-        text-style: bold;
-        text-align: center;
-        width: 100%;
-        margin-bottom: 1;
-    }
-
-    #help-container > Label.section {
-        text-style: bold;
-        color: $primary;
-        margin-top: 1;
-    }
-
-    #help-container > Static {
-        height: 1;
-    }
-
-    #help-container > Static.hint {
-        color: $text-muted;
-        text-align: center;
-        margin-top: 1;
-    }
-    """
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="help-container"):
-            yield Label("⌨️  Keyboard Shortcuts", classes="title")
-
-            yield Label("── Global ──", classes="section")
-            yield Static("  q              Quit application")
-            yield Static("  s              Start conversion")
-            yield Static("  Escape         Stop conversion")
-            yield Static("  r              Refresh file list")
-            yield Static("  Tab            Focus next panel")
-            yield Static("  Shift+Tab      Focus previous panel")
-            yield Static("  1-5            Switch tabs (Prog/Prev/Queue/Jobs/Log)")
-            yield Static("  ?/F1           Show this help")
-            yield Static("  Ctrl+D         Toggle debug mode")
-
-            yield Label("── File Selection ──", classes="section")
-            yield Static("  a              Select all files")
-            yield Static("  d              Deselect all")
-            yield Static("  b              Browse directories")
-            yield Static("  /              Focus path input")
-            yield Static("  Tab            Autocomplete path (in input)")
-            yield Static("  Backspace      Go to parent directory")
-
-            yield Label("── Preview Tab ──", classes="section")
-            yield Static("  Space          Select/deselect (sets anchor)")
-            yield Static("  Enter          Select range (anchor→current)")
-            yield Static("  m              Merge selected chapters")
-            yield Static("  x              Delete selected chapters")
-            yield Static("  u              Undo last operation")
-            yield Static("  e              Edit chapter title")
-
-            yield Label("── Jobs ──", classes="section")
-            yield Static("  R              Resume selected jobs")
-            yield Static("  X              Delete selected jobs")
-            yield Static("  ↑/↓            Reorder in queue")
-
-            yield Label("── Voice ──", classes="section")
-            yield Static("  p              Preview selected voice")
-
-            yield Label("── Tips ──", classes="section")
-            yield Static("  Preview: M=merge↓, X=delete, U=undo")
-            yield Static("  Font Size: Ctrl/Cmd + Plus/Minus")
-
-            yield Static("Press Escape, ? or F1 to close", classes="hint")
-
-    def action_dismiss(self) -> None:
-        """Close the help screen."""
-        self.dismiss()
-
-
-class FilteredDirectoryTree(DirectoryTree):
-    """DirectoryTree that filters out hidden files and shows only directories."""
-
-    def filter_paths(self, paths: list[Path]) -> list[Path]:
-        """Filter out hidden files and non-directories."""
-        return sorted(
-            [p for p in paths if not p.name.startswith(".") and p.is_dir()],
-            key=lambda p: p.name.lower(),
-        )
-
-
-class DirectoryBrowserScreen(ModalScreen[Path | None]):
-    """Modal screen for browsing and selecting directories."""
-
-    BINDINGS = [
-        Binding("escape", "cancel", "Cancel"),
-        Binding("enter", "select", "Select"),
-    ]
-
-    DEFAULT_CSS = """
-    DirectoryBrowserScreen {
-        align: center middle;
-    }
-
-    #browser-container {
-        width: 70;
-        height: 80%;
-        background: $surface;
-        border: round $primary;
-        padding: 1 2;
-    }
-
-    #browser-container > Label.title {
-        text-style: bold;
-        text-align: center;
-        width: 100%;
-        margin-bottom: 1;
-    }
-
-    #browser-container > Label.path-label {
-        color: $text-muted;
-        margin-bottom: 1;
-    }
-
-    #browser-container FilteredDirectoryTree {
-        height: 1fr;
-        border: solid $primary-darken-2;
-        margin-bottom: 1;
-    }
-
-    #browser-actions {
-        height: auto;
-        align: center middle;
-    }
-
-    #browser-actions Button {
-        margin: 0 1;
-    }
-    """
-
-    def __init__(self, start_path: Path | None = None) -> None:
-        super().__init__()
-        self.start_path = start_path or Path.home()
-        self.selected_path: Path | None = None
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="browser-container"):
-            yield Label("📁 Select Directory", classes="title")
-            yield Label(f"Current: {self.start_path}", id="current-path", classes="path-label")
-            yield FilteredDirectoryTree(str(self.start_path))
-            with Horizontal(id="browser-actions"):
-                yield Button("Select", id="select-btn", variant="primary")
-                yield Button("Cancel", id="cancel-btn", variant="default")
-
-    def on_directory_tree_directory_selected(self, event: DirectoryTree.DirectorySelected) -> None:
-        """Update selected path when directory is clicked."""
-        self.selected_path = event.path
-        path_label = self.query_one("#current-path", Label)
-        path_label.update(f"Current: {event.path}")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button presses."""
-        if event.button.id == "select-btn":
-            self.action_select()
-        elif event.button.id == "cancel-btn":
-            self.action_cancel()
-
-    def action_select(self) -> None:
-        """Confirm selection and close."""
-        if self.selected_path:
-            self.dismiss(self.selected_path)
-        else:
-            # Use the start path if nothing explicitly selected
-            self.dismiss(self.start_path)
-
-    def action_cancel(self) -> None:
-        """Cancel and close without selection."""
-        self.dismiss(None)
+# ─────────────────────────────────────────────────────────────────────────────
+# Modal Screens
+# NOTE: HelpScreen, FilteredDirectoryTree, and DirectoryBrowserScreen have been
+# moved to tui/screens/. They are imported at the top of this file from .tui.screens
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 class AudiobookifyApp(App):

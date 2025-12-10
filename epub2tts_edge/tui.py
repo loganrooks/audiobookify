@@ -1376,16 +1376,25 @@ class JobsPanel(Vertical):
         with Horizontal(id="jobs-header"):
             yield Label("💼 Jobs", classes="title")
             yield Label("(0)", id="job-count", classes="count")
+
+        # Instructions like Preview panel has
+        yield Label(
+            "📋 Space=select, R=resume, X=delete, ⟳=refresh",
+            id="jobs-instructions",
+        )
+
         yield ListView(id="jobs-list")
+
         # Combined selection + transport + job actions in single row
+        # Make labels more consistent with Preview panel
         with Horizontal(id="jobs-buttons"):
-            yield Button("All", id="job-select-all")
-            yield Button("None", id="job-deselect-all")
-            yield Button("▶ Play", id="jobs-play-btn", variant="success", disabled=True)
-            yield Button("⏸", id="jobs-pause-btn", variant="warning", disabled=True)
-            yield Button("⏹", id="jobs-stop-btn", variant="error", disabled=True)
-            yield Button("Del", id="job-delete", variant="error")
-            yield Button("⟳", id="job-refresh")
+            yield Button("Select All", id="job-select-all")
+            yield Button("Select None", id="job-deselect-all")
+            yield Button("▶ Resume", id="jobs-play-btn", variant="success", disabled=True)
+            yield Button("⏸ Pause", id="jobs-pause-btn", variant="warning", disabled=True)
+            yield Button("⏹ Stop", id="jobs-stop-btn", variant="error", disabled=True)
+            yield Button("🗑️ Delete", id="job-delete", variant="error")
+            yield Button("⟳ Refresh", id="job-refresh")
 
     def on_mount(self) -> None:
         self.refresh_jobs()
@@ -3257,6 +3266,15 @@ class AudiobookifyApp(App):
 
     def _restart_job(self, job: Job) -> None:
         """Restart a completed/failed job by creating fresh state."""
+        # Clear preview job reference if it matches
+        if self._current_preview_job and self._current_preview_job.job_id == job.job_id:
+            self._current_preview_job = None
+            try:
+                preview_panel = self.query_one(PreviewPanel)
+                preview_panel.clear_preview()
+            except Exception:
+                pass
+
         # Delete old job and let user start fresh
         self.job_manager.delete_job(job.job_id)
         self.query_one(JobsPanel).refresh_jobs()
@@ -4051,6 +4069,14 @@ class AudiobookifyApp(App):
             self.log_message("⚠️ Cannot delete: no jobs selected (use checkbox to select)")
             return
 
+        # Check if current preview job is being deleted
+        preview_job_deleted = False
+        if self._current_preview_job:
+            for job in selected_jobs:
+                if job.job_id == self._current_preview_job.job_id:
+                    preview_job_deleted = True
+                    break
+
         job_names = [Path(j.source_file).name for j in selected_jobs]
         deleted_count = jobs_panel.delete_selected_jobs()
 
@@ -4059,6 +4085,17 @@ class AudiobookifyApp(App):
             for name in job_names:
                 self.log_message(f"   {name}")
             self.notify(f"Deleted {deleted_count} job(s)", title="Jobs Deleted")
+
+            # Clear current preview job if it was deleted
+            if preview_job_deleted:
+                self._current_preview_job = None
+                # Clear the preview panel since its job was deleted
+                try:
+                    preview_panel = self.query_one(PreviewPanel)
+                    preview_panel.clear_preview()
+                    self.log_message("   📋 Preview cleared (job was deleted)")
+                except Exception:
+                    pass
         else:
             self.log_message("❌ Failed to delete jobs")
             self.notify("Failed to delete jobs", severity="error")

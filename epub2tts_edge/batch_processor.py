@@ -48,6 +48,8 @@ class BookTask:
     end_time: float | None = None
     chapter_count: int = 0
     file_size: int = 0
+    job_id: str | None = None  # Job ID for isolated processing
+    job_dir: str | None = None  # Job directory for intermediate files
 
     def __post_init__(self):
         if os.path.exists(self.epub_path):
@@ -79,6 +81,8 @@ class BookTask:
             "duration": self.duration,
             "chapter_count": self.chapter_count,
             "file_size": self.file_size,
+            "job_id": self.job_id,
+            "job_dir": self.job_dir,
         }
 
 
@@ -102,6 +106,7 @@ class BatchConfig:
     # TTS parameters
     tts_rate: str | None = None  # Speech rate (e.g., "+20%", "-10%")
     tts_volume: str | None = None  # Volume adjustment (e.g., "+50%", "-25%")
+    max_concurrent: int = 5  # Max parallel TTS tasks (1-15)
 
     # Chapter selection
     chapters: str | None = None  # Chapter selection (e.g., "1-5", "1,3,7")
@@ -115,6 +120,11 @@ class BatchConfig:
     # Filters
     include_pattern: str | None = None  # Glob pattern to include
     exclude_pattern: str | None = None  # Glob pattern to exclude
+
+    # Job isolation (v2.4.0)
+    use_job_isolation: bool = True  # Use isolated job folders for intermediate files
+    jobs_dir: str | None = None  # Custom jobs directory (default: ~/.audiobookify/jobs)
+    cleanup_on_complete: bool = True  # Remove intermediate files after successful completion
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -263,45 +273,59 @@ class BatchProcessor:
         self.result = BatchResult(config=config)
         self._state_file: str | None = None
 
+        # Initialize job manager if job isolation is enabled
+        self._job_manager = None
+        if config.use_job_isolation:
+            from .job_manager import JobManager
+
+            self._job_manager = JobManager(config.jobs_dir)
+
     def discover_books(self) -> list[str]:
         """
-        Discover EPUB files to process based on configuration.
+        Discover ebook files (EPUB, MOBI, AZW) to process based on configuration.
 
         Returns:
-            List of EPUB file paths
+            List of ebook file paths
         """
-        epub_files = []
+        # Supported formats
+        supported_extensions = (".epub", ".mobi", ".azw", ".azw3")
+
+        book_files = []
         input_path = self.config.input_path
 
         if os.path.isfile(input_path):
             # Single file
-            if input_path.lower().endswith(".epub"):
-                epub_files.append(input_path)
+            if input_path.lower().endswith(supported_extensions):
+                book_files.append(input_path)
         elif os.path.isdir(input_path):
-            # Directory
-            if self.config.recursive:
-                pattern = os.path.join(input_path, "**", "*.epub")
-                epub_files = glob.glob(pattern, recursive=True)
-            else:
-                pattern = os.path.join(input_path, "*.epub")
-                epub_files = glob.glob(pattern)
+            # Directory - scan for all supported formats
+            for ext in supported_extensions:
+                if self.config.recursive:
+                    pattern = os.path.join(input_path, "**", f"*{ext}")
+                    book_files.extend(glob.glob(pattern, recursive=True))
+                else:
+                    pattern = os.path.join(input_path, f"*{ext}")
+                    book_files.extend(glob.glob(pattern))
+
+            # Remove duplicates (in case of overlapping patterns)
+            book_files = list(set(book_files))
 
             # Apply include pattern
             if self.config.include_pattern:
                 include_pattern = os.path.join(input_path, self.config.include_pattern)
                 included = set(glob.glob(include_pattern, recursive=self.config.recursive))
-                epub_files = [f for f in epub_files if f in included]
+                book_files = [f for f in book_files if f in included]
 
             # Apply exclude pattern
             if self.config.exclude_pattern:
                 exclude_pattern = os.path.join(input_path, self.config.exclude_pattern)
                 excluded = set(glob.glob(exclude_pattern, recursive=self.config.recursive))
-                epub_files = [f for f in epub_files if f not in excluded]
+                book_files = [f for f in book_files if f not in excluded]
 
         # Sort for consistent ordering
-        epub_files.sort()
+        book_files.sort()
 
-        return epub_files
+        return book_files
 
     def should_skip(self, epub_path: str) -> bool:
         """Check if a book should be skipped (already processed)."""
@@ -419,17 +443,26 @@ class BatchProcessor:
 
         return [t for t in self.result.tasks if t.status == ProcessingStatus.PENDING]
 
-    def process_book(self, task: BookTask) -> bool:
+    def process_book(
+        self,
+        task: BookTask,
+        progress_callback: Callable | None = None,
+        cancellation_check: Callable | None = None,
+    ) -> bool:
         """
         Process a single book.
 
         Args:
             task: The BookTask to process
+            progress_callback: Optional callback for progress updates (receives ProgressInfo)
+            cancellation_check: Optional callable that returns True if processing should stop
 
         Returns:
             True if successful, False otherwise
         """
         # Import here to avoid circular imports
+        import shutil
+
         from ebooklib import epub
 
         from .chapter_detector import ChapterDetector, DetectionMethod, HierarchyStyle
@@ -445,6 +478,51 @@ class BatchProcessor:
         task.start_time = time.time()
         task.status = ProcessingStatus.EXPORTING
 
+        # Create or resume job if job isolation is enabled
+        job = None
+        if self._job_manager:
+            from .job_manager import JobStatus
+
+            # If task already has a job_id (e.g., from TUI resume), load that job directly
+            if task.job_id:
+                job = self._job_manager.load_job(task.job_id)
+                if job:
+                    print(f"  Using existing job: {job.job_id}")
+                    print(
+                        f"    Status: {job.status.value}, Progress: {job.completed_chapters}/{job.total_chapters}"
+                    )
+                else:
+                    print(f"  Warning: Could not load job {task.job_id}, creating new")
+                    task.job_id = None
+                    task.job_dir = None
+
+            # If no job yet, check for existing resumable job or create new
+            if not job:
+                job = self._job_manager.find_job_for_source(task.epub_path)
+                if job:
+                    # Validate source file hasn't changed before resuming
+                    if self._job_manager.validate_job_source(job):
+                        print(f"  Resuming job: {job.job_id}")
+                        task.job_id = job.job_id
+                        task.job_dir = job.job_dir
+                    else:
+                        print("  Source file changed since job started, creating new job")
+                        self._job_manager.delete_job(job.job_id)
+                        job = None
+                if not job:
+                    # Create new job
+                    job = self._job_manager.create_job(
+                        task.epub_path,
+                        speaker=self.config.speaker,
+                        rate=self.config.tts_rate,
+                        volume=self.config.tts_volume,
+                    )
+                    task.job_id = job.job_id
+                    task.job_dir = job.job_dir
+                    print(f"  Created job: {job.job_id}")
+
+            self._job_manager.update_status(job.job_id, JobStatus.EXTRACTING)
+
         try:
             ensure_punkt()
 
@@ -452,11 +530,14 @@ class BatchProcessor:
             output_dir = self.config.output_dir or os.path.dirname(task.epub_path)
             os.makedirs(output_dir, exist_ok=True)
 
+            # Use job directory for intermediate files if job isolation is enabled
+            working_dir = task.job_dir if task.job_dir else output_dir
+
             basename = task.basename
 
-            # Set up output paths
-            txt_path = os.path.join(output_dir, f"{basename}.txt")
-            cover_path = os.path.join(output_dir, f"{basename}.png")
+            # Set up paths - text file goes in working directory
+            txt_path = os.path.join(working_dir, f"{basename}.txt")
+            cover_path = os.path.join(os.path.dirname(task.epub_path), f"{basename}.png")
 
             # Export EPUB to TXT
             print(f"\nExporting: {basename}")
@@ -482,6 +563,10 @@ class BatchProcessor:
             task.txt_path = txt_path
             task.chapter_count = len(detector.get_flat_chapters())
 
+            # Update job with chapter count
+            if job and self._job_manager:
+                self._job_manager.update_progress(job.job_id, total_chapters=task.chapter_count)
+
             # Check for cover
             if os.path.exists(cover_path):
                 task.cover_path = cover_path
@@ -489,15 +574,24 @@ class BatchProcessor:
             if self.config.export_only:
                 task.status = ProcessingStatus.COMPLETED
                 task.end_time = time.time()
+                if job and self._job_manager:
+                    from .job_manager import JobStatus
+
+                    self._job_manager.update_status(job.job_id, JobStatus.COMPLETED)
                 return True
 
             # Convert to audiobook
             task.status = ProcessingStatus.CONVERTING
             print(f"Converting to audiobook: {basename}")
 
-            # Change to output directory for intermediate files
+            if job and self._job_manager:
+                from .job_manager import JobStatus
+
+                self._job_manager.update_status(job.job_id, JobStatus.CONVERTING)
+
+            # Change to working directory for intermediate files
             original_dir = os.getcwd()
-            os.chdir(output_dir)
+            os.chdir(working_dir)
 
             try:
                 book_contents, book_title, book_author, chapter_titles = get_book(txt_path)
@@ -512,31 +606,88 @@ class BatchProcessor:
                     chapter_titles = [chapter_titles[i] for i in selected_indices]
                     print(f"  {selector.get_summary()} ({len(book_contents)} chapters)")
 
+                # Create a wrapper callback that also updates job progress
+                def job_progress_callback(info):
+                    if progress_callback:
+                        progress_callback(info)
+                    if job and self._job_manager and info.status == "chapter_done":
+                        self._job_manager.update_progress(
+                            job.job_id, completed_chapters=info.chapter_num
+                        )
+
+                # Determine audio output directory and resume state
+                # For job isolation: use job's audio directory
+                # Otherwise fall back to working_dir (legacy behavior)
+                if job:
+                    audio_output_dir = str(job.effective_audio_dir)
+                    # For resume: skip chapters that are already completed
+                    skip_completed = job.completed_chapters
+                else:
+                    audio_output_dir = working_dir
+                    skip_completed = 0
+
                 files = read_book(
                     book_contents,
                     self.config.speaker,
                     self.config.paragraph_pause,
                     self.config.sentence_pause,
+                    output_dir=audio_output_dir,
                     rate=self.config.tts_rate,
                     volume=self.config.tts_volume,
+                    max_concurrent=self.config.max_concurrent,
+                    progress_callback=job_progress_callback,
+                    cancellation_check=cancellation_check,
+                    skip_completed=skip_completed,
                 )
-                generate_metadata(files, book_author, book_title, chapter_titles)
-                m4b_filename = make_m4b(files, txt_path, self.config.speaker)
+
+                # Check if cancelled - keep job in CONVERTING state for resume
+                if cancellation_check and cancellation_check():
+                    task.status = ProcessingStatus.FAILED
+                    task.error_message = "Cancelled by user"
+                    task.end_time = time.time()
+                    # Don't mark job as failed - leave it in CONVERTING state
+                    # so it can be resumed later. The progress is already saved.
+                    return False
+
+                # Generate M4B in working_dir with explicit paths (no reliance on chdir)
+                generate_metadata(
+                    files, book_author, book_title, chapter_titles, output_dir=working_dir
+                )
+                m4b_path = make_m4b(files, txt_path, self.config.speaker, output_dir=working_dir)
 
                 if task.cover_path:
-                    add_cover(task.cover_path, m4b_filename)
+                    add_cover(task.cover_path, m4b_path)
 
-                task.m4b_path = os.path.join(output_dir, m4b_filename)
+                # Move M4B to final output location if using job isolation
+                if task.job_dir and working_dir != output_dir:
+                    m4b_filename = os.path.basename(m4b_path)
+                    dst_m4b = os.path.join(output_dir, m4b_filename)
+                    shutil.move(m4b_path, dst_m4b)
+                    task.m4b_path = dst_m4b
+                    print(f"  Moved output to: {dst_m4b}")
+                else:
+                    task.m4b_path = m4b_path
 
             finally:
                 os.chdir(original_dir)
 
             task.status = ProcessingStatus.COMPLETED
             task.end_time = time.time()
+
+            # Complete job and optionally clean up
+            if job and self._job_manager:
+                self._job_manager.complete_job(
+                    job.job_id,
+                    task.m4b_path,
+                    cleanup=self.config.cleanup_on_complete,
+                )
+
             return True
 
         except Exception as e:
             task.status = ProcessingStatus.FAILED
+            if job and self._job_manager:
+                self._job_manager.set_error(job.job_id, str(e))
             task.error_message = str(e)
             task.end_time = time.time()
             print(f"Error processing {task.basename}: {e}")

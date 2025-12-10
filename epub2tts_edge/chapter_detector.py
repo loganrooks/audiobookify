@@ -8,16 +8,24 @@ This module provides intelligent chapter detection from EPUB files by:
 4. Providing flexible output formats for audiobook generation
 """
 
+from __future__ import annotations
+
+import logging
 import os
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import ebooklib
 from bs4 import BeautifulSoup, Tag
 from ebooklib import epub
 from lxml import etree
+
+if TYPE_CHECKING:
+    from .content_filter import FilterConfig, FilterResult
+
+logger = logging.getLogger(__name__)
 
 
 class DetectionMethod(Enum):
@@ -49,8 +57,8 @@ class ChapterNode:
     anchor: str | None = None  # Fragment identifier within file
     content: str | None = None  # Extracted text content
     paragraphs: list[str] = field(default_factory=list)
-    children: list["ChapterNode"] = field(default_factory=list)
-    parent: Optional["ChapterNode"] = None
+    children: list[ChapterNode] = field(default_factory=list)
+    parent: ChapterNode | None = None
     play_order: int = 0  # Reading order
 
     def __post_init__(self):
@@ -58,14 +66,14 @@ class ChapterNode:
         for child in self.children:
             child.parent = self
 
-    def add_child(self, child: "ChapterNode") -> "ChapterNode":
+    def add_child(self, child: ChapterNode) -> ChapterNode:
         """Add a child chapter/section."""
         child.parent = self
         child.level = self.level + 1
         self.children.append(child)
         return child
 
-    def get_path(self) -> list["ChapterNode"]:
+    def get_path(self) -> list[ChapterNode]:
         """Get the path from root to this node."""
         path = []
         node = self
@@ -80,7 +88,7 @@ class ChapterNode:
             return 0
         return 1 + max(child.get_depth() for child in self.children)
 
-    def flatten(self, max_depth: int | None = None) -> list["ChapterNode"]:
+    def flatten(self, max_depth: int | None = None) -> list[ChapterNode]:
         """Flatten the hierarchy to a list, respecting max_depth."""
         result = []
         if self.level > 0:  # Skip root node
@@ -166,23 +174,124 @@ class TOCParser:
                 basename = os.path.basename(href)
                 self._item_map[basename] = item
 
+    def get_toc_debug(self) -> dict:
+        """Get debug info about TOC parsing."""
+        debug_info = {
+            "book_toc_count": 0,
+            "book_toc_items": [],
+            "toc_items": [],
+            "nav_found": False,
+            "nav_name": None,
+            "ncx_found": False,
+            "ncx_name": None,
+        }
+
+        # Check ebooklib's pre-parsed TOC
+        if hasattr(self.book, "toc") and self.book.toc:
+            debug_info["book_toc_count"] = len(self.book.toc)
+            for item in self.book.toc[:5]:  # First 5 items
+                if isinstance(item, tuple):
+                    section, children = item
+                    debug_info["book_toc_items"].append(
+                        f"Section: {getattr(section, 'title', '?')} ({len(children)} children)"
+                    )
+                elif hasattr(item, "title"):
+                    debug_info["book_toc_items"].append(
+                        f"Link: {item.title} -> {getattr(item, 'href', '?')}"
+                    )
+
+        # Find TOC-related items in EPUB
+        for item in self.book.get_items():
+            item_type = item.get_type()
+            item_name = item.get_name()
+            if "toc" in item_name.lower() or "ncx" in item_name.lower():
+                debug_info["toc_items"].append({"name": item_name, "type": item_type})
+
+        # Check NAV
+        nav_item = self._find_nav_document()
+        if nav_item:
+            debug_info["nav_found"] = True
+            debug_info["nav_name"] = nav_item.get_name()
+
+        # Check NCX
+        ncx_item = self._find_ncx()
+        if ncx_item:
+            debug_info["ncx_found"] = True
+            debug_info["ncx_name"] = ncx_item.get_name()
+
+        return debug_info
+
     def parse(self) -> ChapterNode:
         """Parse the TOC and return the chapter hierarchy."""
         root = ChapterNode(title="Root", level=0)
 
+        # Use ebooklib's pre-parsed TOC structure (most reliable method)
+        if hasattr(self.book, "toc") and self.book.toc:
+            logger.debug("TOC Parser: using ebooklib toc (%d items)", len(self.book.toc))
+            self._parse_ebooklib_toc(self.book.toc, root, play_order=[0])
+            if root.children:
+                return root
+
+        # Fall back to manual parsing if book.toc is empty
+        logger.debug("TOC Parser: book.toc empty, trying manual NAV/NCX parsing...")
+
         # Try EPUB3 NAV first (preferred)
         nav_item = self._find_nav_document()
+        logger.debug("TOC Parser: NAV document found: %s", nav_item is not None)
         if nav_item:
+            logger.debug("  NAV item name: %s", nav_item.get_name())
             self._parse_nav(nav_item, root)
+            logger.debug("  After NAV parse: %d children", len(root.children))
             if root.children:
                 return root
 
         # Fall back to EPUB2 NCX
         ncx_item = self._find_ncx()
+        logger.debug("TOC Parser: NCX item found: %s", ncx_item is not None)
         if ncx_item:
+            logger.debug("  NCX item name: %s", ncx_item.get_name())
             self._parse_ncx(ncx_item, root)
+            logger.debug("  After NCX parse: %d children", len(root.children))
 
         return root
+
+    def _parse_ebooklib_toc(self, toc_items: list, parent: ChapterNode, play_order: list[int]):
+        """Parse ebooklib's pre-parsed TOC structure.
+
+        ebooklib parses NAV/NCX into book.toc which contains:
+        - Link objects with title and href attributes
+        - Tuples of (Section, [children]) for nested chapters
+        """
+        for item in toc_items:
+            if isinstance(item, tuple):
+                # Nested section: (Section, [children])
+                section, children = item
+                title = getattr(section, "title", str(section))
+                href = getattr(section, "href", "")
+
+                file_href, anchor = self._split_href(href) if href else ("", None)
+
+                play_order[0] += 1
+                chapter = ChapterNode(
+                    title=title, href=file_href, anchor=anchor, play_order=play_order[0]
+                )
+                parent.add_child(chapter)
+
+                # Recursively parse children
+                if children:
+                    self._parse_ebooklib_toc(children, chapter, play_order)
+            elif hasattr(item, "title") and hasattr(item, "href"):
+                # Link object
+                title = item.title
+                href = item.href
+
+                file_href, anchor = self._split_href(href) if href else ("", None)
+
+                play_order[0] += 1
+                chapter = ChapterNode(
+                    title=title, href=file_href, anchor=anchor, play_order=play_order[0]
+                )
+                parent.add_child(chapter)
 
     def _find_nav_document(self) -> Any | None:
         """Find the EPUB3 navigation document."""
@@ -481,20 +590,82 @@ class ChapterDetector:
     def __init__(
         self,
         epub_path: str,
-        method: DetectionMethod = DetectionMethod.COMBINED,
+        method: DetectionMethod | str = DetectionMethod.COMBINED,
         max_depth: int | None = None,
-        hierarchy_style: HierarchyStyle = HierarchyStyle.FLAT,
+        hierarchy_style: HierarchyStyle | str = HierarchyStyle.FLAT,
+        filter_config: FilterConfig | None = None,
     ):
         self.epub_path = epub_path
-        self.method = method
+        # Convert string to enum if needed
+        if isinstance(method, str):
+            self.method = DetectionMethod(method)
+        else:
+            self.method = method
         self.max_depth = max_depth
-        self.hierarchy_style = hierarchy_style
+        if isinstance(hierarchy_style, str):
+            self.hierarchy_style = HierarchyStyle(hierarchy_style)
+        else:
+            self.hierarchy_style = hierarchy_style
+        self.filter_config = filter_config
 
         self.book = epub.read_epub(epub_path)
         self.toc_parser = TOCParser(epub_path)
         self.heading_detector = HeadingDetector()
 
         self._chapter_tree: ChapterNode | None = None
+        self._content_stats: dict[str, int] | None = None
+        self._content_debug: list[dict] = []  # Detailed debug info per chapter
+        self._filter_result: FilterResult | None = None
+
+    def get_content_debug(self) -> list[dict]:
+        """Return detailed debug info for content extraction.
+
+        Each entry contains:
+        - title: Chapter title
+        - href: Chapter href
+        - anchor: Chapter anchor (if any)
+        - method: Extraction method used
+        - element_type: Type of element anchor points to
+        - has_internal_heading: Whether container has heading inside
+        - elements_scanned: Number of elements scanned
+        - paragraphs_found: Number of paragraphs extracted
+        - stop_reason: Why extraction stopped
+        """
+        return self._content_debug
+
+    def get_toc_debug(self) -> dict:
+        """Get debug info about TOC parsing from the TOCParser."""
+        return self.toc_parser.get_toc_debug()
+
+    def get_content_stats(self) -> dict[str, int] | None:
+        """Return content extraction statistics.
+
+        Returns dict with keys:
+        - total: Total chapters processed
+        - with_content: Chapters that have content
+        - no_href: Chapters with no href attribute
+        - href_not_found: Chapters where href wasn't found in EPUB
+        - anchor_found: Chapters extracted via anchor
+        - heading_match: Chapters extracted via heading match
+        - full_file: Chapters extracted as full file
+        - file_already_processed: Chapters skipped (file already used)
+        - no_paragraphs: Chapters with no extracted paragraphs
+        """
+        return self._content_stats
+
+    def get_detection_debug(self) -> list[dict]:
+        """Get raw detection results (hrefs/anchors before content population).
+
+        Useful for debugging to see what the detection method found.
+        """
+        return getattr(self, "_detection_debug", [])
+
+    def get_filter_result(self) -> FilterResult | None:
+        """Get the result of content filtering.
+
+        Returns None if no filtering was applied.
+        """
+        return self._filter_result
 
     def detect(self) -> ChapterNode:
         """
@@ -511,6 +682,32 @@ class ChapterDetector:
             self._chapter_tree = self._detect_combined()
         else:  # AUTO
             self._chapter_tree = self._detect_auto()
+
+        # Store detection results BEFORE content population for debugging
+        self._detection_debug = []
+        for ch in self._chapter_tree.flatten():
+            self._detection_debug.append(
+                {
+                    "title": ch.title[:40],
+                    "href": os.path.basename(ch.href) if ch.href else None,
+                    "anchor": ch.anchor,
+                }
+            )
+
+        # Debug: Log what detection returned BEFORE content population
+        method_name = self.method.value if hasattr(self.method, "value") else self.method
+        logger.debug(
+            "Detection method %s returned %d chapters",
+            method_name,
+            len(self._chapter_tree.flatten()),
+        )
+        for ch in self._chapter_tree.flatten()[:5]:
+            logger.debug(
+                "  BEFORE populate: '%s' -> href=%s, anchor=%s",
+                ch.title[:30],
+                ch.href,
+                ch.anchor,
+            )
 
         # Populate content for all chapters
         self._populate_content(self._chapter_tree)
@@ -563,15 +760,20 @@ class ChapterDetector:
         # Start with TOC structure
         toc_tree = self._detect_from_toc()
 
-        # If TOC is empty or shallow, enhance with headings
-        if not toc_tree.children or toc_tree.get_depth() < 2:
+        # If TOC has chapters with hrefs, prefer it - the TOC has authoritative
+        # links to actual content files, while headings might find matching titles
+        # in notes/index files with wrong hrefs
+        if toc_tree.children:
+            # TOC has content - only use headings to add subsections, never replace
             headings_tree = self._detect_from_headings()
-
-            if headings_tree.get_depth() > toc_tree.get_depth():
-                return headings_tree
-
-            # Merge heading info into TOC
             self._merge_headings_into_toc(toc_tree, headings_tree)
+            return toc_tree
+
+        # TOC is empty - fall back to headings detection
+        headings_tree = self._detect_from_headings()
+        if headings_tree.children:
+            logger.info("TOC empty, using headings detection")
+            return headings_tree
 
         return toc_tree
 
@@ -665,19 +867,64 @@ class ChapterDetector:
 
                 # Add headings that aren't already represented
                 for heading in headings:
-                    if heading.title != toc_chapter.title:
-                        # Check if this is a sub-section
-                        if heading.level > 1 and not toc_chapter.children:
-                            toc_chapter.add_child(
-                                ChapterNode(
-                                    title=heading.title,
-                                    level=toc_chapter.level + 1,
-                                    href=heading.href,
-                                    anchor=heading.anchor,
-                                    paragraphs=heading.paragraphs,
-                                    play_order=heading.play_order,
-                                )
+                    # Skip if this heading is the same chapter (exact match)
+                    if heading.title == toc_chapter.title:
+                        continue
+
+                    # Skip if this heading is a partial match of the TOC title
+                    # (e.g., "One" is part of "One: Force and Signification")
+                    heading_lower = heading.title.lower().strip()
+                    toc_lower = toc_chapter.title.lower().strip()
+
+                    # Check substring match
+                    if heading_lower in toc_lower or toc_lower in heading_lower:
+                        logger.debug(
+                            "Skipping heading '%s' - substring match of TOC '%s'",
+                            heading.title[:30],
+                            toc_chapter.title[:30],
+                        )
+                        continue
+
+                    # Check significant word overlap (for cases like
+                    # "Violence and Metaphysics An Essay..." matching
+                    # "Four: Violence and Metaphysics: An Essay on the Th...")
+                    heading_words = set(re.findall(r"\b[a-z]{3,}\b", heading_lower))
+                    toc_words = set(re.findall(r"\b[a-z]{3,}\b", toc_lower))
+                    if heading_words and toc_words:
+                        overlap = heading_words & toc_words
+                        # If >50% of heading words appear in TOC title, likely same chapter
+                        if len(overlap) >= len(heading_words) * 0.5:
+                            logger.debug(
+                                "Skipping heading '%s' - word overlap with TOC '%s' (%d/%d words)",
+                                heading.title[:30],
+                                toc_chapter.title[:30],
+                                len(overlap),
+                                len(heading_words),
                             )
+                            continue
+
+                    # Skip dedication-style headings (e.g., "for Paule Thévenin")
+                    # These are usually epigraphs, not actual subsections
+                    if heading_lower.startswith("for ") and len(heading_lower) < 50:
+                        logger.debug(
+                            "Skipping heading '%s' - appears to be dedication",
+                            heading.title[:30],
+                        )
+                        continue
+
+                    # Check if this is a sub-section
+                    # Add ALL valid subsections (removed "not toc_chapter.children" check)
+                    if heading.level > 1:
+                        toc_chapter.add_child(
+                            ChapterNode(
+                                title=heading.title,
+                                level=toc_chapter.level + 1,
+                                href=heading.href,
+                                anchor=heading.anchor,
+                                paragraphs=heading.paragraphs,
+                                play_order=heading.play_order,
+                            )
+                        )
 
     def _populate_content(self, root: ChapterNode):
         """Populate paragraph content for all chapters."""
@@ -689,12 +936,38 @@ class ChapterDetector:
                 # Also map by basename
                 content_map[os.path.basename(item.get_name())] = item.get_content()
 
+        logger.debug("Content map has %d documents", len(content_map) // 2)
+
+        # Track which files have been fully processed (to avoid duplicate content)
+        files_fully_processed: set[str] = set()
+
+        # Track content extraction stats for debugging
+        stats = {
+            "total": 0,
+            "no_href": 0,
+            "href_not_found": 0,
+            "anchor_found": 0,
+            "heading_match": 0,
+            "full_file": 0,
+            "file_already_processed": 0,
+            "no_paragraphs": 0,
+            "with_content": 0,
+        }
+
+        # Clear and collect detailed debug info
+        self._content_debug = []
+
         for chapter in root.flatten():
+            stats["total"] += 1
+
             if chapter.paragraphs:  # Already has content
+                stats["with_content"] += 1
                 continue
 
             href = chapter.href
             if not href:
+                logger.debug("Chapter '%s': no href", chapter.title[:50])
+                stats["no_href"] += 1
                 continue
 
             # Find content
@@ -703,29 +976,190 @@ class ChapterDetector:
                 content = content_map.get(os.path.basename(href))
 
             if not content:
+                logger.debug(
+                    "Chapter '%s': href '%s' not found in content map",
+                    chapter.title[:50],
+                    href,
+                )
+                stats["href_not_found"] += 1
                 continue
+
+            # Normalize href for tracking
+            href_key = os.path.basename(href) if href else ""
 
             # Extract paragraphs
             soup = BeautifulSoup(content, "html.parser")
 
             # If there's an anchor, try to find content after it
             start_elem = None
+            extraction_method = "none"
+
             if chapter.anchor:
                 start_elem = soup.find(id=chapter.anchor)
+                if start_elem:
+                    extraction_method = "anchor"
+                    stats["anchor_found"] += 1
+                    logger.debug(
+                        "Chapter '%s': found anchor #%s -> <%s>",
+                        chapter.title[:50],
+                        chapter.anchor,
+                        start_elem.name,
+                    )
+
+            # If no anchor, try to find a heading that matches the chapter title
+            if not start_elem and chapter.title:
+                # Look for a heading that matches this chapter's title
+                for heading in soup.find_all(HeadingDetector.HEADING_TAGS):
+                    heading_text = heading.get_text(strip=True)
+                    # Check for exact or partial match
+                    if heading_text and (
+                        heading_text.lower() == chapter.title.lower()
+                        or chapter.title.lower() in heading_text.lower()
+                        or heading_text.lower() in chapter.title.lower()
+                    ):
+                        start_elem = heading
+                        extraction_method = "heading_match"
+                        stats["heading_match"] += 1
+                        logger.debug(
+                            "Chapter '%s': matched heading '%s'",
+                            chapter.title[:50],
+                            heading_text[:50],
+                        )
+                        break
+
+            # Collect child stop markers to avoid content duplication
+            # If this chapter has children in the same file, stop at first child
+            child_stop_anchors: set[str] = set()
+            child_stop_titles: set[str] = set()
+            for child in chapter.children:
+                if child.href and os.path.basename(child.href) == href_key:
+                    if child.anchor:
+                        child_stop_anchors.add(child.anchor)
+                    if child.title:
+                        child_stop_titles.add(child.title.lower())
 
             paragraphs = []
+            elements_seen = 0
+            stop_reason = None
+            start_level = None
 
             if start_elem:
-                # Get content after the anchor element
+                # Determine the heading level to know when to stop
+                # If anchor points to a container (section/div), the first heading
+                # INSIDE that container is "our" heading - we should skip past it
+
+                if start_elem.name in HeadingDetector.HEADING_TAGS:
+                    # Start element IS a heading, use its level
+                    start_level = int(start_elem.name[1])
+                    logger.debug(
+                        "Chapter '%s': start_elem IS heading h%d",
+                        chapter.title[:30],
+                        start_level,
+                    )
+                else:
+                    # Start element is a container - look for heading INSIDE it
+                    # Only skip headings that are descendants of start_elem
+                    own_heading = start_elem.find(HeadingDetector.HEADING_TAGS)
+                    if own_heading:
+                        start_level = int(own_heading.name[1])
+                        logger.debug(
+                            "Chapter '%s': container <%s> has heading h%d inside",
+                            chapter.title[:30],
+                            start_elem.name,
+                            start_level,
+                        )
+                    else:
+                        logger.debug(
+                            "Chapter '%s': container <%s> has NO heading inside",
+                            chapter.title[:30],
+                            start_elem.name,
+                        )
+
+                # Get content after the anchor/heading element
+                elements_seen = 0
+                stop_reason = None
                 for sibling in start_elem.find_all_next():
-                    if sibling.name in HeadingDetector.HEADING_TAGS:
-                        # Stop at next heading
+                    elements_seen += 1
+
+                    # Check for child chapter stop markers (to avoid content duplication)
+                    # Stop at child anchor
+                    if child_stop_anchors and sibling.get("id") in child_stop_anchors:
+                        stop_reason = f"hit child anchor #{sibling.get('id')}"
                         break
+
+                    # Stop at child heading title
+                    if child_stop_titles and sibling.name in HeadingDetector.HEADING_TAGS:
+                        sibling_text = sibling.get_text(strip=True).lower()
+                        if sibling_text in child_stop_titles:
+                            stop_reason = f"hit child heading '{sibling_text[:30]}'"
+                            break
+
+                    if sibling.name in HeadingDetector.HEADING_TAGS:
+                        sibling_level = int(sibling.name[1])
+
+                        # If this heading is inside our container, skip it (it's "ours")
+                        # Check by seeing if start_elem contains this sibling
+                        if start_elem in sibling.parents or start_elem == sibling:
+                            # This heading is our own or we ARE the heading
+                            logger.debug(
+                                "Chapter '%s': skipping internal heading <%s>",
+                                chapter.title[:30],
+                                sibling.name,
+                            )
+                            continue
+
+                        # External heading - check if we should stop
+                        if start_level is None or sibling_level <= start_level:
+                            # Same or higher level heading
+                            # BUT: If we haven't found any paragraphs yet, this might
+                            # be a subtitle/epigraph - continue past it
+                            if not paragraphs:
+                                logger.debug(
+                                    "Chapter '%s': continuing past <%s> (no content yet)",
+                                    chapter.title[:30],
+                                    sibling.name,
+                                )
+                                continue
+                            # We have content, so stop here
+                            stop_reason = f"hit external <{sibling.name}> (level {sibling_level} <= {start_level})"
+                            break
+                        # Otherwise, this is a sub-heading - continue past it
+
                     if sibling.name == "p":
                         text = sibling.get_text(strip=True)
                         if text:
                             paragraphs.append(text)
+                    # Also check for blockquote (some books use these for epigraphs/quotes)
+                    elif sibling.name == "blockquote":
+                        for p in sibling.find_all("p"):
+                            text = p.get_text(strip=True)
+                            if text:
+                                paragraphs.append(text)
+
+                logger.debug(
+                    "Chapter '%s': scanned %d elements, found %d paragraphs, stop=%s",
+                    chapter.title[:30],
+                    elements_seen,
+                    len(paragraphs),
+                    stop_reason or "end of doc",
+                )
             else:
+                # No anchor and no matching heading found
+                # Only process if this file hasn't been fully processed yet
+                if href_key in files_fully_processed:
+                    # This file's content was already assigned to another chapter
+                    # Skip to avoid duplicate content
+                    logger.debug(
+                        "Chapter '%s': file '%s' already processed",
+                        chapter.title[:50],
+                        href_key,
+                    )
+                    stats["file_already_processed"] += 1
+                    continue
+
+                extraction_method = "full_file"
+                stats["full_file"] += 1
+
                 # Get all paragraphs from the file
                 # Remove link-only text (footnotes)
                 for a in soup.find_all("a", href=True):
@@ -744,11 +1178,63 @@ class ChapterDetector:
                         if text and len(text) > 20:  # Skip short divs
                             paragraphs.append(text)
 
+                # Mark this file as fully processed
+                if paragraphs:
+                    files_fully_processed.add(href_key)
+
             chapter.paragraphs = paragraphs
+
+            # Collect debug info for chapters without content
+            if not paragraphs:
+                stats["no_paragraphs"] += 1
+                # Count p tags in the document to see if we're missing them
+                all_p_tags = len(soup.find_all("p")) if soup else 0
+                debug_info = {
+                    "title": chapter.title[:50],
+                    "href": os.path.basename(href) if href else None,
+                    "anchor": chapter.anchor,
+                    "method": extraction_method,
+                    "element_type": start_elem.name if start_elem else None,
+                    "start_level": start_level,
+                    "elements_scanned": elements_seen,
+                    "stop_reason": stop_reason if stop_reason else "end of doc",
+                    "p_tags_in_file": all_p_tags,
+                }
+                self._content_debug.append(debug_info)
+                logger.warning(
+                    "Chapter '%s': NO PARAGRAPHS - %s",
+                    chapter.title[:50],
+                    debug_info,
+                )
+            else:
+                stats["with_content"] += 1
+                logger.debug(
+                    "Chapter '%s': extracted %d paragraphs via %s",
+                    chapter.title[:50],
+                    len(paragraphs),
+                    extraction_method,
+                )
+
+        # Log summary stats
+        logger.info(
+            "Content extraction stats: %d total chapters, %d with content, "
+            "%d no paragraphs, %d no href, %d href not found",
+            stats["total"],
+            stats["with_content"],
+            stats["no_paragraphs"],
+            stats["no_href"],
+            stats["href_not_found"],
+        )
+
+        # Store stats for external access
+        self._content_stats = stats
 
     def get_flat_chapters(self) -> list[dict[str, Any]]:
         """
         Get a flat list of chapters suitable for audiobook generation.
+
+        If filter_config is set, applies content filtering to remove
+        front/back matter and optionally inline notes.
 
         Returns:
             List of chapter dictionaries with title and paragraphs
@@ -756,8 +1242,23 @@ class ChapterDetector:
         if not self._chapter_tree:
             self.detect()
 
+        # Get all chapters
+        all_nodes = self._chapter_tree.flatten(self.max_depth)
+
+        # Apply content filtering if configured
+        if self.filter_config and self.filter_config.is_filtering_enabled():
+            from .content_filter import ContentFilter
+
+            content_filter = ContentFilter(self.filter_config)
+            all_nodes, self._filter_result = content_filter.filter_chapters(all_nodes)
+            logger.info(
+                "Content filtering: %d -> %d chapters",
+                self._filter_result.original_count,
+                self._filter_result.filtered_count,
+            )
+
         chapters = []
-        for node in self._chapter_tree.flatten(self.max_depth):
+        for node in all_nodes:
             formatted_title = node.format_title(self.hierarchy_style)
             chapters.append(
                 {

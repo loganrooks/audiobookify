@@ -4,6 +4,7 @@ import re
 import sys
 import warnings
 import zipfile
+from pathlib import Path
 from typing import BinaryIO
 
 import ebooklib
@@ -21,6 +22,9 @@ from .audio_generator import (
     read_book,
 )
 from .chapter_detector import ChapterDetector, DetectionMethod, HierarchyStyle
+from .content_filter import FilterConfig
+from .core import ConversionPipeline, PipelineConfig
+from .job_manager import JobManager
 from .logger import get_logger, setup_logging
 from .mobi_parser import (
     MobiParseError,
@@ -138,6 +142,7 @@ def export(
     detection_method: str = "combined",
     max_depth: int | None = None,
     hierarchy_style: str = "flat",
+    filter_config: FilterConfig | None = None,
 ) -> str:
     """Export EPUB to text file with enhanced chapter detection.
 
@@ -147,6 +152,7 @@ def export(
         detection_method: Chapter detection method ('toc', 'headings', 'combined', 'auto')
         max_depth: Maximum chapter depth to include (None for all)
         hierarchy_style: How to format chapter titles ('flat', 'numbered', 'indented', 'arrow', 'breadcrumb')
+        filter_config: Optional content filter configuration
     """
     # Extract cover image
     cover_image = get_epub_cover(sourcefile)
@@ -173,7 +179,11 @@ def export(
         style_enum = HierarchyStyle.FLAT
 
     detector = ChapterDetector(
-        sourcefile, method=method_enum, max_depth=max_depth, hierarchy_style=style_enum
+        sourcefile,
+        method=method_enum,
+        max_depth=max_depth,
+        hierarchy_style=style_enum,
+        filter_config=filter_config,
     )
 
     # Detect and export
@@ -530,6 +540,14 @@ Hierarchy Styles:
         help="Duration of pause after paragraph, in milliseconds (default: 1200)",
     )
 
+    # Directory configuration options
+    parser.add_argument(
+        "--base-dir",
+        type=str,
+        default=None,
+        help="Base directory for Audiobookify data (default: platform-specific, e.g., ~/.audiobookify)",
+    )
+
     # Enhanced chapter detection options
     parser.add_argument(
         "--detect",
@@ -558,6 +576,33 @@ Hierarchy Styles:
         "--preview",
         action="store_true",
         help="Preview detected chapters without exporting (EPUB only)",
+    )
+
+    # Content filtering options
+    parser.add_argument(
+        "--remove-front-matter",
+        action="store_true",
+        help="Remove front matter (cover, title page, contents, etc.)",
+    )
+    parser.add_argument(
+        "--remove-back-matter",
+        action="store_true",
+        help="Remove back matter (notes, index, bibliography, etc.)",
+    )
+    parser.add_argument(
+        "--remove-all-matter",
+        action="store_true",
+        help="Remove both front and back matter (shortcut for --remove-front-matter --remove-back-matter)",
+    )
+    parser.add_argument(
+        "--no-translator-preface",
+        action="store_true",
+        help="Also remove translator's preface/introduction when filtering front matter",
+    )
+    parser.add_argument(
+        "--remove-inline-notes",
+        action="store_true",
+        help="Remove inline endnotes that appear at the end of chapters",
     )
 
     # Batch processing options
@@ -695,7 +740,10 @@ Hierarchy Styles:
         help="Delay in seconds between retry attempts (default: 3)",
     )
     parser.add_argument(
-        "--max-concurrent", type=int, default=10, help="Maximum concurrent TTS tasks (default: 10)"
+        "--max-concurrent",
+        type=int,
+        default=5,
+        help="Maximum concurrent TTS tasks (default: 5)",
     )
 
     # Logging options
@@ -717,6 +765,13 @@ Hierarchy Styles:
         setup_logging(level=logging.WARNING)
     else:
         setup_logging(level=logging.INFO)
+
+    # Initialize configuration with custom base directory if provided
+    if args.base_dir:
+        from .config import init_config
+
+        config = init_config(args.base_dir)
+        logger.debug("Using custom base directory: %s", config.base_dir)
 
     # Handle voice listing
     if args.list_voices:
@@ -845,6 +900,25 @@ Hierarchy Styles:
     if args.sourcefile.endswith(".epub"):
         book = epub.read_epub(args.sourcefile)
 
+        # Create content filter config from CLI args
+        filter_config = None
+        remove_front = args.remove_front_matter or args.remove_all_matter
+        remove_back = args.remove_back_matter or args.remove_all_matter
+        if remove_front or remove_back or args.remove_inline_notes:
+            filter_config = FilterConfig(
+                remove_front_matter=remove_front,
+                remove_back_matter=remove_back,
+                include_translator_content=not args.no_translator_preface,
+                remove_inline_notes=args.remove_inline_notes,
+            )
+            logger.info(
+                "Content filtering enabled: front=%s, back=%s, translator=%s, inline_notes=%s",
+                remove_front,
+                remove_back,
+                not args.no_translator_preface,
+                args.remove_inline_notes,
+            )
+
         # Preview mode - just show detected structure
         if args.preview:
             logger.info("Previewing chapter detection...")
@@ -860,6 +934,7 @@ Hierarchy Styles:
                 method=method_enum,
                 max_depth=args.max_depth,
                 hierarchy_style=style_enum,
+                filter_config=filter_config,
             )
             detector.detect()
             logger.info("Detected chapter structure:")
@@ -869,19 +944,89 @@ Hierarchy Styles:
             chapters = detector.get_flat_chapters()
             total_paragraphs = sum(len(c["paragraphs"]) for c in chapters)
             logger.info("Summary: %d chapters, %d paragraphs", len(chapters), total_paragraphs)
+
+            # Show filter results if filtering was applied
+            filter_result = detector.get_filter_result()
+            if filter_result:
+                logger.info("Content filtering results:")
+                logger.info(filter_result.get_summary())
+
             sys.exit(0)
 
-        # Use legacy or enhanced export
-        if args.legacy:
-            export_legacy(book, args.sourcefile)
+        # Export-only or legacy mode: just export to text and exit
+        if args.export_only or args.legacy:
+            if args.legacy:
+                export_legacy(book, args.sourcefile)
+            else:
+                export(
+                    book,
+                    args.sourcefile,
+                    detection_method=args.detect,
+                    max_depth=args.max_depth,
+                    hierarchy_style=args.hierarchy,
+                    filter_config=filter_config,
+                )
+            sys.exit(0)
+
+        # Full conversion: EPUB → audiobook via ConversionPipeline
+        logger.info("Starting full EPUB to audiobook conversion...")
+
+        # Build pipeline configuration from CLI args
+        pipeline_config = PipelineConfig(
+            speaker=args.speaker,
+            rate=args.rate,
+            volume=args.volume,
+            detection_method=args.detect,
+            hierarchy_style=args.hierarchy,
+            max_depth=args.max_depth,
+            filter_config=filter_config,
+            normalize_audio=args.normalize,
+            normalize_target=args.normalize_target,
+            normalize_method=args.normalize_method,
+            trim_silence=args.trim_silence,
+            silence_threshold=args.silence_thresh,
+            max_silence_ms=args.max_silence,
+            sentence_pause=args.sentencepause,
+            paragraph_pause=args.paragraphpause,
+            max_concurrent=args.max_concurrent,
+            retry_count=args.retry_count,
+            retry_delay=args.retry_delay,
+            pronunciation_dict=args.pronunciation,
+            voice_mapping=args.voice_mapping,
+            narrator_voice=args.narrator_voice,
+        )
+
+        # Run conversion pipeline
+        job_manager = JobManager()
+        pipeline = ConversionPipeline(job_manager, pipeline_config)
+
+        # Extract metadata for job naming
+        title = None
+        author = None
+        try:
+            title_meta = book.get_metadata("DC", "title")
+            author_meta = book.get_metadata("DC", "creator")
+            if title_meta:
+                title = title_meta[0][0]
+            if author_meta:
+                author = author_meta[0][0]
+        except Exception:
+            pass
+
+        result = pipeline.run(
+            Path(args.sourcefile),
+            title=title,
+            author=author,
+        )
+
+        if result.success:
+            logger.info("Audiobook created: %s", result.output_path)
+            if result.filter_result:
+                logger.info("Content filtering: %s", result.filter_result.get_summary())
         else:
-            export(
-                book,
-                args.sourcefile,
-                detection_method=args.detect,
-                max_depth=args.max_depth,
-                hierarchy_style=args.hierarchy,
-            )
+            logger.error("Conversion failed: %s", result.error)
+            sys.exit(1)
+
         sys.exit(0)
 
     # If we get a MOBI/AZW file, export that to txt file, then exit
@@ -930,21 +1075,40 @@ Hierarchy Styles:
             return
         logger.info("Processing %d selected chapters", len(book_contents))
 
+    # Create job in centralized directory system
+    from .config import get_config
+
+    config = get_config()
+    job_manager = JobManager()
+    job = job_manager.create_job(
+        source_file=args.sourcefile,
+        title=book_title,
+        author=book_author,
+        speaker=args.speaker,
+    )
+    audio_output_dir = str(job.effective_audio_dir)
+    job_output_dir = str(job.job_dir)  # Parent directory for M4B output
+    logger.info("Job created: %s", job.job_id)
+    logger.info("Job directory: %s", job_output_dir)
+    logger.info("Audio directory: %s", audio_output_dir)
+
     # State management for pause/resume
     from .pause_resume import ConversionState, StateManager
 
-    output_dir = os.path.dirname(os.path.abspath(args.sourcefile)) or "."
-    state_manager = StateManager(output_dir)
+    state_manager = StateManager(audio_output_dir)
 
     # Check for existing state
     if not args.no_resume and state_manager.has_state():
         state = state_manager.load_state()
         if state and state_manager.state_matches(args.sourcefile):
             if state.is_resumable:
-                # Check for existing intermediate files
+                # Check for existing intermediate files in audio output directory
                 existing_parts = [
                     f
-                    for f in [f"part{i}.flac" for i in range(1, len(book_contents) + 1)]
+                    for f in [
+                        os.path.join(audio_output_dir, f"part{i}.flac")
+                        for i in range(1, len(book_contents) + 1)
+                    ]
                     if os.path.isfile(f)
                 ]
                 if existing_parts:
@@ -1058,14 +1222,17 @@ Hierarchy Styles:
             multi_voice_processor=multi_voice_processor,
             retry_count=args.retry_count,
             retry_delay=args.retry_delay,
+            max_concurrent=args.max_concurrent,
+            output_dir=audio_output_dir,
         )
-        generate_metadata(files, book_author, book_title, chapter_titles)
+        generate_metadata(files, book_author, book_title, chapter_titles, output_dir=job_output_dir)
         m4bfilename = make_m4b(
             files,
             args.sourcefile,
             args.speaker,
             normalizer=normalizer,
             silence_detector=silence_detector,
+            output_dir=job_output_dir,
         )
 
         # Handle cover image

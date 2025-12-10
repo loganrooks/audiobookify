@@ -170,6 +170,29 @@ abfy-tui [folder]                      # Short alias
 | `--voice-mapping` | Path to voice mapping JSON file (v2.2.0) |
 | `--narrator-voice` | Voice for narration (non-dialogue) (v2.2.0) |
 
+## Session Initialization
+
+At the start of each session:
+1. Check `git status` and `git branch` to understand current state
+2. Read Serena memory `lessons_learned` to review common mistakes
+3. Read relevant session memories if continuing previous work
+
+## Git Workflow Rules
+
+**CRITICAL**: Always follow this sequence for commits:
+1. Run tests: `python -m pytest tests/ -v`
+2. Format code: `ruff format .`
+3. Check lint: `ruff check .` (fix with `--fix` if needed)
+4. Commit AND push together: `git add -A && git commit -m "message" && git push`
+5. Verify push succeeded with `git status`
+
+**Never leave commits unpushed.** The commit is not complete until pushed.
+
+**Preferred pattern** - combine commit and push in one command:
+```bash
+git add -A && git commit -m "descriptive message" && git push
+```
+
 ## Development
 
 ### Running Tests

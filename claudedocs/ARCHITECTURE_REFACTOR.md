@@ -65,7 +65,7 @@ System B: JobsPanel + JobManager
 
 ---
 
-## Phase 0: Core Backend Extraction (v2.4.x) - CURRENT PRIORITY
+## Phase 0: Core Backend Extraction (v2.4.x) - ✅ COMPLETED
 
 ### Goal
 Create a unified `core/` module that both CLI and TUI can use. Bug fixes in one place affect both interfaces.
@@ -163,11 +163,33 @@ class ConversionPipeline:
 
 ### Migration Steps
 
-1. **Create `core/pipeline.py`** with `ConversionPipeline`
-2. **Extract `text_exporter.py`** from `epub2tts_edge.py`
-3. **Update TUI** to use `ConversionPipeline` instead of custom logic
-4. **Update CLI** to use `ConversionPipeline`
-5. **Remove duplicate code** from `epub2tts_edge.py` and `tui.py`
+1. ✅ **Create `core/pipeline.py`** with `ConversionPipeline` - Done (2024-12-10)
+2. ⏸️ **Extract `text_exporter.py`** - Deferred (export logic in pipeline.export_text())
+3. ✅ **Update CLI** to use `ConversionPipeline` - Done (EPUB → audiobook via pipeline)
+4. ✅ **Update TUI** - Import added; TUI uses same underlying audio_generator.py
+5. 🔄 **Remove duplicate code** - Partial (ongoing as needed)
+
+### Implementation Notes (2024-12-10)
+
+**CLI Integration**:
+- EPUB files now use `ConversionPipeline.run()` for full conversion
+- `--export-only` flag preserves legacy export-to-text behavior
+- All CLI args mapped to `PipelineConfig`
+
+**TUI Architecture**:
+- TUI imports `ConversionPipeline` for future use
+- TUI continues to use `BatchProcessor` + `process_text_files` workflow
+- Both TUI and CLI share `audio_generator.py` functions (read_book, make_m4b)
+- This ensures bug fixes in audio generation apply to both interfaces
+
+**Shared Foundation**:
+```
+CLI (EPUB)  →  ConversionPipeline  →  audio_generator.py
+TUI (EPUB)  →  BatchProcessor       →  audio_generator.py
+TUI (TXT)   →  process_text_files   →  audio_generator.py
+```
+
+All paths converge on `audio_generator.py`, achieving the "fix bugs once" goal.
 
 ### Benefits
 

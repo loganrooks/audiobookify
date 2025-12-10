@@ -4,6 +4,7 @@ import re
 import sys
 import warnings
 import zipfile
+from pathlib import Path
 from typing import BinaryIO
 
 import ebooklib
@@ -22,6 +23,8 @@ from .audio_generator import (
 )
 from .chapter_detector import ChapterDetector, DetectionMethod, HierarchyStyle
 from .content_filter import FilterConfig
+from .core import ConversionPipeline, PipelineConfig
+from .job_manager import JobManager
 from .logger import get_logger, setup_logging
 from .mobi_parser import (
     MobiParseError,
@@ -950,18 +953,80 @@ Hierarchy Styles:
 
             sys.exit(0)
 
-        # Use legacy or enhanced export
-        if args.legacy:
-            export_legacy(book, args.sourcefile)
+        # Export-only or legacy mode: just export to text and exit
+        if args.export_only or args.legacy:
+            if args.legacy:
+                export_legacy(book, args.sourcefile)
+            else:
+                export(
+                    book,
+                    args.sourcefile,
+                    detection_method=args.detect,
+                    max_depth=args.max_depth,
+                    hierarchy_style=args.hierarchy,
+                    filter_config=filter_config,
+                )
+            sys.exit(0)
+
+        # Full conversion: EPUB → audiobook via ConversionPipeline
+        logger.info("Starting full EPUB to audiobook conversion...")
+
+        # Build pipeline configuration from CLI args
+        pipeline_config = PipelineConfig(
+            speaker=args.speaker,
+            rate=args.rate,
+            volume=args.volume,
+            detection_method=args.detect,
+            hierarchy_style=args.hierarchy,
+            max_depth=args.max_depth,
+            filter_config=filter_config,
+            normalize_audio=args.normalize,
+            normalize_target=args.normalize_target,
+            normalize_method=args.normalize_method,
+            trim_silence=args.trim_silence,
+            silence_threshold=args.silence_thresh,
+            max_silence_ms=args.max_silence,
+            sentence_pause=args.sentencepause,
+            paragraph_pause=args.paragraphpause,
+            max_concurrent=args.max_concurrent,
+            retry_count=args.retry_count,
+            retry_delay=args.retry_delay,
+            pronunciation_dict=args.pronunciation,
+            voice_mapping=args.voice_mapping,
+            narrator_voice=args.narrator_voice,
+        )
+
+        # Run conversion pipeline
+        job_manager = JobManager()
+        pipeline = ConversionPipeline(job_manager, pipeline_config)
+
+        # Extract metadata for job naming
+        title = None
+        author = None
+        try:
+            title_meta = book.get_metadata("DC", "title")
+            author_meta = book.get_metadata("DC", "creator")
+            if title_meta:
+                title = title_meta[0][0]
+            if author_meta:
+                author = author_meta[0][0]
+        except Exception:
+            pass
+
+        result = pipeline.run(
+            Path(args.sourcefile),
+            title=title,
+            author=author,
+        )
+
+        if result.success:
+            logger.info("Audiobook created: %s", result.output_path)
+            if result.filter_result:
+                logger.info("Content filtering: %s", result.filter_result.get_summary())
         else:
-            export(
-                book,
-                args.sourcefile,
-                detection_method=args.detect,
-                max_depth=args.max_depth,
-                hierarchy_style=args.hierarchy,
-                filter_config=filter_config,
-            )
+            logger.error("Conversion failed: %s", result.error)
+            sys.exit(1)
+
         sys.exit(0)
 
     # If we get a MOBI/AZW file, export that to txt file, then exit
@@ -1012,7 +1077,6 @@ Hierarchy Styles:
 
     # Create job in centralized directory system
     from .config import get_config
-    from .job_manager import JobManager
 
     config = get_config()
     job_manager = JobManager()

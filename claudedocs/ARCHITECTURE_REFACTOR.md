@@ -431,15 +431,27 @@ class OutputNaming:
 
 **Results**: app.py reduced from 4277 lines → 1995 lines (53% reduction)
 
-### Phase 2: Unified Pipeline
-- [ ] Create core/ directory
-- [ ] Implement EventBus
-- [ ] Implement ProcessingJob
-- [ ] Implement ProcessingPipeline
-- [ ] Integrate with TUI
-- [ ] Integrate with CLI
-- [ ] Deprecate old processing functions
+### Phase 2: Unified Pipeline (IN PROGRESS - 2024-12-10)
+- [x] EventBus implemented (core/events.py)
+  - EventType enum with 17 event types (job lifecycle, stages, progress, logs)
+  - Event dataclass with job reference and data payload
+  - EventBus pub-sub class with on(), emit(), on_all(), clear()
+  - Helper functions for creating common events
+- [x] ConversionPipeline extended with EventBus support
+  - Optional event_bus parameter (backward compatible)
+  - _emit() helper for safe event emission
+  - Events emitted at all key pipeline stages
+- [x] TUIEventAdapter created (tui/handlers/event_adapter.py)
+  - Bridges EventBus to TUI UI updates
+  - Thread-safe updates via call_from_thread
+  - Handles all event types with appropriate logging
+- [x] 28 tests for EventBus (tests/test_event_bus.py)
+- [ ] Integrate TUIEventAdapter with TUI processing workflows
+- [ ] Wire up events in TUI's process_files and process_text_files
+- [ ] Deprecate old callback-based processing
 - [ ] Remove deprecated code
+
+**Results so far**: EventBus system complete, 421 tests pass
 
 ### Phase 3: Configuration
 - [ ] Implement ProcessingProfile

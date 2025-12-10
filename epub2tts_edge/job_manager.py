@@ -214,11 +214,15 @@ class JobManager:
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
 
     def _sanitize_name(self, name: str) -> str:
-        """Sanitize a name for use in file paths."""
-        # Remove or replace problematic characters
-        sanitized = re.sub(r'[<>:"/\\|?*]', "_", name)
-        # Collapse multiple underscores/spaces
-        sanitized = re.sub(r"[_\s]+", "_", sanitized)
+        """Sanitize a name for use in file paths - produces clean slugs."""
+        # Lowercase
+        sanitized = name.lower()
+        # Replace spaces/underscores with underscores
+        sanitized = re.sub(r"[\s_]+", "_", sanitized)
+        # Remove non-alphanumeric except underscores and hyphens
+        sanitized = re.sub(r"[^a-z0-9_-]", "", sanitized)
+        # Collapse multiple underscores
+        sanitized = re.sub(r"_+", "_", sanitized)
         # Remove leading/trailing underscores
         sanitized = sanitized.strip("_")
         # Limit length

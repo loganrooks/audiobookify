@@ -1,18 +1,22 @@
 """Audiobookify TUI - Terminal User Interface.
 
 This package contains the TUI components organized into submodules:
-- models/: Pure data classes (PreviewChapter, ChapterPreviewState)
+- models/: Data models and status widgets (PreviewChapter, ChapterPreviewState, VoicePreviewStatus)
 - screens/: Modal screens (HelpScreen, DirectoryBrowserScreen)
-- panels/: Panel widgets (being extracted incrementally)
+- panels/: Panel widgets (FilePanel, SettingsPanel, PreviewPanel, etc.)
 - app.py: Main AudiobookifyApp class
 """
 
-# Re-export models
 # Re-export main app and entry point
-# Re-export other commonly used items from app.py for backward compatibility
-from .app import (
-    AudiobookifyApp,
-    BookTask,
+# Re-export batch processor types for backward compatibility
+from ..batch_processor import BookTask, ProcessingStatus
+from .app import AudiobookifyApp, main
+
+# Re-export models
+from .models import ChapterPreviewState, PreviewChapter, VoicePreviewStatus
+
+# Re-export panels
+from .panels import (
     ChapterPreviewItem,
     EPUBFileItem,
     FilePanel,
@@ -21,14 +25,10 @@ from .app import (
     LogPanel,
     PathInput,
     PreviewPanel,
-    ProcessingStatus,
     ProgressPanel,
     QueuePanel,
     SettingsPanel,
-    VoicePreviewStatus,
-    main,
 )
-from .models import ChapterPreviewState, PreviewChapter
 
 # Re-export screens
 from .screens import DirectoryBrowserScreen, FilteredDirectoryTree, HelpScreen
@@ -40,6 +40,7 @@ __all__ = [
     # Models
     "PreviewChapter",
     "ChapterPreviewState",
+    "VoicePreviewStatus",
     # Screens
     "HelpScreen",
     "DirectoryBrowserScreen",
@@ -58,7 +59,6 @@ __all__ = [
     "ChapterPreviewItem",
     # Other
     "PathInput",
-    "VoicePreviewStatus",
     "ProcessingStatus",
     "BookTask",
 ]

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "audiobookify"
-version = "2.3.0"
+version = "2.5.0"
 description = "Convert EPUB and MOBI/AZW files to M4B audiobooks using Microsoft Edge TTS"
 readme = "README.md"
 license = {text = "GPL-3.0"}

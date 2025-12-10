@@ -1,6 +1,6 @@
 # Audiobookify Roadmap
 
-## Current Version: 2.3.0
+## Current Version: 2.5.0
 
 ### Design Documents
 
@@ -8,8 +8,7 @@ The following design documents detail implementation plans for major features:
 
 | Document | Description | Status |
 |----------|-------------|--------|
-| [Architecture Refactor](./claudedocs/ARCHITECTURE_REFACTOR.md) | Module extraction, unified pipeline | Planning |
-| [Settings Panel Redesign](./claudedocs/SETTINGS_PANEL_REDESIGN.md) | Tabbed settings, actions separation | Planning |
+| [Architecture Refactor](./claudedocs/ARCHITECTURE_REFACTOR.md) | Module extraction, unified pipeline, EventBus | ✅ Complete (Phases 0-3) |
 | [Testing Strategy](./claudedocs/TESTING_STRATEGY.md) | TUI tests, fixtures, CI integration | Planning |
 
 ---
@@ -85,26 +84,35 @@ The following design documents detail implementation plans for major features:
 - [x] **Range/batch selection** - Enter key for anchor-based range, V key for toggle mode
 - [x] **Directory browser** - Add DirectoryTree modal for easier folder selection (📂 button, `b` key)
 - [x] **Path autocomplete** - Tab completion for directory input (Tab key in path field)
-- [ ] **Settings panel redesign** - Tabbed settings with actions separation (see [design doc](./claudedocs/SETTINGS_PANEL_REDESIGN.md))
+- [x] **Settings panel redesign** - Tabbed settings (Voice, Audio, Chapters, Advanced tabs)
 
 #### TUI Architecture (v2.5.0) - See [Architecture Refactor](./claudedocs/ARCHITECTURE_REFACTOR.md)
 
-**Phase 1: Module Extraction**
-- [ ] Extract tui.py monolith (3,372 lines) into organized modules
-- [ ] Create tui/panels/, tui/models/, tui/screens/ structure
-- [ ] Maintain backward compatibility during migration
+**Phase 0: Core Backend Extraction** ✅
+- [x] Create unified `core/pipeline.py` with `ConversionPipeline`
+- [x] CLI and TUI share `audio_generator.py` functions
 
-**Phase 2: Unified Processing Pipeline**
-- [ ] Implement EventBus for decoupled communication
-- [ ] Create unified ProcessingPipeline
-- [ ] Connect Preview workflow to JobManager
-- [ ] Single source of truth for all processing jobs
+**Phase 1: Module Extraction** ✅
+- [x] Extract tui.py monolith (4,277 → 1,995 lines, 53% reduction)
+- [x] Create tui/panels/, tui/models/, tui/screens/ structure
+- [x] Maintain backward compatibility during migration
 
-**Phase 3: Enhanced Features**
+**Phase 2: Unified Processing Pipeline** ✅
+- [x] Implement EventBus for decoupled communication (17 event types)
+- [x] Create TUIEventAdapter for thread-safe UI updates
+- [x] Wire up events in process_files and process_text_files
+- [x] Single source of truth for all processing status logging
+
+**Phase 3: Configuration Management** ✅
+- [x] Implement ProcessingProfile with 5 built-in profiles
+- [x] Add profile selection to Settings panel (Voice tab)
+- [x] Implement OutputNaming with template-based file naming
+- [x] Add output naming template dropdown (Advanced tab)
+
+**Remaining Work**
 - [ ] Multi-file preview with tabbed interface
 - [ ] Parallel job processing (configurable concurrency)
 - [ ] Progress estimation based on word count
-- [ ] Processing profiles (Quick Draft, High Quality, etc.)
 
 #### Testing Infrastructure - See [Testing Strategy](./claudedocs/TESTING_STRATEGY.md)
 - [ ] Set up TUI integration tests with Textual's AppTest
@@ -120,7 +128,8 @@ The following design documents detail implementation plans for major features:
 - [ ] **Footnote handling** - Options to inline, append, or skip footnotes
 
 #### Quality of Life
-- [ ] **Output naming templates** - Configurable "{author} - {title}.m4b" patterns
+- [x] **Output naming templates** - Configurable "{author} - {title}.m4b" patterns (6 presets + custom)
+- [x] **Processing profiles** - Quick Draft, High Quality, Audiobook, Accessibility presets
 - [ ] **Quick edit shortcuts** - Keyboard shortcuts for common edit patterns
 - [ ] **Batch chapter operations** - Apply same edit across multiple books
 
@@ -152,14 +161,14 @@ The following design documents detail implementation plans for major features:
 3. **Complex layouts** - Tables, sidebars may not extract well
 4. **Non-English** - Some languages have limited voice options
 
-### TUI Architecture Limitations (Addressed in v2.5.0)
+### TUI Architecture Improvements (Completed in v2.5.0)
 
-These are documented in [Architecture Refactor](./claudedocs/ARCHITECTURE_REFACTOR.md):
+The following architectural issues have been addressed (see [Architecture Refactor](./claudedocs/ARCHITECTURE_REFACTOR.md)):
 
-1. **tui.py monolith** - 3,372 lines mixing models, panels, and processing logic
-2. **Preview is single-file only** - Multi-file preview planned for unified pipeline
-3. **Two tracking systems** - QueuePanel and JobsPanel will be unified
-4. **Jobs panel disconnected from Preview** - Will be connected via EventBus
+1. ✅ **tui.py monolith** - Reduced from 4,277 → 1,995 lines (53% reduction)
+2. ✅ **EventBus integration** - Processing status logging via unified event system
+3. ✅ **Thread-safe UI updates** - TUIEventAdapter bridges events to UI
+4. 🔄 **Preview is single-file only** - Multi-file preview planned for future release
 
 ### Planned Fixes
 - [ ] Better error handling for network issues
@@ -186,6 +195,8 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to contribute.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 2.5.0 | 2025-12 | Architecture refactor: EventBus, processing profiles, output naming templates |
+| 2.4.0 | 2025-12 | TUI module extraction (53% code reduction), range selection, directory browser |
 | 2.3.0 | 2025-11 | MOBI/AZW format support, Docker image, Calibre plugin |
 | 2.2.0 | 2025-11 | Audio normalization, silence trimming, custom pronunciation, multi-voice |
 | 2.1.0 | 2025-11 | Voice preview, rate/volume control, chapter selection, pause/resume |

@@ -4129,27 +4129,57 @@ class AudiobookifyApp(App):
                 if detection_debug and content_stats["no_paragraphs"] > 0:
                     self.call_from_thread(
                         self.log_message,
-                        "   🔎 DETECTION RESULTS (before content extraction):",
+                        f"   🔎 DETECTION RESULTS ({len(detection_debug)} chapters):",
                     )
-                    # Show first 5 chapters to verify correct hrefs
-                    for dbg in detection_debug[:5]:
-                        self.call_from_thread(
-                            self.log_message,
-                            f"      • '{dbg['title'][:25]}': href={dbg.get('href', '?')}, anchor={dbg['anchor']}",
+                    # Show all main content chapters (skip front matter)
+                    shown = 0
+                    for dbg in detection_debug:
+                        # Skip typical front matter
+                        title_lower = dbg.get("title", "").lower()
+                        is_front_matter = any(
+                            fm in title_lower
+                            for fm in [
+                                "cover",
+                                "title page",
+                                "copyright",
+                                "contents",
+                                "half-title",
+                            ]
                         )
+                        if not is_front_matter or shown < 3:
+                            self.call_from_thread(
+                                self.log_message,
+                                f"      • '{dbg['title'][:35]}': href={dbg.get('href', '?')}, anchor={dbg['anchor']}",
+                            )
+                            shown += 1
+                            if shown >= 15:  # Show up to 15 chapters
+                                remaining = len(detection_debug) - shown
+                                if remaining > 0:
+                                    self.call_from_thread(
+                                        self.log_message,
+                                        f"      ... and {remaining} more chapters",
+                                    )
+                                break
 
                 # Show detailed debug info for chapters that failed
                 content_debug = detector.get_content_debug()
                 if content_debug:
                     self.call_from_thread(
                         self.log_message,
-                        "   🔍 CONTENT EXTRACTION FAILURES:",
+                        f"   🔍 CONTENT EXTRACTION FAILURES ({len(content_debug)} chapters):",
                     )
-                    for dbg in content_debug[:10]:  # Limit to first 10
+                    for i, dbg in enumerate(content_debug):
+                        if i >= 15:  # Show up to 15 failures
+                            remaining = len(content_debug) - i
+                            self.call_from_thread(
+                                self.log_message,
+                                f"      ... and {remaining} more failures",
+                            )
+                            break
                         p_count = dbg.get("p_tags_in_file", "?")
                         self.call_from_thread(
                             self.log_message,
-                            f"      • '{dbg['title'][:25]}': file={dbg.get('href', '?')}, "
+                            f"      • '{dbg['title'][:35]}': file={dbg.get('href', '?')}, "
                             f"anchor={dbg['anchor']}, p_in_file={p_count}",
                         )
                         self.call_from_thread(

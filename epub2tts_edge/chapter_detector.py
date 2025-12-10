@@ -852,19 +852,64 @@ class ChapterDetector:
 
                 # Add headings that aren't already represented
                 for heading in headings:
-                    if heading.title != toc_chapter.title:
-                        # Check if this is a sub-section
-                        if heading.level > 1 and not toc_chapter.children:
-                            toc_chapter.add_child(
-                                ChapterNode(
-                                    title=heading.title,
-                                    level=toc_chapter.level + 1,
-                                    href=heading.href,
-                                    anchor=heading.anchor,
-                                    paragraphs=heading.paragraphs,
-                                    play_order=heading.play_order,
-                                )
+                    # Skip if this heading is the same chapter (exact match)
+                    if heading.title == toc_chapter.title:
+                        continue
+
+                    # Skip if this heading is a partial match of the TOC title
+                    # (e.g., "One" is part of "One: Force and Signification")
+                    heading_lower = heading.title.lower().strip()
+                    toc_lower = toc_chapter.title.lower().strip()
+
+                    # Check substring match
+                    if heading_lower in toc_lower or toc_lower in heading_lower:
+                        logger.debug(
+                            "Skipping heading '%s' - substring match of TOC '%s'",
+                            heading.title[:30],
+                            toc_chapter.title[:30],
+                        )
+                        continue
+
+                    # Check significant word overlap (for cases like
+                    # "Violence and Metaphysics An Essay..." matching
+                    # "Four: Violence and Metaphysics: An Essay on the Th...")
+                    heading_words = set(re.findall(r"\b[a-z]{3,}\b", heading_lower))
+                    toc_words = set(re.findall(r"\b[a-z]{3,}\b", toc_lower))
+                    if heading_words and toc_words:
+                        overlap = heading_words & toc_words
+                        # If >50% of heading words appear in TOC title, likely same chapter
+                        if len(overlap) >= len(heading_words) * 0.5:
+                            logger.debug(
+                                "Skipping heading '%s' - word overlap with TOC '%s' (%d/%d words)",
+                                heading.title[:30],
+                                toc_chapter.title[:30],
+                                len(overlap),
+                                len(heading_words),
                             )
+                            continue
+
+                    # Skip dedication-style headings (e.g., "for Paule Thévenin")
+                    # These are usually epigraphs, not actual subsections
+                    if heading_lower.startswith("for ") and len(heading_lower) < 50:
+                        logger.debug(
+                            "Skipping heading '%s' - appears to be dedication",
+                            heading.title[:30],
+                        )
+                        continue
+
+                    # Check if this is a sub-section
+                    # Add ALL valid subsections (removed "not toc_chapter.children" check)
+                    if heading.level > 1:
+                        toc_chapter.add_child(
+                            ChapterNode(
+                                title=heading.title,
+                                level=toc_chapter.level + 1,
+                                href=heading.href,
+                                anchor=heading.anchor,
+                                paragraphs=heading.paragraphs,
+                                play_order=heading.play_order,
+                            )
+                        )
 
     def _populate_content(self, root: ChapterNode):
         """Populate paragraph content for all chapters."""

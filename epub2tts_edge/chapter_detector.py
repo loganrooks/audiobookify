@@ -8,17 +8,22 @@ This module provides intelligent chapter detection from EPUB files by:
 4. Providing flexible output formats for audiobook generation
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import ebooklib
 from bs4 import BeautifulSoup, Tag
 from ebooklib import epub
 from lxml import etree
+
+if TYPE_CHECKING:
+    from .content_filter import FilterConfig, FilterResult
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +57,8 @@ class ChapterNode:
     anchor: str | None = None  # Fragment identifier within file
     content: str | None = None  # Extracted text content
     paragraphs: list[str] = field(default_factory=list)
-    children: list["ChapterNode"] = field(default_factory=list)
-    parent: Optional["ChapterNode"] = None
+    children: list[ChapterNode] = field(default_factory=list)
+    parent: ChapterNode | None = None
     play_order: int = 0  # Reading order
 
     def __post_init__(self):
@@ -61,14 +66,14 @@ class ChapterNode:
         for child in self.children:
             child.parent = self
 
-    def add_child(self, child: "ChapterNode") -> "ChapterNode":
+    def add_child(self, child: ChapterNode) -> ChapterNode:
         """Add a child chapter/section."""
         child.parent = self
         child.level = self.level + 1
         self.children.append(child)
         return child
 
-    def get_path(self) -> list["ChapterNode"]:
+    def get_path(self) -> list[ChapterNode]:
         """Get the path from root to this node."""
         path = []
         node = self
@@ -83,7 +88,7 @@ class ChapterNode:
             return 0
         return 1 + max(child.get_depth() for child in self.children)
 
-    def flatten(self, max_depth: int | None = None) -> list["ChapterNode"]:
+    def flatten(self, max_depth: int | None = None) -> list[ChapterNode]:
         """Flatten the hierarchy to a list, respecting max_depth."""
         result = []
         if self.level > 0:  # Skip root node
@@ -588,6 +593,7 @@ class ChapterDetector:
         method: DetectionMethod | str = DetectionMethod.COMBINED,
         max_depth: int | None = None,
         hierarchy_style: HierarchyStyle | str = HierarchyStyle.FLAT,
+        filter_config: FilterConfig | None = None,
     ):
         self.epub_path = epub_path
         # Convert string to enum if needed
@@ -600,6 +606,7 @@ class ChapterDetector:
             self.hierarchy_style = HierarchyStyle(hierarchy_style)
         else:
             self.hierarchy_style = hierarchy_style
+        self.filter_config = filter_config
 
         self.book = epub.read_epub(epub_path)
         self.toc_parser = TOCParser(epub_path)
@@ -608,6 +615,7 @@ class ChapterDetector:
         self._chapter_tree: ChapterNode | None = None
         self._content_stats: dict[str, int] | None = None
         self._content_debug: list[dict] = []  # Detailed debug info per chapter
+        self._filter_result: FilterResult | None = None
 
     def get_content_debug(self) -> list[dict]:
         """Return detailed debug info for content extraction.
@@ -651,6 +659,13 @@ class ChapterDetector:
         Useful for debugging to see what the detection method found.
         """
         return getattr(self, "_detection_debug", [])
+
+    def get_filter_result(self) -> FilterResult | None:
+        """Get the result of content filtering.
+
+        Returns None if no filtering was applied.
+        """
+        return self._filter_result
 
     def detect(self) -> ChapterNode:
         """
@@ -1218,14 +1233,32 @@ class ChapterDetector:
         """
         Get a flat list of chapters suitable for audiobook generation.
 
+        If filter_config is set, applies content filtering to remove
+        front/back matter and optionally inline notes.
+
         Returns:
             List of chapter dictionaries with title and paragraphs
         """
         if not self._chapter_tree:
             self.detect()
 
+        # Get all chapters
+        all_nodes = self._chapter_tree.flatten(self.max_depth)
+
+        # Apply content filtering if configured
+        if self.filter_config and self.filter_config.is_filtering_enabled():
+            from .content_filter import ContentFilter
+
+            content_filter = ContentFilter(self.filter_config)
+            all_nodes, self._filter_result = content_filter.filter_chapters(all_nodes)
+            logger.info(
+                "Content filtering: %d -> %d chapters",
+                self._filter_result.original_count,
+                self._filter_result.filtered_count,
+            )
+
         chapters = []
-        for node in self._chapter_tree.flatten(self.max_depth):
+        for node in all_nodes:
             formatted_title = node.format_title(self.hierarchy_style)
             chapters.append(
                 {

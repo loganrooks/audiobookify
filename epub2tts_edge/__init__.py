@@ -51,6 +51,14 @@ from .chapter_selector import (
     InvalidSelectionError,
     parse_chapter_selection,
 )
+
+# Content filtering
+from .content_filter import (
+    ChapterType,
+    ContentFilter,
+    FilterConfig,
+    FilterResult,
+)
 from .epub2tts_edge import main
 
 # Custom errors
@@ -170,6 +178,11 @@ __all__ = [
     "ChapterRange",
     "parse_chapter_selection",
     "InvalidSelectionError",
+    # Content filtering
+    "ContentFilter",
+    "FilterConfig",
+    "FilterResult",
+    "ChapterType",
     # Pause/resume
     "ConversionState",
     "StateManager",

@@ -21,6 +21,7 @@ from .audio_generator import (
     read_book,
 )
 from .chapter_detector import ChapterDetector, DetectionMethod, HierarchyStyle
+from .content_filter import FilterConfig
 from .logger import get_logger, setup_logging
 from .mobi_parser import (
     MobiParseError,
@@ -138,6 +139,7 @@ def export(
     detection_method: str = "combined",
     max_depth: int | None = None,
     hierarchy_style: str = "flat",
+    filter_config: FilterConfig | None = None,
 ) -> str:
     """Export EPUB to text file with enhanced chapter detection.
 
@@ -147,6 +149,7 @@ def export(
         detection_method: Chapter detection method ('toc', 'headings', 'combined', 'auto')
         max_depth: Maximum chapter depth to include (None for all)
         hierarchy_style: How to format chapter titles ('flat', 'numbered', 'indented', 'arrow', 'breadcrumb')
+        filter_config: Optional content filter configuration
     """
     # Extract cover image
     cover_image = get_epub_cover(sourcefile)
@@ -173,7 +176,11 @@ def export(
         style_enum = HierarchyStyle.FLAT
 
     detector = ChapterDetector(
-        sourcefile, method=method_enum, max_depth=max_depth, hierarchy_style=style_enum
+        sourcefile,
+        method=method_enum,
+        max_depth=max_depth,
+        hierarchy_style=style_enum,
+        filter_config=filter_config,
     )
 
     # Detect and export
@@ -568,6 +575,33 @@ Hierarchy Styles:
         help="Preview detected chapters without exporting (EPUB only)",
     )
 
+    # Content filtering options
+    parser.add_argument(
+        "--remove-front-matter",
+        action="store_true",
+        help="Remove front matter (cover, title page, contents, etc.)",
+    )
+    parser.add_argument(
+        "--remove-back-matter",
+        action="store_true",
+        help="Remove back matter (notes, index, bibliography, etc.)",
+    )
+    parser.add_argument(
+        "--remove-all-matter",
+        action="store_true",
+        help="Remove both front and back matter (shortcut for --remove-front-matter --remove-back-matter)",
+    )
+    parser.add_argument(
+        "--no-translator-preface",
+        action="store_true",
+        help="Also remove translator's preface/introduction when filtering front matter",
+    )
+    parser.add_argument(
+        "--remove-inline-notes",
+        action="store_true",
+        help="Remove inline endnotes that appear at the end of chapters",
+    )
+
     # Batch processing options
     parser.add_argument(
         "--batch", action="store_true", help="Enable batch processing mode for directories"
@@ -863,6 +897,25 @@ Hierarchy Styles:
     if args.sourcefile.endswith(".epub"):
         book = epub.read_epub(args.sourcefile)
 
+        # Create content filter config from CLI args
+        filter_config = None
+        remove_front = args.remove_front_matter or args.remove_all_matter
+        remove_back = args.remove_back_matter or args.remove_all_matter
+        if remove_front or remove_back or args.remove_inline_notes:
+            filter_config = FilterConfig(
+                remove_front_matter=remove_front,
+                remove_back_matter=remove_back,
+                include_translator_content=not args.no_translator_preface,
+                remove_inline_notes=args.remove_inline_notes,
+            )
+            logger.info(
+                "Content filtering enabled: front=%s, back=%s, translator=%s, inline_notes=%s",
+                remove_front,
+                remove_back,
+                not args.no_translator_preface,
+                args.remove_inline_notes,
+            )
+
         # Preview mode - just show detected structure
         if args.preview:
             logger.info("Previewing chapter detection...")
@@ -878,6 +931,7 @@ Hierarchy Styles:
                 method=method_enum,
                 max_depth=args.max_depth,
                 hierarchy_style=style_enum,
+                filter_config=filter_config,
             )
             detector.detect()
             logger.info("Detected chapter structure:")
@@ -887,6 +941,13 @@ Hierarchy Styles:
             chapters = detector.get_flat_chapters()
             total_paragraphs = sum(len(c["paragraphs"]) for c in chapters)
             logger.info("Summary: %d chapters, %d paragraphs", len(chapters), total_paragraphs)
+
+            # Show filter results if filtering was applied
+            filter_result = detector.get_filter_result()
+            if filter_result:
+                logger.info("Content filtering results:")
+                logger.info(filter_result.get_summary())
+
             sys.exit(0)
 
         # Use legacy or enhanced export
@@ -899,6 +960,7 @@ Hierarchy Styles:
                 detection_method=args.detect,
                 max_depth=args.max_depth,
                 hierarchy_style=args.hierarchy,
+                filter_config=filter_config,
             )
         sys.exit(0)
 

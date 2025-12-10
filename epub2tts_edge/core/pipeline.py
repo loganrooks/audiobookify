@@ -19,6 +19,7 @@ from ..chapter_detector import ChapterDetector, ChapterNode, DetectionMethod, Hi
 from ..content_filter import FilterConfig, FilterResult
 from ..job_manager import Job, JobManager, JobStatus
 from ..logger import get_logger
+from .events import EventBus, EventType
 
 if TYPE_CHECKING:
     pass
@@ -105,15 +106,31 @@ class ConversionPipeline:
         output = pipeline.package_audiobook(job, audio_files)
     """
 
-    def __init__(self, job_manager: JobManager, config: PipelineConfig | None = None):
+    def __init__(
+        self,
+        job_manager: JobManager,
+        config: PipelineConfig | None = None,
+        event_bus: EventBus | None = None,
+    ):
         """Initialize the pipeline.
 
         Args:
             job_manager: JobManager instance for job persistence
             config: Pipeline configuration (uses defaults if None)
+            event_bus: Optional EventBus for emitting processing events
         """
         self.job_manager = job_manager
         self.config = config or PipelineConfig()
+        self.event_bus = event_bus
+
+    def _emit(self, event_type: EventType, job: Job | None = None, **data) -> None:
+        """Emit an event if event_bus is configured.
+
+        This is a no-op if no event_bus was provided, allowing the pipeline
+        to work in both event-driven and callback-based modes.
+        """
+        if self.event_bus:
+            self.event_bus.emit(event_type, job=job, **data)
 
     def create_job(
         self,
@@ -373,25 +390,38 @@ class ConversionPipeline:
         try:
             # Create job
             job = self.create_job(source_file, title, author)
+            self._emit(EventType.JOB_CREATED, job=job, source_file=str(source_file))
 
             # Detect chapters
+            self._emit(EventType.DETECTION_STARTED, job=job)
             self.job_manager.update_status(job.job_id, JobStatus.EXTRACTING)
             chapters, filter_result = self.detect_chapters(source_file)
 
             if not chapters:
                 raise ValueError("No chapters detected in source file")
 
+            self._emit(
+                EventType.DETECTION_COMPLETED,
+                job=job,
+                chapter_count=len(chapters),
+                filtered_count=filter_result.removed_count if filter_result else 0,
+            )
+
             # Export to text
+            self._emit(EventType.EXPORT_STARTED, job=job)
             text_file = self.export_text(job, chapters)
+            self._emit(EventType.EXPORT_COMPLETED, job=job, text_file=str(text_file))
 
             # Extract cover image
             cover_image = self._extract_cover(source_file, job)
 
             # Generate audio
+            self._emit(EventType.CONVERSION_STARTED, job=job, total_chapters=len(chapters))
             audio_files = self.generate_audio(job, text_file, progress_callback, cancellation_check)
 
             if cancellation_check and cancellation_check():
                 self.job_manager.update_status(job.job_id, JobStatus.CANCELLED)
+                self._emit(EventType.JOB_CANCELLED, job=job)
                 return PipelineResult(
                     job=job,
                     success=False,
@@ -400,8 +430,19 @@ class ConversionPipeline:
                     filter_result=filter_result,
                 )
 
+            self._emit(
+                EventType.CONVERSION_COMPLETED,
+                job=job,
+                chapters_converted=len(audio_files),
+            )
+
             # Package audiobook
+            self._emit(EventType.PACKAGING_STARTED, job=job)
             output_path = self.package_audiobook(job, audio_files, cover_image)
+            self._emit(EventType.PACKAGING_COMPLETED, job=job, output_path=str(output_path))
+
+            # Job completed successfully
+            self._emit(EventType.JOB_COMPLETED, job=job, output_path=str(output_path))
 
             return PipelineResult(
                 job=job,
@@ -417,6 +458,7 @@ class ConversionPipeline:
             logger.error("Pipeline error: %s", e)
             if job:
                 self.job_manager.set_error(job.job_id, str(e))
+                self._emit(EventType.JOB_FAILED, job=job, error=str(e))
             return PipelineResult(
                 job=job,
                 success=False,

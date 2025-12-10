@@ -12,6 +12,7 @@ from textual.widgets import (
     TabPane,
 )
 
+from ...core.profiles import get_profile, get_profile_names
 from ...voice_preview import AVAILABLE_VOICES
 from ..models import VoicePreviewStatus
 
@@ -130,11 +131,35 @@ class SettingsPanel(Vertical):
         ("rms", "RMS"),
     ]
 
+    # Profile options - dynamically generated from available profiles
+    PROFILE_OPTIONS = [("custom", "Custom")] + [
+        (name, get_profile(name).name if get_profile(name) else name)
+        for name in get_profile_names()
+    ]
+
+    # Output naming template presets
+    OUTPUT_NAMING_OPTIONS = [
+        ("{author} - {title}", "Author - Title"),
+        ("{title}", "Title Only"),
+        ("{title} by {author}", "Title by Author"),
+        ("{series} {series_index} - {title}", "Series - Title"),
+        ("{title} ({year})", "Title (Year)"),
+    ]
+
     def compose(self) -> ComposeResult:
         with TabbedContent(id="settings-tabs"):
             # 🎙️ Voice Tab
             with TabPane("🎙️", id="voice-tab"):
                 with VerticalScroll():
+                    # Profile selector at top of voice tab
+                    with Horizontal(classes="setting-row"):
+                        yield Label("Profile:")
+                        yield Select(
+                            [(p[1], p[0]) for p in self.PROFILE_OPTIONS],
+                            value="custom",
+                            id="profile-select",
+                        )
+
                     with Horizontal(classes="setting-row"):
                         yield Label("Voice:")
                         yield Select(
@@ -266,6 +291,15 @@ class SettingsPanel(Vertical):
             # ⚙️ Advanced Tab
             with TabPane("⚙️", id="advanced-tab"):
                 with VerticalScroll():
+                    # Output naming template
+                    with Horizontal(classes="setting-row"):
+                        yield Label("Output Name:")
+                        yield Select(
+                            [(o[1], o[0]) for o in self.OUTPUT_NAMING_OPTIONS],
+                            value="{author} - {title}",
+                            id="output-naming-select",
+                        )
+
                     with Horizontal(classes="setting-row"):
                         yield Label("Pronuncia.:")
                         yield Input(placeholder="Path to dictionary", id="pronunciation-input")
@@ -304,6 +338,50 @@ class SettingsPanel(Vertical):
             self._update_normalize_visibility()
         elif event.switch.id == "filter-front-switch":
             self._update_filter_visibility()
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        """Handle select changes, including profile selection."""
+        if event.select.id == "profile-select":
+            profile_name = event.value
+            if profile_name != "custom":
+                self._apply_profile(profile_name)
+
+    def _apply_profile(self, profile_name: str) -> None:
+        """Apply a profile's settings to all relevant controls.
+
+        Args:
+            profile_name: Name of the profile to apply
+        """
+        profile = get_profile(profile_name)
+        if not profile:
+            return
+
+        try:
+            # Voice settings
+            self.query_one("#voice-select", Select).value = profile.voice
+            # Rate - find matching option or use empty
+            rate_val = profile.rate or ""
+            self.query_one("#rate-select", Select).value = rate_val
+            # Volume - find matching option or use empty
+            volume_val = profile.volume or ""
+            self.query_one("#volume-select", Select).value = volume_val
+
+            # Audio settings
+            self.query_one("#sentence-pause-select", Select).value = profile.sentence_pause
+            self.query_one("#paragraph-pause-select", Select).value = profile.paragraph_pause
+            self.query_one("#trim-silence-switch", Switch).value = profile.trim_silence
+            self.query_one("#normalize-switch", Switch).value = profile.normalize_audio
+
+            # Chapter settings
+            self.query_one("#detect-select", Select).value = profile.detection_method
+            self.query_one("#hierarchy-select", Select).value = profile.hierarchy_style
+
+            # Update progressive disclosure visibility
+            self._update_trim_visibility()
+            self._update_normalize_visibility()
+
+        except Exception:
+            pass  # Some widgets might not be mounted yet
 
     def _update_trim_visibility(self) -> None:
         """Show/hide trim silence sub-settings."""
@@ -346,6 +424,8 @@ class SettingsPanel(Vertical):
         sentence_pause_val = self.query_one("#sentence-pause-select", Select).value
         paragraph_pause_val = self.query_one("#paragraph-pause-select", Select).value
         concurrency_val = self.query_one("#concurrency-input", Input).value.strip()
+        output_naming_val = self.query_one("#output-naming-select", Select).value
+        profile_val = self.query_one("#profile-select", Select).value
 
         # Parse concurrency as int, default to 5, clamp to 1-15
         try:
@@ -378,4 +458,7 @@ class SettingsPanel(Vertical):
             "filter_back_matter": self.query_one("#filter-back-switch", Switch).value,
             "keep_translator": self.query_one("#keep-translator-switch", Switch).value,
             "remove_inline_notes": self.query_one("#trim-notes-switch", Switch).value,
+            # Phase 3: Profiles and output naming
+            "profile": profile_val if profile_val != "custom" else None,
+            "output_naming_template": output_naming_val,
         }

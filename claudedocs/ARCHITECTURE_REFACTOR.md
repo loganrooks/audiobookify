@@ -431,7 +431,7 @@ class OutputNaming:
 
 **Results**: app.py reduced from 4277 lines → 1995 lines (53% reduction)
 
-### Phase 2: Unified Pipeline (IN PROGRESS - 2024-12-10)
+### Phase 2: Unified Pipeline ✅ COMPLETED (2024-12-10)
 - [x] EventBus implemented (core/events.py)
   - EventType enum with 17 event types (job lifecycle, stages, progress, logs)
   - Event dataclass with job reference and data payload
@@ -445,19 +445,54 @@ class OutputNaming:
   - Bridges EventBus to TUI UI updates
   - Thread-safe updates via call_from_thread
   - Handles all event types with appropriate logging
+  - Chapter progress logged to log panel (not just progress bar)
 - [x] 28 tests for EventBus (tests/test_event_bus.py)
-- [ ] Integrate TUIEventAdapter with TUI processing workflows
-- [ ] Wire up events in TUI's process_files and process_text_files
-- [ ] Deprecate old callback-based processing
-- [ ] Remove deprecated code
+- [x] Integrate TUIEventAdapter with TUI processing workflows
+  - EventBus initialized in AudiobookifyApp.__init__
+  - TUIEventAdapter connected in on_mount, disconnected in on_unmount
+- [x] Wire up events in TUI's process_files and process_text_files
+  - process_text_files: JOB_CREATED, CONVERSION_STARTED, CHAPTER_STARTED/COMPLETED, PACKAGING_STARTED, JOB_COMPLETED/FAILED
+  - process_files: CHAPTER_STARTED/COMPLETED (no Job object in batch mode)
+- [x] Deprecate old callback-based processing
+  - Removed redundant direct logging covered by EventBus events
+  - Kept essential context logging not covered by events (traceback, cover image, etc.)
+- [x] Remove deprecated code
+  - Duplicate log messages removed from process_text_files and process_files
+  - EventBus is now the single source of truth for processing status logging
 
-**Results so far**: EventBus system complete, 421 tests pass
+**Results**: EventBus fully integrated, 421 tests pass
 
-### Phase 3: Configuration
-- [ ] Implement ProcessingProfile
-- [ ] Add profile selection to UI
-- [ ] Implement OutputNaming
-- [ ] Add template editor to settings
+**Architecture Achieved**:
+- Single source of truth: EventBus handles all processing status logging
+- UI decoupled: Processing methods emit events, TUIEventAdapter handles UI updates
+- Thread-safe: All UI updates go through call_from_thread via TUIEventAdapter
+- Extensible: New interfaces (API, CLI) can subscribe to same events
+
+### Phase 3: Configuration ✅ COMPLETED (2024-12-10)
+- [x] Implement ProcessingProfile (core/profiles.py)
+  - ProcessingProfile dataclass with all conversion settings
+  - Built-in profiles: default, quick_draft, high_quality, audiobook, accessibility
+  - Helper functions: get_profile(), list_profiles(), get_profile_names()
+  - Serialization: to_dict() and from_dict() methods
+- [x] Add profile selection to UI (tui/panels/settings_panel.py)
+  - Profile dropdown in Voice tab
+  - _apply_profile() method applies settings to all controls
+  - Profile changes update voice, rate, volume, pauses, normalize, trim, detection, hierarchy
+- [x] Implement OutputNaming (core/output_naming.py)
+  - OutputNaming class with template-based naming
+  - BookMetadata dataclass for book information
+  - Template variables: {title}, {author}, {year}, {series}, {series_index}, {language}, {publisher}
+  - sanitize_filename() for safe file names
+  - Validation and help text for templates
+  - Presets: author_title, title_only, title_author, series, year, full
+- [x] Add template editor to settings
+  - Output naming dropdown in Advanced tab
+  - get_config() returns output_naming_template and profile
+- [x] Tests for profiles and output naming (54 tests)
+  - tests/test_profiles.py: 19 tests for ProcessingProfile
+  - tests/test_output_naming.py: 35 tests for OutputNaming
+
+**Results**: 475 tests pass, Phase 3 complete
 
 ---
 

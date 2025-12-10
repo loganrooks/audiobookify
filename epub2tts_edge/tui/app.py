@@ -30,8 +30,10 @@ from textual.worker import Worker
 # Import our modules (from parent package)
 from ..batch_processor import BatchConfig, BatchProcessor, BookTask, ProcessingStatus
 from ..config import get_config
+from ..core.events import EventBus, EventType
 from ..job_manager import Job, JobManager, JobStatus
 from ..voice_preview import VoicePreview, VoicePreviewConfig
+from .handlers import TUIEventAdapter
 
 # Import from tui submodules (Phase 1 refactor)
 from .models import PreviewChapter, VoicePreviewStatus
@@ -170,6 +172,9 @@ class AudiobookifyApp(App):
         self.debug_mode = False
         self._pending_resume_jobs: list[Job] = []  # Jobs queued for sequential resume
         self._current_preview_job: Job | None = None  # Job being previewed/edited
+        # EventBus for decoupled processing updates (Phase 2)
+        self.event_bus = EventBus()
+        self._event_adapter: TUIEventAdapter | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -195,9 +200,18 @@ class AudiobookifyApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        # Connect EventBus adapter for processing events (Phase 2)
+        self._event_adapter = TUIEventAdapter(self, self.event_bus)
+        self._event_adapter.connect()
+
         self.log_message("Audiobookify TUI started")
         self.log_message("Select EPUB files and press Start (or 's')")
         self.log_message("💡 Press ? for help | Ctrl+/-: font size")
+
+    def on_unmount(self) -> None:
+        # Disconnect EventBus adapter on app exit (Phase 2)
+        if self._event_adapter:
+            self._event_adapter.disconnect()
 
     def log_message(self, message: str) -> None:
         """Log a message to the log panel."""
@@ -831,8 +845,12 @@ class AudiobookifyApp(App):
                         self.call_from_thread(self.query_one(QueuePanel).update_task, task)
 
                     # Create progress callback for chapter/paragraph updates
-                    def progress_callback(info):
+                    # Capture event_bus reference for use in callback (bound as default parameter)
+                    captured_event_bus = self.event_bus
+
+                    def progress_callback(info, event_bus=captured_event_bus):
                         """Handle progress updates from audio generation."""
+                        # Update progress panel directly (for paragraph-level granularity)
                         self.call_from_thread(
                             self.query_one(ProgressPanel).set_chapter_progress,
                             info.chapter_num,
@@ -841,11 +859,21 @@ class AudiobookifyApp(App):
                             info.paragraph_num,
                             info.total_paragraphs,
                         )
-                        # Also log chapter starts
                         if info.status == "chapter_start":
-                            self.call_from_thread(
-                                self.log_message,
-                                f"  📖 Chapter {info.chapter_num}/{info.total_chapters}: {info.chapter_title[:50]}",
+                            # Emit CHAPTER_STARTED - logs via TUIEventAdapter (no job for batch mode)
+                            event_bus.emit(
+                                EventType.CHAPTER_STARTED,
+                                chapter_index=info.chapter_num - 1,
+                                total_chapters=info.total_chapters,
+                                chapter_title=info.chapter_title,
+                            )
+                        if info.status == "chapter_done":
+                            # Emit CHAPTER_COMPLETED event
+                            event_bus.emit(
+                                EventType.CHAPTER_COMPLETED,
+                                chapter_index=info.chapter_num - 1,
+                                total_chapters=info.total_chapters,
+                                chapter_title=info.chapter_title,
                             )
 
                     # Create cancellation check
@@ -1076,7 +1104,8 @@ class AudiobookifyApp(App):
             task.job_id = job.job_id
             task.job_dir = job.job_dir
 
-            self.call_from_thread(self.log_message, f"  📁 Job: {job.job_id}")
+            # Emit JOB_CREATED event (Phase 2 EventBus) - logs job ID via TUIEventAdapter
+            self.event_bus.emit(EventType.JOB_CREATED, job=job)
 
             try:
                 task.status = ProcessingStatus.EXPORTING
@@ -1111,13 +1140,24 @@ class AudiobookifyApp(App):
                 self.call_from_thread(self.query_one(QueuePanel).update_task, task)
                 job_manager.update_status(job.job_id, JobStatus.CONVERTING)
                 job_manager.update_progress(job.job_id, total_chapters=total_chapters)
-                self.call_from_thread(self.log_message, "  🔊 Generating audio...")
+
+                # Emit CONVERSION_STARTED event (Phase 2 EventBus) - logs via TUIEventAdapter
+                self.event_bus.emit(
+                    EventType.CONVERSION_STARTED,
+                    job=job,
+                    total_chapters=len(book_contents),
+                )
 
                 # Progress callback that also updates job progress
-                # Capture job_id to avoid late binding issue
+                # Capture job_id, job, and event_bus to avoid late binding issue (bound as default params)
                 current_job_id = job.job_id
+                current_job = job
+                captured_event_bus = self.event_bus
 
-                def progress_callback(info, job_id=current_job_id):
+                def progress_callback(
+                    info, job_id=current_job_id, job_ref=current_job, event_bus=captured_event_bus
+                ):
+                    # Update progress panel directly (for paragraph-level granularity)
                     self.call_from_thread(
                         self.query_one(ProgressPanel).set_chapter_progress,
                         info.chapter_num,
@@ -1127,12 +1167,24 @@ class AudiobookifyApp(App):
                         info.total_paragraphs,
                     )
                     if info.status == "chapter_start":
-                        self.call_from_thread(
-                            self.log_message,
-                            f"  📖 Chapter {info.chapter_num}/{info.total_chapters}: {info.chapter_title[:50]}",
+                        # Emit CHAPTER_STARTED - logs via TUIEventAdapter
+                        event_bus.emit(
+                            EventType.CHAPTER_STARTED,
+                            job=job_ref,
+                            chapter_index=info.chapter_num - 1,
+                            total_chapters=info.total_chapters,
+                            chapter_title=info.chapter_title,
                         )
                     if info.status == "chapter_done":
                         job_manager.update_progress(job_id, completed_chapters=info.chapter_num)
+                        # Emit CHAPTER_COMPLETED event
+                        event_bus.emit(
+                            EventType.CHAPTER_COMPLETED,
+                            job=job_ref,
+                            chapter_index=info.chapter_num - 1,
+                            total_chapters=info.total_chapters,
+                            chapter_title=info.chapter_title,
+                        )
 
                 def check_cancelled():
                     return self.should_stop
@@ -1161,11 +1213,18 @@ class AudiobookifyApp(App):
                     task.status = ProcessingStatus.FAILED
                     task.error_message = "No audio files generated"
                     job_manager.set_error(job.job_id, "No audio files generated")
-                    self.call_from_thread(self.log_message, "❌ No audio files generated")
+                    # Emit JOB_FAILED - logs via TUIEventAdapter
+                    self.event_bus.emit(
+                        EventType.JOB_FAILED,
+                        job=job,
+                        error="No audio files generated",
+                    )
                     continue
 
-                self.call_from_thread(self.log_message, "  📦 Creating M4B file...")
                 job_manager.update_status(job.job_id, JobStatus.FINALIZING)
+
+                # Emit PACKAGING_STARTED - logs via TUIEventAdapter
+                self.event_bus.emit(EventType.PACKAGING_STARTED, job=job)
 
                 # Generate M4B in the job directory with explicit paths (no chdir!)
                 generate_metadata(
@@ -1185,10 +1244,6 @@ class AudiobookifyApp(App):
                 m4b_filename = os.path.basename(m4b_path)
                 final_output = txt_path.parent / m4b_filename
                 shutil.move(m4b_path, final_output)
-                self.call_from_thread(self.log_message, f"  📁 Output: {final_output}")
-                self.call_from_thread(
-                    self.log_message, f"  📂 Intermediate files: {job.effective_audio_dir}"
-                )
 
                 # Complete the job
                 job_manager.complete_job(job.job_id, str(final_output))
@@ -1196,7 +1251,13 @@ class AudiobookifyApp(App):
                 task.status = ProcessingStatus.COMPLETED
                 task.m4b_path = str(final_output)
                 task.chapter_count = len(book_contents)
-                self.call_from_thread(self.log_message, f"✅ Completed: {txt_path.name}")
+
+                # Emit JOB_COMPLETED - logs completion and output via TUIEventAdapter
+                self.event_bus.emit(
+                    EventType.JOB_COMPLETED,
+                    job=job,
+                    output_path=str(final_output),
+                )
 
             except Exception as e:
                 import traceback
@@ -1205,10 +1266,13 @@ class AudiobookifyApp(App):
                 task.error_message = str(e)
                 if job:
                     job_manager.set_error(job.job_id, str(e))
-                # Log detailed error with traceback
-                self.call_from_thread(self.log_message, f"❌ Error: {txt_path.name}")
-                self.call_from_thread(self.log_message, f"   Exception: {type(e).__name__}: {e}")
-                # Log traceback lines for debugging
+                    # Emit JOB_FAILED - logs error via TUIEventAdapter
+                    self.event_bus.emit(
+                        EventType.JOB_FAILED,
+                        job=job,
+                        error=str(e),
+                    )
+                # Log detailed traceback for debugging (EventBus only logs summary)
                 tb_lines = traceback.format_exc().strip().split("\n")
                 for line in tb_lines[-5:]:  # Last 5 lines of traceback
                     self.call_from_thread(self.log_message, f"   {line}")

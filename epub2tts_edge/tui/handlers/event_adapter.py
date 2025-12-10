@@ -233,6 +233,9 @@ class TUIEventAdapter:
         total = event.data.get("total_chapters", 0)
         title = event.data.get("chapter_title", "")
         self._safe_update_progress(index, total, title)
+        # Also log to log panel (1-indexed for display)
+        title_preview = title[:50] if title else "Untitled"
+        self._safe_log(f"  📖 Chapter {index + 1}/{total}: {title_preview}")
 
     def _on_chapter_completed(self, event: Event) -> None:
         """Handle chapter completed event."""

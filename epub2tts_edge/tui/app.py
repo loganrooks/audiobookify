@@ -463,7 +463,7 @@ class AudiobookifyApp(App):
             try:
                 from PIL import Image
 
-                from .epub2tts_edge import get_epub_cover
+                from ..epub2tts_edge import get_epub_cover
 
                 cover_data = get_epub_cover(str(source_file))
                 if cover_data:
@@ -1063,9 +1063,9 @@ class AudiobookifyApp(App):
         import os
         import shutil
 
-        from .audio_generator import read_book
-        from .epub2tts_edge import add_cover, generate_metadata, get_book, make_m4b
-        from .job_manager import JobManager, JobStatus
+        from ..audio_generator import read_book
+        from ..epub2tts_edge import add_cover, generate_metadata, get_book, make_m4b
+        from ..job_manager import JobManager, JobStatus
 
         settings_panel = self.query_one(SettingsPanel)
         config = settings_panel.get_config()
@@ -1637,7 +1637,7 @@ class AudiobookifyApp(App):
         """
         import json
 
-        from .chapter_detector import ChapterDetector
+        from ..chapter_detector import ChapterDetector
 
         try:
             self.call_from_thread(
@@ -1968,7 +1968,7 @@ class AudiobookifyApp(App):
         self, epub_path: Path, detection_method: str, hierarchy_style: str, filter_config=None
     ) -> None:
         """Export EPUB to text file in background thread."""
-        from .chapter_detector import ChapterDetector
+        from ..chapter_detector import ChapterDetector
 
         try:
             # Create output path next to EPUB

@@ -626,3 +626,114 @@ class TestTUILazyImports:
         assert "from ..chapter_detector" in source
         # Verify it doesn't use incorrect single-dot import
         assert "from .chapter_detector" not in source
+
+
+class TestProcessingInitiation:
+    """Test that processing can be initiated with mock TTS.
+
+    These tests verify the workflow from EPUB to audio conversion
+    using the test mode infrastructure.
+    """
+
+    def test_batch_processor_with_test_mode(self, sample_epub):
+        """BatchProcessor should work with test mode enabled."""
+        from epub2tts_edge.audio_generator import (
+            disable_test_mode,
+            enable_test_mode,
+        )
+        from epub2tts_edge.batch_processor import BatchConfig, BatchProcessor
+
+        try:
+            enable_test_mode()
+
+            config = BatchConfig(
+                input_path=str(sample_epub),
+                output_dir=str(sample_epub.parent),
+                speaker="en-US-AriaNeural",
+                export_only=True,  # Just export text, don't convert to audio
+            )
+
+            processor = BatchProcessor(config)
+            processor.prepare()
+
+            assert processor.result is not None
+            assert len(processor.result.tasks) == 1
+            assert processor.result.tasks[0].epub_path == str(sample_epub)
+
+        finally:
+            disable_test_mode()
+
+    def test_batch_processor_export_creates_text_file(self, sample_epub):
+        """BatchProcessor should create text file during export."""
+        from epub2tts_edge.audio_generator import disable_test_mode, enable_test_mode
+        from epub2tts_edge.batch_processor import BatchConfig, BatchProcessor
+
+        try:
+            enable_test_mode()
+
+            output_dir = sample_epub.parent / "output"
+            output_dir.mkdir(exist_ok=True)
+
+            config = BatchConfig(
+                input_path=str(sample_epub),
+                output_dir=str(output_dir),
+                speaker="en-US-AriaNeural",
+                export_only=True,
+            )
+
+            processor = BatchProcessor(config)
+            processor.prepare()
+
+            if processor.result.tasks:
+                task = processor.result.tasks[0]
+                processor.process_book(task)
+
+                # Text file should be created
+                assert task.txt_path is not None
+
+        finally:
+            disable_test_mode()
+
+    def test_test_mode_enables_mock_tts_globally(self):
+        """Enabling test mode should make mock TTS available globally."""
+        from epub2tts_edge.audio_generator import (
+            disable_test_mode,
+            enable_test_mode,
+            get_mock_engine,
+            is_test_mode,
+        )
+
+        try:
+            # Initially disabled
+            assert is_test_mode() is False
+            assert get_mock_engine() is None
+
+            # Enable
+            enable_test_mode()
+            assert is_test_mode() is True
+            mock = get_mock_engine()
+            assert mock is not None
+            assert hasattr(mock, "generate")
+            assert hasattr(mock, "calls")
+
+        finally:
+            disable_test_mode()
+
+    def test_chapter_detector_works_with_sample_epub(self, sample_epub):
+        """ChapterDetector should extract chapters from sample EPUB."""
+        from epub2tts_edge.chapter_detector import ChapterDetector, DetectionMethod
+
+        detector = ChapterDetector(epub_path=sample_epub, method=DetectionMethod.AUTO)
+        root_node = detector.detect()
+
+        # detect() returns a ChapterNode tree, flatten to get all chapters
+        chapters = root_node.flatten() if root_node else []
+
+        # Should find chapters from our test EPUB
+        assert len(chapters) > 0
+        # Chapters should have titles and paragraphs (content stored in paragraphs list)
+        for chapter in chapters:
+            assert chapter.title is not None
+            # paragraphs contains the text content
+            assert chapter.paragraphs is not None
+            assert len(chapter.paragraphs) > 0

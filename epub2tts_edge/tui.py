@@ -953,6 +953,24 @@ class SettingsPanel(Vertical):
                         yield Label("Chapters:")
                         yield Input(placeholder="e.g., 1-5, 1,3,7", id="chapters-input")
 
+                    # Content filtering options
+                    with Horizontal(classes="setting-row"):
+                        yield Label("Filter Front:")
+                        yield Switch(id="filter-front-switch")
+
+                    with Horizontal(classes="setting-row"):
+                        yield Label("Filter Back:")
+                        yield Switch(id="filter-back-switch")
+
+                    # Sub-setting for translator content (progressive disclosure)
+                    with Horizontal(classes="setting-row sub-setting", id="keep-translator-row"):
+                        yield Label("↳ Keep Transl.:")
+                        yield Switch(value=True, id="keep-translator-switch")
+
+                    with Horizontal(classes="setting-row"):
+                        yield Label("Trim Notes:")
+                        yield Switch(id="trim-notes-switch")
+
             # ⚙️ Advanced Tab
             with TabPane("⚙️", id="advanced-tab"):
                 with VerticalScroll():
@@ -984,6 +1002,7 @@ class SettingsPanel(Vertical):
         """Initialize progressive disclosure state."""
         self._update_trim_visibility()
         self._update_normalize_visibility()
+        self._update_filter_visibility()
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
         """Handle switch changes for progressive disclosure."""
@@ -991,6 +1010,8 @@ class SettingsPanel(Vertical):
             self._update_trim_visibility()
         elif event.switch.id == "normalize-switch":
             self._update_normalize_visibility()
+        elif event.switch.id == "filter-front-switch":
+            self._update_filter_visibility()
 
     def _update_trim_visibility(self) -> None:
         """Show/hide trim silence sub-settings."""
@@ -1011,6 +1032,15 @@ class SettingsPanel(Vertical):
             method_row = self.query_one("#normalize-method-row")
             target_row.set_class(not enabled, "hidden")
             method_row.set_class(not enabled, "hidden")
+        except Exception:
+            pass  # Widget not mounted yet
+
+    def _update_filter_visibility(self) -> None:
+        """Show/hide content filter sub-settings."""
+        try:
+            enabled = self.query_one("#filter-front-switch", Switch).value
+            translator_row = self.query_one("#keep-translator-row")
+            translator_row.set_class(not enabled, "hidden")
         except Exception:
             pass  # Widget not mounted yet
 
@@ -1051,6 +1081,11 @@ class SettingsPanel(Vertical):
             "pronunciation": pronunciation_val if pronunciation_val else None,
             "voice_mapping": voice_mapping_val if voice_mapping_val else None,
             "max_concurrent": max_concurrent,
+            # Content filtering options
+            "filter_front_matter": self.query_one("#filter-front-switch", Switch).value,
+            "filter_back_matter": self.query_one("#filter-back-switch", Switch).value,
+            "keep_translator": self.query_one("#keep-translator-switch", Switch).value,
+            "remove_inline_notes": self.query_one("#trim-notes-switch", Switch).value,
         }
 
 
@@ -4046,8 +4081,33 @@ class AudiobookifyApp(App):
         hierarchy_style = config["hierarchy_style"]
         speaker = config["speaker"]
 
+        # Build filter config from settings
+        filter_config = None
+        if (
+            config.get("filter_front_matter")
+            or config.get("filter_back_matter")
+            or config.get("remove_inline_notes")
+        ):
+            from .content_filter import FilterConfig
+
+            filter_config = FilterConfig(
+                remove_front_matter=config.get("filter_front_matter", False),
+                remove_back_matter=config.get("filter_back_matter", False),
+                include_translator_content=config.get("keep_translator", True),
+                remove_inline_notes=config.get("remove_inline_notes", False),
+            )
+
         self.log_message(f"📋 Loading preview: {epub_path.name}")
         self.log_message(f"   Detection: {detection_method}, Hierarchy: {hierarchy_style}")
+        if filter_config:
+            filters = []
+            if config.get("filter_front_matter"):
+                filters.append("front matter")
+            if config.get("filter_back_matter"):
+                filters.append("back matter")
+            if config.get("remove_inline_notes"):
+                filters.append("inline notes")
+            self.log_message(f"   Filtering: {', '.join(filters)}")
 
         # Clear existing preview before starting new one
         preview_panel = self.query_one(PreviewPanel)
@@ -4058,11 +4118,18 @@ class AudiobookifyApp(App):
         tabs.active = "preview-tab"
 
         # Run preview in background (exclusive to cancel any previous preview)
-        self.preview_chapters_async(epub_path, detection_method, hierarchy_style, speaker)
+        self.preview_chapters_async(
+            epub_path, detection_method, hierarchy_style, speaker, filter_config
+        )
 
     @work(exclusive=True, thread=True, group="preview")
     def preview_chapters_async(
-        self, epub_path: Path, detection_method: str, hierarchy_style: str, speaker: str
+        self,
+        epub_path: Path,
+        detection_method: str,
+        hierarchy_style: str,
+        speaker: str,
+        filter_config=None,
     ) -> None:
         """Preview chapters in background thread and load into Preview tab.
 
@@ -4082,8 +4149,34 @@ class AudiobookifyApp(App):
                 str(epub_path),
                 method=detection_method,
                 hierarchy_style=hierarchy_style,
+                filter_config=filter_config,
             )
             chapter_tree = detector.detect()
+
+            # Log filter results if filtering was applied
+            if filter_config:
+                filter_result = detector.get_filter_result()
+                if filter_result and filter_result.removed_count > 0:
+                    self.call_from_thread(
+                        self.log_message,
+                        f"   🔻 Filtered {filter_result.removed_count} chapters "
+                        f"({filter_result.filtered_count} remaining)",
+                    )
+                    if filter_result.removed_front_matter:
+                        self.call_from_thread(
+                            self.log_message,
+                            f"      Front matter: {len(filter_result.removed_front_matter)} removed",
+                        )
+                    if filter_result.removed_back_matter:
+                        self.call_from_thread(
+                            self.log_message,
+                            f"      Back matter: {len(filter_result.removed_back_matter)} removed",
+                        )
+                    if filter_result.kept_translator_content:
+                        self.call_from_thread(
+                            self.log_message,
+                            f"      Translator content: {len(filter_result.kept_translator_content)} kept",
+                        )
 
             # Log content extraction stats for debugging
             content_stats = detector.get_content_stats()
@@ -4332,6 +4425,22 @@ class AudiobookifyApp(App):
         settings_panel = self.query_one(SettingsPanel)
         config = settings_panel.get_config()
 
+        # Build filter config from settings
+        filter_config = None
+        if (
+            config.get("filter_front_matter")
+            or config.get("filter_back_matter")
+            or config.get("remove_inline_notes")
+        ):
+            from .content_filter import FilterConfig
+
+            filter_config = FilterConfig(
+                remove_front_matter=config.get("filter_front_matter", False),
+                remove_back_matter=config.get("filter_back_matter", False),
+                include_translator_content=config.get("keep_translator", True),
+                remove_inline_notes=config.get("remove_inline_notes", False),
+            )
+
         # Switch to Log tab
         tabs = self.query_one("#bottom-tabs", TabbedContent)
         tabs.active = "log-tab"
@@ -4340,12 +4449,24 @@ class AudiobookifyApp(App):
         self.log_message("📝 EXPORT & EDIT WORKFLOW")
         self.log_message("─" * 50)
 
+        if filter_config:
+            filters = []
+            if config.get("filter_front_matter"):
+                filters.append("front matter")
+            if config.get("filter_back_matter"):
+                filters.append("back matter")
+            if config.get("remove_inline_notes"):
+                filters.append("inline notes")
+            self.log_message(f"   Filtering: {', '.join(filters)}")
+
         # Run export in background
-        self.export_text_async(epub_path, config["detection_method"], config["hierarchy_style"])
+        self.export_text_async(
+            epub_path, config["detection_method"], config["hierarchy_style"], filter_config
+        )
 
     @work(exclusive=False, thread=True)
     def export_text_async(
-        self, epub_path: Path, detection_method: str, hierarchy_style: str
+        self, epub_path: Path, detection_method: str, hierarchy_style: str, filter_config=None
     ) -> None:
         """Export EPUB to text file in background thread."""
         from .chapter_detector import ChapterDetector
@@ -4358,12 +4479,24 @@ class AudiobookifyApp(App):
 
             # Detect chapters and export
             detector = ChapterDetector(
-                str(epub_path), method=detection_method, hierarchy_style=hierarchy_style
+                str(epub_path),
+                method=detection_method,
+                hierarchy_style=hierarchy_style,
+                filter_config=filter_config,
             )
             detector.detect()
             detector.export_to_text(str(txt_path), include_metadata=True, level_markers=True)
 
             chapters = detector.get_flat_chapters()
+
+            # Log filter results if filtering was applied
+            if filter_config:
+                filter_result = detector.get_filter_result()
+                if filter_result and filter_result.removed_count > 0:
+                    self.call_from_thread(
+                        self.log_message,
+                        f"   🔻 Filtered {filter_result.removed_count} chapters",
+                    )
 
             self.call_from_thread(self.log_message, "")
             self.call_from_thread(self.log_message, f"✅ Exported {len(chapters)} chapters to:")

@@ -283,11 +283,13 @@ class TestEventHelpers:
         job = Job(
             job_id="test-789", source_file="/path.epub", job_dir="/tmp/jobs/test-789", title="Test"
         )
-        event = job_completed_event(job, output_path=Path("/output/book.m4b"))
+        output_path = Path("/output/book.m4b")
+        event = job_completed_event(job, output_path=output_path)
 
         assert event.event_type == EventType.JOB_COMPLETED
         assert event.job == job
-        assert event.data["output_path"] == "/output/book.m4b"
+        # Use str(Path(...)) for platform-independent comparison
+        assert event.data["output_path"] == str(output_path)
 
     def test_job_completed_event_no_output(self):
         """job_completed_event handles missing output path."""

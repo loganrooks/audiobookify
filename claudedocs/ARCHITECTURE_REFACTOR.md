@@ -411,10 +411,10 @@ class OutputNaming:
 ## Implementation Checklist
 
 ### Phase 1: Module Extraction
-- [ ] Create tui/models/ directory
-- [ ] Extract PreviewChapter, ChapterPreviewState
+- [x] Create tui/models/ directory
+- [x] Extract PreviewChapter, ChapterPreviewState
 - [ ] Extract VoicePreviewStatus
-- [ ] Create tui/panels/ directory
+- [x] Create tui/panels/ directory (placeholder)
 - [ ] Extract FilePanel (with EPUBFileItem)
 - [ ] Extract SettingsPanel
 - [ ] Extract PreviewPanel (with ChapterPreviewItem)
@@ -422,11 +422,12 @@ class OutputNaming:
 - [ ] Extract QueuePanel
 - [ ] Extract JobsPanel (with JobItem)
 - [ ] Extract LogPanel
-- [ ] Create tui/screens/ directory
-- [ ] Extract HelpScreen
+- [x] Create tui/screens/ directory
+- [x] Extract HelpScreen
+- [x] Extract DirectoryBrowserScreen (bonus)
 - [ ] Extract processing logic to tui/processing.py
-- [ ] Update all imports
-- [ ] Verify all tests pass
+- [x] Update all imports
+- [x] Verify all tests pass (391 pass, 2 pre-existing failures)
 
 ### Phase 2: Unified Pipeline
 - [ ] Create core/ directory

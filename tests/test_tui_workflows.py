@@ -515,3 +515,114 @@ class TestJobsPanelSelection:
         panel = JobsPanel()
         assert hasattr(panel, "set_paused")
         assert callable(panel.set_paused)
+
+
+class TestTUILazyImports:
+    """Test that lazy imports in TUI app resolve correctly.
+
+    These tests verify that internal imports inside TUI functions
+    correctly reference the parent epub2tts_edge package, not the
+    tui subpackage. This catches import path errors like:
+    - `from .module` (wrong - looks in tui/)
+    - `from ..module` (correct - looks in epub2tts_edge/)
+    """
+
+    def test_chapter_detector_import_from_tui_context(self):
+        """ChapterDetector can be imported from TUI context."""
+        # This simulates the import done inside preview_chapters_async
+
+        # Verify the module exists and can resolve the import
+        # The actual import path used in app.py
+        from epub2tts_edge.chapter_detector import ChapterDetector
+
+        assert ChapterDetector is not None
+        assert hasattr(ChapterDetector, "__init__")
+
+    def test_epub2tts_edge_import_from_tui_context(self):
+        """epub2tts_edge functions can be imported from TUI context."""
+        # This simulates the imports done inside process_files_async
+        from epub2tts_edge.epub2tts_edge import (
+            add_cover,
+            generate_metadata,
+            get_book,
+            get_epub_cover,
+            make_m4b,
+        )
+
+        assert get_epub_cover is not None
+        assert add_cover is not None
+        assert generate_metadata is not None
+        assert get_book is not None
+        assert make_m4b is not None
+
+    def test_audio_generator_import_from_tui_context(self):
+        """audio_generator can be imported from TUI context."""
+        from epub2tts_edge.audio_generator import read_book
+
+        assert read_book is not None
+        assert callable(read_book)
+
+    def test_job_manager_import_from_tui_context(self):
+        """job_manager can be imported from TUI context."""
+        from epub2tts_edge.job_manager import JobManager, JobStatus
+
+        assert JobManager is not None
+        assert JobStatus is not None
+
+    def test_tui_app_module_loads_without_import_errors(self):
+        """TUI app module can be fully loaded without import errors."""
+        # Force a fresh import check of the app module
+        import importlib
+
+        from epub2tts_edge.tui import app
+
+        # Reload to catch any deferred import issues at module level
+        importlib.reload(app)
+
+        # Verify key classes are accessible
+        assert hasattr(app, "AudiobookifyApp")
+
+    def test_preview_chapters_async_import_path(self):
+        """The import inside preview_chapters_async uses correct path."""
+        # Get the actual source to verify the import statement
+        import inspect
+
+        from epub2tts_edge.tui.app import AudiobookifyApp
+
+        source = inspect.getsource(AudiobookifyApp.preview_chapters_async)
+
+        # Verify it uses parent package import (double dot)
+        assert "from ..chapter_detector" in source
+        # Verify it doesn't use incorrect single-dot import
+        assert "from .chapter_detector" not in source
+
+    def test_process_text_files_import_paths(self):
+        """The imports inside process_text_files use correct paths."""
+        import inspect
+
+        from epub2tts_edge.tui.app import AudiobookifyApp
+
+        source = inspect.getsource(AudiobookifyApp.process_text_files)
+
+        # Verify parent package imports (double dot)
+        assert "from ..audio_generator" in source
+        assert "from ..epub2tts_edge" in source
+        assert "from ..job_manager" in source
+
+        # Verify no incorrect single-dot imports
+        assert "from .audio_generator" not in source
+        assert "from .epub2tts_edge" not in source
+        assert "from .job_manager" not in source
+
+    def test_export_text_async_import_path(self):
+        """The import inside export_text_async uses correct path."""
+        import inspect
+
+        from epub2tts_edge.tui.app import AudiobookifyApp
+
+        source = inspect.getsource(AudiobookifyApp.export_text_async)
+
+        # Verify it uses parent package import (double dot)
+        assert "from ..chapter_detector" in source
+        # Verify it doesn't use incorrect single-dot import
+        assert "from .chapter_detector" not in source

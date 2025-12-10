@@ -6,7 +6,29 @@ This document outlines the refactoring needed to make the codebase maintainable 
 
 ## Current State
 
-### Problem: tui.py Monolith (3,372 lines)
+### What's Already Clean ✅
+
+| Module | Purpose | Status |
+|--------|---------|--------|
+| `audio_generator.py` | TTS generation, M4B creation | ✅ Clean - core TTS logic |
+| `chapter_detector.py` | Chapter detection from EPUB | ✅ Clean - pure detection |
+| `content_filter.py` | Front/back matter filtering | ✅ Clean - pure filtering |
+| `job_manager.py` | Job state persistence | ✅ Clean - pure state management |
+| `config.py` | App configuration | ✅ Clean - pure config |
+
+### Problem: epub2tts_edge.py Mixed Concerns
+
+```
+epub2tts_edge.py (1,200+ lines):
+├── CLI argument parsing (main())
+├── Export logic (export(), export_legacy(), export_mobi())
+├── Cover extraction (get_epub_cover())
+└── Legacy book processing (chap2text_epub())
+```
+
+The CLI code mixes UI concerns (arg parsing) with business logic (export).
+
+### Problem: tui.py Monolith (4,500+ lines)
 
 ```
 tui.py contains:
@@ -43,7 +65,122 @@ System B: JobsPanel + JobManager
 
 ---
 
-## Phase 1: Module Extraction (v2.5.0)
+## Phase 0: Core Backend Extraction (v2.4.x) - CURRENT PRIORITY
+
+### Goal
+Create a unified `core/` module that both CLI and TUI can use. Bug fixes in one place affect both interfaces.
+
+### Decision Record (2024-12-10)
+
+**Problem**: TUI and CLI have separate implementations for:
+- Job creation (different slug generation)
+- Text export (different code paths)
+- Conversion orchestration (duplicated logic)
+
+**Decision**: Create `core/pipeline.py` with `ConversionPipeline` class that:
+1. Orchestrates the full workflow: detect → filter → export → generate → package
+2. Accepts callbacks for progress reporting (UI-agnostic)
+3. Uses existing clean modules (audio_generator, chapter_detector, etc.)
+
+**Rationale**:
+- Single source of truth for business logic
+- Easier testing (test core without UI)
+- New interfaces (API, GUI) just call core
+- Bug fixes propagate to all interfaces
+
+### Target Structure
+
+```
+epub2tts_edge/
+├── core/                       # Pure business logic - NO UI dependencies
+│   ├── __init__.py
+│   ├── pipeline.py             # ConversionPipeline - orchestrates workflow
+│   └── text_exporter.py        # Extract from epub2tts_edge.py
+│
+├── audio_generator.py          # Already clean ✅
+├── chapter_detector.py         # Already clean ✅
+├── content_filter.py           # Already clean ✅
+├── job_manager.py              # Already clean ✅
+│
+├── cli.py                      # Thin CLI - just arg parsing + calls core
+├── tui.py                      # TUI - UI + calls core (later split further)
+```
+
+### ConversionPipeline Interface
+
+```python
+# core/pipeline.py
+
+@dataclass
+class PipelineConfig:
+    """Configuration for conversion pipeline."""
+    speaker: str = "en-US-AndrewNeural"
+    rate: str | None = None
+    volume: str | None = None
+    detection_method: str = "combined"
+    hierarchy_style: str = "flat"
+    filter_config: FilterConfig | None = None
+    normalize_audio: bool = False
+    trim_silence: bool = False
+    sentence_pause: int = 1200
+    paragraph_pause: int = 1200
+    max_concurrent: int = 5
+
+class ConversionPipeline:
+    """Single source of truth for the conversion workflow.
+
+    Used by both CLI and TUI for consistent behavior.
+    """
+
+    def __init__(self, job_manager: JobManager, config: PipelineConfig):
+        self.job_manager = job_manager
+        self.config = config
+
+    def create_job(self, source_file: Path, title: str = None,
+                   author: str = None) -> Job:
+        """Create job - unified for CLI and TUI."""
+
+    def detect_chapters(self, source_file: Path) -> tuple[list[ChapterNode], FilterResult]:
+        """Detect and filter chapters."""
+
+    def export_text(self, job: Job, chapters: list[ChapterNode]) -> Path:
+        """Export chapters to text file in job directory."""
+
+    def generate_audio(self, job: Job, text_file: Path,
+                       progress_callback=None,
+                       cancellation_check=None) -> list[Path]:
+        """Generate audio - with optional progress callback for UI."""
+
+    def package_audiobook(self, job: Job, audio_files: list[Path],
+                          cover_image: Path = None) -> Path:
+        """Create final M4B audiobook."""
+
+    def run(self, source_file: Path,
+            progress_callback=None,
+            cancellation_check=None) -> Job:
+        """Full pipeline: detect → export → generate → package."""
+```
+
+### Migration Steps
+
+1. **Create `core/pipeline.py`** with `ConversionPipeline`
+2. **Extract `text_exporter.py`** from `epub2tts_edge.py`
+3. **Update TUI** to use `ConversionPipeline` instead of custom logic
+4. **Update CLI** to use `ConversionPipeline`
+5. **Remove duplicate code** from `epub2tts_edge.py` and `tui.py`
+
+### Benefits
+
+| Benefit | Impact |
+|---------|--------|
+| Fix bugs once | High - no more duplicate fixes |
+| Consistent behavior | High - CLI and TUI work identically |
+| Easier testing | High - core can be unit tested without UI |
+| Add new interfaces | Medium - API, GUI just call core |
+
+---
+
+## Phase 1: TUI Module Extraction (v2.5.0)
 
 ### Target Structure
 

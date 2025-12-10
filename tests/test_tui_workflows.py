@@ -453,18 +453,18 @@ class TestJobsPanelSelection:
 
     @pytest.mark.asyncio
     async def test_jobs_panel_has_transport_controls(self, temp_dir):
-        """JobsPanel should have Start, Pause, Stop transport controls."""
+        """JobsPanel should have Play, Pause, Stop transport controls."""
         app = AudiobookifyApp(initial_path=str(temp_dir))
 
         async with app.run_test() as _:
             jobs_panel = app.query_one(JobsPanel)
 
-            # Check for transport controls
-            start_btn = jobs_panel.query_one("#jobs-start-btn")
+            # Check for transport controls (play button renamed from start)
+            play_btn = jobs_panel.query_one("#jobs-play-btn")
             pause_btn = jobs_panel.query_one("#jobs-pause-btn")
             stop_btn = jobs_panel.query_one("#jobs-stop-btn")
 
-            assert start_btn is not None
+            assert play_btn is not None
             assert pause_btn is not None
             assert stop_btn is not None
 
@@ -476,12 +476,12 @@ class TestJobsPanelSelection:
         async with app.run_test() as _:
             jobs_panel = app.query_one(JobsPanel)
 
-            start_btn = jobs_panel.query_one("#jobs-start-btn")
+            play_btn = jobs_panel.query_one("#jobs-play-btn")
             pause_btn = jobs_panel.query_one("#jobs-pause-btn")
             stop_btn = jobs_panel.query_one("#jobs-stop-btn")
 
-            # Start should be enabled, Pause/Stop disabled initially
-            assert start_btn.disabled is False
+            # All transport buttons disabled initially (no jobs selected)
+            assert play_btn.disabled is True
             assert pause_btn.disabled is True
             assert stop_btn.disabled is True
 

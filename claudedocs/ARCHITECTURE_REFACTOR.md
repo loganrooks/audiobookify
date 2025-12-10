@@ -410,24 +410,26 @@ class OutputNaming:
 
 ## Implementation Checklist
 
-### Phase 1: Module Extraction
+### Phase 1: Module Extraction ✅ COMPLETED (2024-12-10)
 - [x] Create tui/models/ directory
 - [x] Extract PreviewChapter, ChapterPreviewState
-- [ ] Extract VoicePreviewStatus
-- [x] Create tui/panels/ directory (placeholder)
-- [ ] Extract FilePanel (with EPUBFileItem)
-- [ ] Extract SettingsPanel
-- [ ] Extract PreviewPanel (with ChapterPreviewItem)
-- [ ] Extract ProgressPanel
-- [ ] Extract QueuePanel
-- [ ] Extract JobsPanel (with JobItem)
-- [ ] Extract LogPanel
+- [x] Extract VoicePreviewStatus
+- [x] Create tui/panels/ directory
+- [x] Extract FilePanel (with EPUBFileItem, PathInput)
+- [x] Extract SettingsPanel
+- [x] Extract PreviewPanel (with ChapterPreviewItem)
+- [x] Extract ProgressPanel
+- [x] Extract QueuePanel
+- [x] Extract JobsPanel (with JobItem)
+- [x] Extract LogPanel
 - [x] Create tui/screens/ directory
 - [x] Extract HelpScreen
 - [x] Extract DirectoryBrowserScreen (bonus)
-- [ ] Extract processing logic to tui/processing.py
+- [ ] Extract processing logic to tui/processing.py (deferred to Phase 2 - tightly coupled to UI)
 - [x] Update all imports
-- [x] Verify all tests pass (391 pass, 2 pre-existing failures)
+- [x] Verify all tests pass (393 tests pass)
+
+**Results**: app.py reduced from 4277 lines → 1995 lines (53% reduction)
 
 ### Phase 2: Unified Pipeline
 - [ ] Create core/ directory

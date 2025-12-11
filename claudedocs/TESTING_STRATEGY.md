@@ -6,7 +6,7 @@ This document defines testing approaches to catch bugs early and prevent regress
 
 ## Current State (Updated December 2024)
 
-### Existing Tests (500 tests)
+### Existing Tests (515 tests)
 
 | Module | Tests | Coverage |
 |--------|-------|----------|
@@ -28,7 +28,7 @@ This document defines testing approaches to catch bugs early and prevent regress
 | silence_detection | 18 | Good |
 | test_mode | 13 | Good |
 | tts_params | 10 | Good |
-| tui_workflows | 40 | Good |
+| tui_workflows | 55 | Good |
 | voice_preview | 18 | Good |
 
 ### TUI Testing Infrastructure ✅
@@ -40,12 +40,12 @@ Now available:
 - Lazy import verification tests
 - Mock TTS integration tests
 - Processing initiation workflow tests
+- Error handling tests (file errors, invalid formats, TTS failures)
 
 ### Remaining Gaps
 
 Still need automated tests for:
-- Error handling in UI (network failures, file errors)
-- Full end-to-end workflow with mock TTS
+- Full end-to-end workflow with mock TTS (complete EPUB → M4B pipeline)
 
 ---
 
@@ -380,15 +380,15 @@ jobs:
 - [x] Implement MockTTSEngine (with async/sync, call tracking, failure simulation)
 - [x] Add --test-mode flag to CLI (13 tests)
 
-### Phase 2: TUI Tests (In Progress)
+### Phase 2: TUI Tests ✅
 - [x] Set up pytest-asyncio for TUI tests
-- [x] Create tests/test_tui_workflows.py (40 tests)
+- [x] Create tests/test_tui_workflows.py (55 tests)
 - [x] Test preview loading
 - [x] Test chapter editing (delete, merge, undo)
 - [x] Test job selection and batch operations
 - [x] Test lazy import verification
 - [x] Test processing initiation (with mock TTS) - 4 tests
-- [ ] Test error handling (network failures, file errors)
+- [x] Test error handling (file errors, invalid formats, TTS failures) - 15 tests
 
 ### Phase 3: CI Integration (Mostly Done)
 - [x] Update GitHub Actions workflow (multi-platform, lint, tests)

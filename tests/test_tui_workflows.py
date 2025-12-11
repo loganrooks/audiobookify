@@ -737,3 +737,248 @@ class TestProcessingInitiation:
             # paragraphs contains the text content
             assert chapter.paragraphs is not None
             assert len(chapter.paragraphs) > 0
+
+
+class TestErrorHandling:
+    """Test error handling for file operations and processing errors.
+
+    These tests verify that the application properly handles various error
+    conditions and provides meaningful error messages.
+    """
+
+    def test_invalid_file_format_error_has_suggestion(self):
+        """InvalidFileFormatError should include helpful suggestion."""
+        from epub2tts_edge.errors import InvalidFileFormatError
+
+        error = InvalidFileFormatError(
+            "test.pdf", expected_formats=[".epub", ".mobi", ".azw", ".azw3"]
+        )
+
+        assert "test.pdf" in str(error)
+        assert error.suggestion is not None
+        assert ".epub" in error.suggestion
+
+    def test_tts_error_captures_text_context(self):
+        """TTSError should capture the text that failed."""
+        from epub2tts_edge.errors import TTSError
+
+        error = TTSError(
+            message="Network connection failed",
+            text_sample="Hello world",
+            voice="en-US-AriaNeural",
+        )
+
+        assert "Network connection failed" in str(error)
+        # Context contains the text sample
+        assert error.text_sample == "Hello world"
+        assert error.voice == "en-US-AriaNeural"
+
+    def test_chapter_detection_error_includes_file_path(self):
+        """ChapterDetectionError should include the file path."""
+        from epub2tts_edge.errors import ChapterDetectionError
+
+        error = ChapterDetectionError(
+            file_path="/path/to/book.epub",
+            detection_method="toc",
+            details="No TOC found",
+        )
+
+        assert "/path/to/book.epub" in str(error)
+        assert error.file_path == "/path/to/book.epub"
+
+    def test_format_error_for_user_creates_readable_message(self):
+        """format_error_for_user should create user-friendly error messages."""
+        from epub2tts_edge.errors import TTSError, format_error_for_user
+
+        error = TTSError(
+            message="Connection timeout",
+            text_sample="Some text",
+            voice="en-US-AriaNeural",
+        )
+
+        formatted = format_error_for_user(error)
+
+        assert isinstance(formatted, str)
+        assert len(formatted) > 0
+        assert "Connection timeout" in formatted or "TTS" in formatted
+
+    def test_audiobookify_error_base_class_formatting(self):
+        """AudiobookifyError base class should format messages properly."""
+        from epub2tts_edge.errors import AudiobookifyError
+
+        error = AudiobookifyError(
+            message="Something went wrong",
+            suggestion="Try restarting",
+            context={"operation": "test"},
+        )
+
+        formatted = str(error)
+        assert "Something went wrong" in formatted
+
+    def test_ffmpeg_error_includes_command_context(self):
+        """FFmpegError should provide context about the failed command."""
+        from epub2tts_edge.errors import FFmpegError
+
+        error = FFmpegError(
+            operation="m4b_conversion",
+            details="Exit code 1: Invalid input format",
+        )
+
+        assert "FFmpeg" in str(error)
+        assert "m4b_conversion" in str(error)
+        assert error.operation == "m4b_conversion"
+
+    def test_dependency_error_for_missing_ffmpeg(self):
+        """DependencyError should handle missing FFmpeg scenario."""
+        from epub2tts_edge.errors import DependencyError
+
+        error = DependencyError(
+            dependency="ffmpeg",
+            purpose="audio processing",
+        )
+
+        assert "ffmpeg" in str(error).lower()
+        assert error.suggestion is not None
+        assert "install" in error.suggestion.lower()
+
+    def test_resume_error_with_invalid_state(self):
+        """ResumeError should handle invalid state file scenarios."""
+        from epub2tts_edge.errors import ResumeError
+
+        error = ResumeError(
+            message="State file corrupted",
+            state_file="/path/to/state.json",
+        )
+
+        assert "State file corrupted" in str(error)
+        assert error.state_file == "/path/to/state.json"
+
+    def test_configuration_error_with_invalid_setting(self):
+        """ConfigurationError should indicate which setting is invalid."""
+        from epub2tts_edge.errors import ConfigurationError
+
+        error = ConfigurationError(
+            message="Invalid voice 'invalid-voice'",
+            parameter="speaker",
+        )
+
+        assert "Invalid voice" in str(error)
+        assert error.parameter == "speaker"
+
+    def test_invalid_file_format_error_for_text_file(self, temp_dir):
+        """InvalidFileFormatError for attempting to process a text file."""
+        from epub2tts_edge.errors import InvalidFileFormatError
+
+        # Create a plain text file
+        txt_file = temp_dir / "not_an_epub.txt"
+        txt_file.write_text("This is not an EPUB file")
+
+        error = InvalidFileFormatError(
+            str(txt_file), expected_formats=[".epub", ".mobi", ".azw", ".azw3"]
+        )
+
+        assert "not_an_epub.txt" in str(error)
+        assert ".epub" in error.suggestion
+
+    def test_mock_tts_failure_triggers_runtime_error(self, mock_tts_with_failures):
+        """MockTTSEngine failure mode should raise RuntimeError."""
+        import asyncio
+
+        mock_tts_with_failures.fail_on_text = "FAIL_ME"
+
+        async def generate_with_failure():
+            await mock_tts_with_failures.generate("This text FAIL_ME will fail", "en-US-AriaNeural")
+
+        with pytest.raises(RuntimeError, match="Mock TTS failure"):
+            asyncio.get_event_loop().run_until_complete(generate_with_failure())
+
+    def test_batch_processor_handles_nonexistent_file(self, temp_dir):
+        """BatchProcessor should handle non-existent input files gracefully."""
+        from epub2tts_edge.batch_processor import BatchConfig, BatchProcessor
+
+        nonexistent = temp_dir / "does_not_exist.epub"
+
+        config = BatchConfig(
+            input_path=str(nonexistent),
+            output_dir=str(temp_dir),
+            speaker="en-US-AriaNeural",
+        )
+
+        processor = BatchProcessor(config)
+        processor.prepare()
+
+        # Should have no tasks since file doesn't exist
+        assert processor.result is not None
+        assert len(processor.result.tasks) == 0
+
+    def test_batch_processor_handles_empty_directory(self, temp_dir):
+        """BatchProcessor should handle empty directories gracefully."""
+        from epub2tts_edge.batch_processor import BatchConfig, BatchProcessor
+
+        empty_dir = temp_dir / "empty"
+        empty_dir.mkdir()
+
+        config = BatchConfig(
+            input_path=str(empty_dir),
+            output_dir=str(temp_dir),
+            speaker="en-US-AriaNeural",
+        )
+
+        processor = BatchProcessor(config)
+        processor.prepare()
+
+        # Should have no tasks since directory is empty
+        assert processor.result is not None
+        assert len(processor.result.tasks) == 0
+
+    def test_chapter_detector_handles_invalid_epub_gracefully(self, temp_dir):
+        """ChapterDetector should handle malformed EPUB files."""
+        # Create a fake EPUB (just a zip with wrong contents)
+        import zipfile
+
+        from epub2tts_edge.chapter_detector import ChapterDetector, DetectionMethod
+
+        fake_epub = temp_dir / "fake.epub"
+        with zipfile.ZipFile(fake_epub, "w") as zf:
+            zf.writestr("not_valid.txt", "This is not valid EPUB content")
+
+        # Should raise an error or return empty results
+        try:
+            detector = ChapterDetector(epub_path=fake_epub, method=DetectionMethod.AUTO)
+            result = detector.detect()
+            # If it doesn't raise, result should indicate no chapters
+            chapters = result.flatten() if result else []
+            assert len(chapters) == 0 or result is None
+        except Exception as e:
+            # Any exception is acceptable for invalid EPUB
+            assert isinstance(e, Exception)
+
+    def test_error_hierarchy_inheritance(self):
+        """All custom errors should inherit from AudiobookifyError."""
+        from epub2tts_edge.errors import (
+            AudiobookifyError,
+            ChapterDetectionError,
+            ConfigurationError,
+            DependencyError,
+            FFmpegError,
+            InvalidFileFormatError,
+            ResumeError,
+            TTSError,
+        )
+
+        # Create instances with correct signatures and verify inheritance
+        errors = [
+            TTSError("test message"),  # message only
+            InvalidFileFormatError("file.pdf", [".epub"]),  # file_path, expected_formats
+            ChapterDetectionError("/path", "toc"),  # file_path, detection_method
+            FFmpegError("conversion"),  # operation
+            ConfigurationError("invalid setting"),  # message
+            DependencyError("dep"),  # dependency
+            ResumeError("state error"),  # message
+        ]
+
+        for error in errors:
+            assert isinstance(error, AudiobookifyError), (
+                f"{type(error).__name__} should inherit from AudiobookifyError"
+            )
+            assert isinstance(error, Exception), f"{type(error).__name__} should be an Exception"

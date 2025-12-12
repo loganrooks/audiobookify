@@ -158,6 +158,9 @@ class MockTTSEngine:
     ) -> bytes:
         """Synchronous version of generate for non-async contexts.
 
+        This method performs the same operations as generate() but without
+        using asyncio, making it safe to call from ThreadPoolExecutor threads.
+
         Args:
             text: Text to synthesize
             voice: Voice ID to use
@@ -168,12 +171,29 @@ class MockTTSEngine:
 
         Returns:
             WAV audio bytes (silence)
-        """
-        import asyncio
 
-        return asyncio.get_event_loop().run_until_complete(
-            self.generate(text, voice, rate, volume, output_path, **kwargs)
-        )
+        Raises:
+            RuntimeError: If fail_on_text pattern matches
+        """
+        # Record the call
+        call = TTSCall(text=text, voice=voice, rate=rate, volume=volume, output_path=output_path)
+        self.calls.append(call)
+
+        # Check for intentional failure
+        if self.fail_on_text and self.fail_on_text in text:
+            raise RuntimeError(f"Mock TTS failure triggered by text: {text[:50]}...")
+
+        # Generate silent audio
+        duration = self._calculate_duration(text)
+        audio_data = self._generate_silence(duration)
+
+        # Write to file if path provided
+        if output_path:
+            output_path = Path(output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(audio_data)
+
+        return audio_data
 
     @property
     def call_count(self) -> int:

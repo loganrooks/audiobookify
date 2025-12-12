@@ -882,15 +882,11 @@ class TestErrorHandling:
 
     def test_mock_tts_failure_triggers_runtime_error(self, mock_tts_with_failures):
         """MockTTSEngine failure mode should raise RuntimeError."""
-        import asyncio
-
         mock_tts_with_failures.fail_on_text = "FAIL_ME"
 
-        async def generate_with_failure():
-            await mock_tts_with_failures.generate("This text FAIL_ME will fail", "en-US-AriaNeural")
-
+        # Use synchronous generate_sync which works without event loop
         with pytest.raises(RuntimeError, match="Mock TTS failure"):
-            asyncio.get_event_loop().run_until_complete(generate_with_failure())
+            mock_tts_with_failures.generate_sync("This text FAIL_ME will fail", "en-US-AriaNeural")
 
     def test_batch_processor_handles_nonexistent_file(self, temp_dir):
         """BatchProcessor should handle non-existent input files gracefully."""

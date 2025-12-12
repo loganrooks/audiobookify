@@ -6,7 +6,7 @@ This document defines testing approaches to catch bugs early and prevent regress
 
 ## Current State (Updated December 2024)
 
-### Existing Tests (515 tests)
+### Existing Tests (529 tests)
 
 | Module | Tests | Coverage |
 |--------|-------|----------|
@@ -15,6 +15,7 @@ This document defines testing approaches to catch bugs early and prevent regress
 | chapter_detector | 17 | Good |
 | chapter_selector | 24 | Good |
 | content_filter | 40 | Good |
+| e2e_workflow | 14 | Good |
 | event_bus | 34 | Good |
 | integration | 19 | Basic |
 | job_manager | 32 | Good |
@@ -41,11 +42,13 @@ Now available:
 - Mock TTS integration tests
 - Processing initiation workflow tests
 - Error handling tests (file errors, invalid formats, TTS failures)
+- Full E2E workflow tests with mock TTS (EPUB → text → audio → M4B)
 
 ### Remaining Gaps
 
-Still need automated tests for:
-- Full end-to-end workflow with mock TTS (complete EPUB → M4B pipeline)
+All major testing gaps have been addressed. Future enhancements:
+- Snapshot testing for regression detection
+- Test documentation improvements
 
 ---
 

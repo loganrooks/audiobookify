@@ -746,6 +746,13 @@ Hierarchy Styles:
         help="Maximum concurrent TTS tasks (default: 5)",
     )
 
+    # Development/testing options
+    parser.add_argument(
+        "--test-mode",
+        action="store_true",
+        help="Use mock TTS for testing (no network, instant, reproducible)",
+    )
+
     # Logging options
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose (debug) logging"
@@ -765,6 +772,13 @@ Hierarchy Styles:
         setup_logging(level=logging.WARNING)
     else:
         setup_logging(level=logging.INFO)
+
+    # Enable test mode if requested (uses mock TTS)
+    if args.test_mode:
+        from .audio_generator import enable_test_mode
+
+        enable_test_mode()
+        logger.info("Running in test mode - TTS calls will be mocked")
 
     # Initialize configuration with custom base directory if provided
     if args.base_dir:

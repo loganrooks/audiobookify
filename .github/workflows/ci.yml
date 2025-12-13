@@ -52,20 +52,30 @@ jobs:
           python -c "import nltk; nltk.download('punkt', quiet=True); nltk.download('punkt_tab', quiet=True)"
 
       - name: Run tests
+        if: matrix.os != 'ubuntu-latest' || matrix.python-version != '3.11'
         run: |
           pytest tests/ -v --tb=short
 
       - name: Run tests with coverage
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
         run: |
-          pytest tests/ --cov=epub2tts_edge --cov-report=xml --cov-report=html
+          pytest tests/ -v --tb=short --cov=epub2tts_edge --cov-report=xml --cov-report=html --cov-report=term-missing
 
-      - name: Upload coverage reports
+      - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
-          file: ./coverage.xml
+          files: ./coverage.xml
           fail_ci_if_error: false
+          verbose: true
+
+      - name: Upload coverage HTML report
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: htmlcov/
+          retention-days: 30
 
   lint:
     runs-on: ubuntu-latest

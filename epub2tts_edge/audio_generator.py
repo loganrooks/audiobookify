@@ -27,6 +27,47 @@ from .logger import get_logger
 # Module logger
 logger = get_logger(__name__)
 
+# Test mode configuration
+_test_mode_enabled = False
+_mock_tts_engine = None
+
+
+def enable_test_mode() -> None:
+    """Enable test mode to use MockTTSEngine instead of real Edge TTS.
+
+    This is useful for:
+    - Fast testing (1000x+ faster than real TTS)
+    - Offline development without internet
+    - CI/CD environments
+    - Reproducible test results
+    """
+    global _test_mode_enabled, _mock_tts_engine
+    _test_mode_enabled = True
+    # Lazy import to avoid circular dependencies
+    from tests.mocks.tts_mock import MockTTSEngine
+
+    _mock_tts_engine = MockTTSEngine(speed_factor=1000)
+    logger.info("Test mode enabled - using MockTTSEngine")
+
+
+def disable_test_mode() -> None:
+    """Disable test mode and return to real Edge TTS."""
+    global _test_mode_enabled, _mock_tts_engine
+    _test_mode_enabled = False
+    _mock_tts_engine = None
+    logger.info("Test mode disabled - using real Edge TTS")
+
+
+def is_test_mode() -> bool:
+    """Check if test mode is enabled."""
+    return _test_mode_enabled
+
+
+def get_mock_engine():
+    """Get the mock TTS engine instance (for test assertions)."""
+    return _mock_tts_engine
+
+
 # Default configuration
 DEFAULT_RETRY_COUNT = 3
 DEFAULT_RETRY_DELAY = 2  # seconds (base delay for exponential backoff)
@@ -179,6 +220,8 @@ def run_edgespeak(
     Note: 401 errors are typically caused by SSL fingerprinting issues in
     edge-tts >= 7.1.0. Ensure edge-tts version is < 7.1.0.
 
+    In test mode (--test-mode flag), uses MockTTSEngine for fast, offline testing.
+
     Args:
         sentence: Text to speak
         speaker: Voice ID (e.g., "en-US-AndrewNeural")
@@ -191,6 +234,20 @@ def run_edgespeak(
     Raises:
         TTSGenerationError: If all retry attempts fail
     """
+    # Test mode: use mock engine for fast, offline testing
+    if _test_mode_enabled and _mock_tts_engine is not None:
+        audio_data = _mock_tts_engine.generate_sync(
+            text=sentence,
+            voice=speaker,
+            rate=rate,
+            volume=volume,
+            output_path=Path(filename),
+        )
+        # MockTTSEngine writes the file, but we need to ensure it exists
+        if not os.path.exists(filename):
+            Path(filename).write_bytes(audio_data)
+        return
+
     last_error = None
     is_auth_error = False
 

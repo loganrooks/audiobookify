@@ -4,9 +4,9 @@
 
 This document defines testing approaches to catch bugs early and prevent regressions, reducing manual E2E testing burden.
 
-## Current State
+## Current State (Updated December 2024)
 
-### Existing Tests (278 tests)
+### Existing Tests (558 tests)
 
 | Module | Tests | Coverage |
 |--------|-------|----------|
@@ -14,24 +14,43 @@ This document defines testing approaches to catch bugs early and prevent regress
 | batch_processor | 19 | Good |
 | chapter_detector | 17 | Good |
 | chapter_selector | 24 | Good |
+| content_filter | 40 | Good |
+| e2e_workflow | 14 | Good |
+| event_bus | 34 | Good |
 | integration | 19 | Basic |
 | job_manager | 32 | Good |
 | mobi_parser | 30 | Good |
 | multi_voice | 28 | Good |
+| output_naming | 34 | Good |
 | pause_resume | 14 | Good |
+| pipeline | 29 | Good (60%) |
 | preview_export | 9 | Basic |
+| profiles | 27 | Good |
 | pronunciation | 23 | Good |
 | silence_detection | 18 | Good |
+| test_mode | 13 | Good |
 | tts_params | 10 | Good |
+| tui_workflows | 55 | Good |
 | voice_preview | 18 | Good |
 
-### Gap: TUI Testing
+### TUI Testing Infrastructure ✅
 
-No automated tests for:
-- Panel interactions
-- Workflow sequences (select → preview → edit → process)
-- Error handling in UI
-- State management
+Now available:
+- Panel instantiation and mounting tests
+- Preview loading and chapter editing tests
+- Job selection and batch operations tests
+- Lazy import verification tests
+- Mock TTS integration tests
+- Processing initiation workflow tests
+- Error handling tests (file errors, invalid formats, TTS failures)
+- Full E2E workflow tests with mock TTS (EPUB → text → audio → M4B)
+- Core pipeline tests (29 tests covering ConversionPipeline, PipelineConfig, PipelineResult)
+
+### Remaining Gaps
+
+All major testing gaps have been addressed. Future enhancements:
+- Snapshot testing for regression detection
+- Test documentation improvements
 
 ---
 
@@ -42,11 +61,11 @@ No automated tests for:
                    /  Manual   \      ← Reduced with automation
                   /    E2E      \
                  ├───────────────┤
-                /   Integration   \   ← TUI workflows, API flows
+                /   Integration   \   ← TUI workflows + pipeline (84 tests)
                /      Tests        \
               ├─────────────────────┤
-             /      Unit Tests       \  ← Current strength
-            /   (278 existing tests)  \
+             /      Unit Tests       \  ← Strong coverage
+            /   (558 existing tests)  \
            └───────────────────────────┘
 ```
 
@@ -359,24 +378,26 @@ jobs:
 
 ## Implementation Checklist
 
-### Phase 1: Foundation
-- [ ] Create tests/fixtures/ directory
-- [ ] Implement create_test_epub() helper
-- [ ] Create predefined EPUB fixtures
-- [ ] Implement MockTTSEngine
-- [ ] Add --test-mode flag to CLI
+### Phase 1: Foundation ✅
+- [x] Create tests/fixtures/ directory
+- [x] Implement create_test_epub() helper
+- [x] Create predefined EPUB fixtures (8 fixture types)
+- [x] Implement MockTTSEngine (with async/sync, call tracking, failure simulation)
+- [x] Add --test-mode flag to CLI (13 tests)
 
-### Phase 2: TUI Tests
-- [ ] Set up pytest-asyncio for TUI tests
-- [ ] Create tests/test_tui_workflows.py
-- [ ] Test preview loading
-- [ ] Test chapter editing (delete, merge, undo)
-- [ ] Test processing initiation
-- [ ] Test error handling
+### Phase 2: TUI Tests ✅
+- [x] Set up pytest-asyncio for TUI tests
+- [x] Create tests/test_tui_workflows.py (55 tests)
+- [x] Test preview loading
+- [x] Test chapter editing (delete, merge, undo)
+- [x] Test job selection and batch operations
+- [x] Test lazy import verification
+- [x] Test processing initiation (with mock TTS) - 4 tests
+- [x] Test error handling (file errors, invalid formats, TTS failures) - 15 tests
 
-### Phase 3: CI Integration
-- [ ] Update GitHub Actions workflow
-- [ ] Add test coverage reporting
+### Phase 3: CI Integration (Mostly Done)
+- [x] Update GitHub Actions workflow (multi-platform, lint, tests)
+- [x] Add test coverage reporting (Codecov + HTML artifacts)
 - [ ] Add snapshot testing
 - [ ] Create test documentation
 

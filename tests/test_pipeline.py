@@ -3,6 +3,7 @@
 These tests verify the unified conversion pipeline that both CLI and TUI use.
 """
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from epub2tts_edge.content_filter import FilterConfig
@@ -198,7 +199,7 @@ class TestConversionPipelineCreateJob:
 
         assert job is not None
         assert job.job_id is not None
-        assert job.source_file == str(sample_epub)
+        assert Path(job.source_file).resolve() == Path(sample_epub).resolve()
         assert job.speaker == "en-US-AndrewNeural"
 
     def test_create_job_with_title_author(self, temp_dir, sample_epub):

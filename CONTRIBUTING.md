@@ -123,34 +123,56 @@ def process_chapter(
 
 ### Running Tests
 ```bash
-# All tests
+# All tests (uses mock TTS automatically - no network calls)
 python -m pytest tests/ -v
 
 # Specific file
 python -m pytest tests/test_chapter_detector.py -v
 
 # With coverage
-python -m pytest tests/ --cov=epub2tts_edge
+python -m pytest tests/ --cov=epub2tts_edge --cov-report=html
+
+# Quick sanity check
+python -m pytest tests/ -x -q  # Stop on first failure
 ```
+
+### Test Infrastructure
+- **Mock TTS**: Tests use `MockTTSEngine` for fast, offline testing
+- **Test Mode**: Enable via `enable_test_mode()` for development
+- **Fixtures**: Sample EPUBs in `tests/fixtures/`
 
 ### Writing Tests
 - Place in `tests/` directory
 - Name files `test_*.py`
 - Use descriptive test names
 - Test edge cases
+- Use `sample_epub` fixture for EPUB tests
 
 ```python
 class TestChapterDetector:
-    def test_detect_toc_with_nested_chapters(self):
+    def test_detect_toc_with_nested_chapters(self, sample_epub):
         """Test that nested TOC entries are properly parsed."""
+        detector = ChapterDetector(sample_epub)
         # Test implementation
+```
+
+### Test Mode for TTS Tests
+```python
+from epub2tts_edge.audio_generator import enable_test_mode, disable_test_mode
+
+def test_audio_generation(self, sample_epub, temp_dir):
+    try:
+        enable_test_mode()  # Uses mock TTS
+        # ... test code ...
+    finally:
+        disable_test_mode()
 ```
 
 ## Areas for Contribution
 
 ### High Priority
 - [ ] Bug fixes
-- [ ] Test coverage improvements
+- [x] Test coverage improvements (558 tests, good coverage)
 - [ ] Documentation
 
 ### Medium Priority
@@ -161,6 +183,7 @@ class TestChapterDetector:
 ### Lower Priority
 - [ ] UI improvements
 - [ ] New output formats
+- [ ] Snapshot testing for regression detection
 
 ## Questions?
 

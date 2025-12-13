@@ -5,6 +5,32 @@ All notable changes to Audiobookify will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Testing Infrastructure** - Comprehensive test suite improvements
+  - Mock TTS engine for fast, offline testing (no network calls)
+  - `--test-mode` CLI flag for development/CI testing
+  - Test mode APIs: `enable_test_mode()`, `disable_test_mode()`, `is_test_mode()`, `get_mock_engine()`
+  - E2E workflow tests covering EPUB → text → audio → M4B pipeline (14 tests)
+  - Core pipeline tests for ConversionPipeline, PipelineConfig, PipelineResult (29 tests)
+  - Error handling tests for file errors, invalid formats, TTS failures (15 tests)
+  - TUI lazy import verification tests
+  - Processing initiation workflow tests
+
+### Fixed
+- Fixed type mismatch bug in `ConversionPipeline.export_text()` where it expected `ChapterNode` objects but received dicts from `detect_chapters()`
+
+### Changed
+- Enhanced CI workflow with coverage reporting (Codecov integration)
+- Test count increased from ~500 to 558 tests
+- Pipeline coverage improved from 22% to 60%
+
+### Developer Notes
+- New test fixtures in `tests/fixtures/` for creating test EPUBs
+- Mock TTS infrastructure in `tests/mocks/tts_mock.py`
+- Updated `TESTING_STRATEGY.md` documentation
+
 ## [2.3.0] - 2025-11-27
 
 ### Added

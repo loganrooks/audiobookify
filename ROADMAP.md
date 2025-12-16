@@ -9,7 +9,7 @@ The following design documents detail implementation plans for major features:
 | Document | Description | Status |
 |----------|-------------|--------|
 | [Architecture Refactor](./claudedocs/ARCHITECTURE_REFACTOR.md) | Module extraction, unified pipeline, EventBus | ✅ Complete (Phases 0-3) |
-| [Testing Strategy](./claudedocs/TESTING_STRATEGY.md) | TUI tests, fixtures, CI integration | Planning |
+| [Testing Strategy](./claudedocs/TESTING_STRATEGY.md) | TUI tests, fixtures, CI integration | ✅ Complete (558 tests) |
 
 ---
 
@@ -114,11 +114,14 @@ The following design documents detail implementation plans for major features:
 - [ ] Parallel job processing (configurable concurrency)
 - [ ] Progress estimation based on word count
 
-#### Testing Infrastructure - See [Testing Strategy](./claudedocs/TESTING_STRATEGY.md)
-- [ ] Set up TUI integration tests with Textual's AppTest
-- [ ] Create test fixtures (create_test_epub helper)
-- [ ] Implement MockTTSEngine for fast testing
-- [ ] Add CI/CD workflow for automated testing
+#### Testing Infrastructure ✅ - See [Testing Strategy](./claudedocs/TESTING_STRATEGY.md)
+- [x] Set up TUI integration tests with Textual's AppTest (55 tests)
+- [x] Create test fixtures (create_test_epub helper, 8 fixture types)
+- [x] Implement MockTTSEngine for fast testing (no network calls)
+- [x] Add CI/CD workflow with coverage reporting (Codecov integration)
+- [x] E2E workflow tests (14 tests)
+- [x] Pipeline tests (29 tests, 60% coverage)
+- [x] Error handling tests (15 tests)
 
 #### Content Intelligence
 - [ ] **Empty chapter detection** - Flag/auto-remove chapters with no meaningful content

@@ -12,9 +12,10 @@ This file provides context for Claude Code when working on this project.
 epub2tts_edge/
 ├── __init__.py             # Package exports
 ├── epub2tts_edge.py        # Main CLI and audio generation logic
+├── audio_generator.py      # TTS generation with test mode support (v2.5.0)
 ├── chapter_detector.py     # Enhanced chapter detection (TOC + headings)
 ├── batch_processor.py      # Batch processing for multiple EPUBs
-├── tui.py                  # Terminal UI (Textual-based)
+├── content_filter.py       # Front/back matter filtering
 ├── voice_preview.py        # Voice preview functionality (v2.1.0)
 ├── chapter_selector.py     # Chapter selection (v2.1.0)
 ├── pause_resume.py         # Pause/resume state management (v2.1.0)
@@ -22,20 +23,40 @@ epub2tts_edge/
 ├── silence_detection.py    # Silence trimming (v2.2.0)
 ├── pronunciation.py        # Custom pronunciation dictionary (v2.2.0)
 ├── multi_voice.py          # Multiple voice support (v2.2.0)
-└── mobi_parser.py          # MOBI/AZW file parsing (v2.3.0)
+├── mobi_parser.py          # MOBI/AZW file parsing (v2.3.0)
+├── job_manager.py          # Job tracking and persistence (v2.5.0)
+├── core/                   # Core pipeline infrastructure (v2.5.0)
+│   ├── pipeline.py         # ConversionPipeline (unified CLI/TUI)
+│   ├── events.py           # EventBus pub-sub system
+│   ├── profiles.py         # ProcessingProfile presets
+│   └── output_naming.py    # Template-based file naming
+└── tui/                    # Terminal UI modules (v2.5.0)
+    ├── app.py              # Main AudiobookifyApp
+    ├── panels/             # UI panels (file, settings, preview, etc.)
+    ├── models/             # Data models (preview_state, voice_status)
+    └── handlers/           # Event handlers
 
 tests/
-├── test_chapter_detector.py
-├── test_batch_processor.py
+├── fixtures/                    # Test EPUB fixtures
+│   └── epub_factory.py          # create_test_epub() helper
+├── mocks/
+│   └── tts_mock.py              # MockTTSEngine for offline testing
+├── test_chapter_detector.py     # 17 tests
+├── test_batch_processor.py      # 19 tests
+├── test_e2e_workflow.py         # 14 E2E tests (v2.5.0)
+├── test_pipeline.py             # 29 pipeline tests (v2.5.0)
+├── test_test_mode.py            # 13 test mode tests (v2.5.0)
+├── test_tui_workflows.py        # 55 TUI tests (v2.5.0)
 ├── test_voice_preview.py        # 18 tests
 ├── test_tts_params.py           # 10 tests
 ├── test_chapter_selector.py     # 24 tests
 ├── test_pause_resume.py         # 14 tests
-├── test_audio_normalization.py  # 17 tests (v2.2.0)
-├── test_silence_detection.py    # 18 tests (v2.2.0)
-├── test_pronunciation.py        # 23 tests (v2.2.0)
-├── test_multi_voice.py          # 28 tests (v2.2.0)
-└── test_mobi_parser.py          # 30 tests (v2.3.0)
+├── test_audio_normalization.py  # 17 tests
+├── test_silence_detection.py    # 18 tests
+├── test_pronunciation.py        # 23 tests
+├── test_multi_voice.py          # 28 tests
+└── test_mobi_parser.py          # 30 tests
+# Total: 558 tests
 ```
 
 ## Key Components
@@ -197,7 +218,23 @@ git add -A && git commit -m "descriptive message" && git push
 
 ### Running Tests
 ```bash
+# Run all tests (558 tests, uses mock TTS - no network)
 python -m pytest tests/ -v
+
+# Run with coverage
+python -m pytest tests/ --cov=epub2tts_edge --cov-report=html
+
+# Run specific test file
+python -m pytest tests/test_pipeline.py -v
+```
+
+### Test Mode
+Tests use `MockTTSEngine` for fast, offline testing:
+```python
+from epub2tts_edge.audio_generator import enable_test_mode, disable_test_mode
+
+enable_test_mode()   # Use mock TTS
+disable_test_mode()  # Restore real TTS
 ```
 
 ### Testing CLI
@@ -207,6 +244,9 @@ PYTHONPATH=. python -m epub2tts_edge.epub2tts_edge --help
 
 # Test TUI
 PYTHONPATH=. python -m epub2tts_edge.tui
+
+# CLI with test mode (no TTS calls)
+PYTHONPATH=. python -m epub2tts_edge.epub2tts_edge --test-mode book.epub
 ```
 
 ### Dependencies
@@ -241,6 +281,8 @@ Uses FFmpeg metadata format with chapter markers including start/end times in mi
 - [ROADMAP.md](./ROADMAP.md) - Future plans and features
 - [CONTRIBUTING.md](./CONTRIBUTING.md) - Contribution guidelines
 - [README.md](./README.md) - User documentation
+- [TESTING_STRATEGY.md](./claudedocs/TESTING_STRATEGY.md) - Testing infrastructure (558 tests)
+- [ARCHITECTURE_REFACTOR.md](./claudedocs/ARCHITECTURE_REFACTOR.md) - v2.5.0 architecture
 
 ## Common Tasks
 

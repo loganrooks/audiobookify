@@ -8,9 +8,9 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.events import Click
 from textual.message import Message
-from textual.widgets import Button, Input, Label, ListItem, ListView, Static
+from textual.widgets import Button, Input, Label, ListItem, ListView, Static, Tab, Tabs
 
-from ..models import ChapterPreviewState, PreviewChapter
+from ..models import ChapterPreviewState, MultiPreviewState, PreviewChapter
 
 
 class ChapterPreviewItem(ListItem):
@@ -96,6 +96,26 @@ class PreviewPanel(Vertical):
         height: auto;
         padding: 0 1;
         background: $surface-darken-1;
+    }
+
+    PreviewPanel > #preview-tabs {
+        height: auto;
+        dock: top;
+        background: $surface-darken-2;
+        display: none;
+    }
+
+    PreviewPanel > #preview-tabs.visible {
+        display: block;
+    }
+
+    PreviewPanel > #preview-tabs Tab {
+        min-width: 10;
+        padding: 0 1;
+    }
+
+    PreviewPanel > #preview-tabs Tab.-active {
+        background: $primary;
     }
 
     PreviewPanel > #preview-header > Label {
@@ -192,6 +212,9 @@ class PreviewPanel(Vertical):
         self._undo_stack: list[list[PreviewChapter]] = []  # Stack of chapter snapshots
         self._last_selected_index: int | None = None  # Anchor for range selection
         self._toggle_mode: bool = False  # Toggle mode (V key)
+        # Multi-file preview support
+        self._multi_state = MultiPreviewState()
+        self._undo_stacks: dict[Path, list[list[PreviewChapter]]] = {}  # Per-file undo
 
     def compose(self) -> ComposeResult:
         # Header with book info
@@ -199,6 +222,9 @@ class PreviewPanel(Vertical):
             yield Label("📖", id="book-icon")
             yield Label("Select a file and click 'Preview Chapters'", id="book-title")
             yield Label("", id="chapter-stats")
+
+        # Tab bar for multiple files (hidden when empty)
+        yield Tabs(id="preview-tabs")
 
         # Placeholder when no preview
         yield Static(
@@ -240,17 +266,36 @@ class PreviewPanel(Vertical):
         book_title: str = "",
         book_author: str = "",
     ) -> None:
-        """Load chapters into the preview panel."""
-        self.preview_state = ChapterPreviewState(
+        """Load chapters into the preview panel.
+
+        Adds or updates a tab for the file and displays its chapters.
+        """
+        # Save current undo stack before switching
+        if self._multi_state.active_file and self._undo_stack:
+            self._undo_stacks[self._multi_state.active_file] = self._undo_stack.copy()
+
+        # Add to multi-state
+        added = self._multi_state.add_preview(
             source_file=source_file,
-            detection_method=detection_method,
             chapters=chapters,
+            detection_method=detection_method,
             book_title=book_title,
             book_author=book_author,
         )
 
-        # Clear undo stack for new book
-        self._undo_stack.clear()
+        if not added:
+            # At max tabs - notify user
+            self.notify("Maximum tabs open. Close a tab first.", severity="warning")
+            return
+
+        # Get the active state
+        self.preview_state = self._multi_state.active_state
+
+        # Restore or create undo stack for this file
+        self._undo_stack = self._undo_stacks.get(source_file, [])
+
+        # Update tabs
+        self._update_tabs()
 
         # Update header
         book_name = source_file.stem
@@ -279,9 +324,17 @@ class PreviewPanel(Vertical):
         self._update_action_buttons()
 
     def clear_preview(self) -> None:
-        """Clear the current preview."""
+        """Clear the current preview (all tabs)."""
         self.preview_state = None
         self._undo_stack.clear()
+        self._multi_state.close_all()
+        self._undo_stacks.clear()
+
+        # Hide tabs
+        tabs = self.query_one("#preview-tabs", Tabs)
+        tabs.clear()
+        tabs.remove_class("visible")
+
         self.query_one("#book-title", Label).update("Select a file and click 'Preview Chapters'")
         self.query_one("#chapter-stats", Label).update("")
         self.query_one("#no-preview").display = True
@@ -294,6 +347,155 @@ class PreviewPanel(Vertical):
         self.query_one("#preview-merge", Button).disabled = True
         self.query_one("#preview-delete", Button).disabled = True
         self.query_one("#preview-edit", Button).disabled = True
+
+    def _update_tabs(self) -> None:
+        """Update the tabs widget to reflect current state."""
+        tabs = self.query_one("#preview-tabs", Tabs)
+
+        # Get current open files
+        open_files = self._multi_state.get_open_files()
+
+        if len(open_files) <= 1:
+            # Hide tabs when only 0-1 files
+            tabs.clear()
+            tabs.remove_class("visible")
+            return
+
+        # Show tabs
+        tabs.add_class("visible")
+
+        # Build new tab set
+        existing_ids = {tab.id for tab in tabs.query(Tab)}
+        active_file = self._multi_state.active_file
+
+        for file_path in open_files:
+            tab_id = self._path_to_tab_id(file_path)
+            label = self._multi_state.get_tab_label(file_path)
+
+            # Add indicator for modified state
+            if self._multi_state.is_modified(file_path):
+                label = f"* {label}"
+
+            if tab_id not in existing_ids:
+                # Add new tab
+                tabs.add_tab(Tab(label, id=tab_id))
+            else:
+                # Update existing tab label
+                for tab in tabs.query(Tab):
+                    if tab.id == tab_id:
+                        tab.label = label
+                        break
+
+        # Remove tabs for closed files
+        current_tab_ids = {self._path_to_tab_id(f) for f in open_files}
+        for tab in tabs.query(Tab):
+            if tab.id not in current_tab_ids:
+                tab.remove()
+
+        # Activate the correct tab
+        if active_file:
+            tabs.active = self._path_to_tab_id(active_file)
+
+    def _path_to_tab_id(self, file_path: Path) -> str:
+        """Convert a file path to a tab ID."""
+        # Use hash of path for unique ID
+        return f"tab-{hash(str(file_path)) % 10000000:07d}"
+
+    def _tab_id_to_path(self, tab_id: str) -> Path | None:
+        """Convert a tab ID back to file path."""
+        for file_path in self._multi_state.get_open_files():
+            if self._path_to_tab_id(file_path) == tab_id:
+                return file_path
+        return None
+
+    def _switch_to_file(self, file_path: Path) -> None:
+        """Switch display to a different file's preview."""
+        if not self._multi_state.has_file(file_path):
+            return
+
+        # Save current undo stack
+        if self._multi_state.active_file:
+            self._undo_stacks[self._multi_state.active_file] = self._undo_stack.copy()
+
+        # Switch in multi-state
+        self._multi_state.switch_to(file_path)
+        self.preview_state = self._multi_state.active_state
+
+        # Restore undo stack for this file
+        self._undo_stack = self._undo_stacks.get(file_path, [])
+
+        if not self.preview_state:
+            return
+
+        # Update header
+        book_name = file_path.stem
+        if len(book_name) > 40:
+            book_name = book_name[:37] + "..."
+        self.query_one("#book-title", Label).update(book_name)
+
+        # Update stats
+        chapters = self.preview_state.chapters
+        total_chapters = len(chapters)
+        total_words = sum(c.word_count for c in chapters)
+        self.query_one("#chapter-stats", Label).update(f"{total_chapters} ch, {total_words:,}w")
+
+        # Rebuild chapter tree
+        chapter_tree = self.query_one("#chapter-tree", ListView)
+        chapter_tree.clear()
+        for i, chapter in enumerate(chapters):
+            chapter_tree.append(ChapterPreviewItem(chapter, i))
+
+        # Reset selection anchor
+        self._last_selected_index = None
+
+        # Update buttons
+        self._update_action_buttons()
+
+    def close_tab(self, file_path: Path | None = None) -> None:
+        """Close a preview tab.
+
+        Args:
+            file_path: Path to close, or None to close active tab
+        """
+        if file_path is None:
+            file_path = self._multi_state.active_file
+
+        if file_path is None:
+            return
+
+        # Remove undo stack for this file
+        self._undo_stacks.pop(file_path, None)
+
+        # Close in multi-state
+        new_active = self._multi_state.close_tab(file_path)
+
+        if new_active is None:
+            # No more tabs - clear everything
+            self.clear_preview()
+        else:
+            # Switch to new active file
+            self._switch_to_file(new_active)
+            self._update_tabs()
+
+    @on(Tabs.TabActivated, "#preview-tabs")
+    def _on_tab_activated(self, event: Tabs.TabActivated) -> None:
+        """Handle tab switch."""
+        if event.tab is None:
+            return
+
+        file_path = self._tab_id_to_path(event.tab.id)
+        if file_path and file_path != self._multi_state.active_file:
+            self._switch_to_file(file_path)
+
+    @property
+    def open_file_count(self) -> int:
+        """Get the number of open file previews."""
+        return self._multi_state.file_count
+
+    @property
+    def open_files(self) -> list[Path]:
+        """Get list of open file paths."""
+        return self._multi_state.get_open_files()
 
     def has_chapters(self) -> bool:
         """Check if there are chapters loaded."""

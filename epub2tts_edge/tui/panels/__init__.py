@@ -3,6 +3,7 @@
 from .file_panel import EPUBFileItem, FilePanel, PathInput
 from .jobs_panel import JobItem, JobsPanel
 from .log_panel import LogPanel
+from .multi_job_progress import JobProgressInfo, JobProgressItem, MultiJobProgress
 from .preview_panel import ChapterPreviewItem, PreviewPanel
 from .progress_panel import ProgressPanel
 from .queue_panel import QueuePanel
@@ -20,4 +21,7 @@ __all__ = [
     "JobsPanel",
     "ChapterPreviewItem",
     "PreviewPanel",
+    "JobProgressInfo",
+    "JobProgressItem",
+    "MultiJobProgress",
 ]

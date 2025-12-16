@@ -5,6 +5,7 @@ that are shared between CLI and TUI interfaces.
 """
 
 from .events import Event, EventBus, EventHandler, EventType
+from .job_queue import JobQueue, QueuedJob, QueuedJobStatus, create_job_queue
 from .output_naming import BookMetadata, OutputNaming, get_naming_preset, list_naming_presets
 from .pipeline import ConversionPipeline, PipelineConfig, PipelineResult
 from .profiles import (
@@ -36,4 +37,9 @@ __all__ = [
     "BookMetadata",
     "get_naming_preset",
     "list_naming_presets",
+    # Job Queue
+    "JobQueue",
+    "QueuedJob",
+    "QueuedJobStatus",
+    "create_job_queue",
 ]

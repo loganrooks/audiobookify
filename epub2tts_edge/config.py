@@ -110,6 +110,7 @@ class AppConfig:
     base_dir: Path
     jobs_dir: Path
     cache_dir: Path
+    profiles_dir: Path  # User-defined processing profiles
     output_dir: Path | None = None  # None = use job directory
 
     # Slug template for job folders
@@ -168,12 +169,14 @@ class AppConfig:
         # Build config with file overrides
         jobs_dir = Path(file_config.get("jobs_dir", base / "jobs"))
         cache_dir = Path(file_config.get("cache_dir", base / "cache"))
+        profiles_dir = Path(file_config.get("profiles_dir", base / "profiles"))
         output_dir = Path(file_config["output_dir"]) if file_config.get("output_dir") else None
 
         return cls(
             base_dir=base,
             jobs_dir=jobs_dir,
             cache_dir=cache_dir,
+            profiles_dir=profiles_dir,
             output_dir=output_dir,
             job_slug_template=file_config.get(
                 "job_slug_template", "{author_lastname}_{title_slug}_{short_id}"
@@ -189,6 +192,7 @@ class AppConfig:
         config_dict = {
             "jobs_dir": str(self.jobs_dir),
             "cache_dir": str(self.cache_dir),
+            "profiles_dir": str(self.profiles_dir),
             "output_dir": str(self.output_dir) if self.output_dir else None,
             "job_slug_template": self.job_slug_template,
             "default_voice": self.default_voice,
@@ -202,6 +206,7 @@ class AppConfig:
         """Ensure all directories exist."""
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.profiles_dir.mkdir(parents=True, exist_ok=True)
         if self.output_dir:
             self.output_dir.mkdir(parents=True, exist_ok=True)
 

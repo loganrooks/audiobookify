@@ -1,8 +1,13 @@
 """Tests for the ProcessingProfile system."""
 
+import json
+
+import pytest
+
 from epub2tts_edge.core.profiles import (
     BUILTIN_PROFILES,
     ProcessingProfile,
+    ProfileManager,
     get_profile,
     get_profile_names,
     list_profiles,
@@ -246,3 +251,394 @@ class TestProfileHelpers:
         assert "audiobook" in names
         assert "accessibility" in names
         assert len(names) == len(BUILTIN_PROFILES)
+
+
+class TestProfileManager:
+    """Tests for ProfileManager class."""
+
+    @pytest.fixture
+    def profiles_dir(self, tmp_path):
+        """Create a temporary profiles directory."""
+        return tmp_path / "profiles"
+
+    @pytest.fixture
+    def manager(self, profiles_dir):
+        """Create a ProfileManager with temporary directory."""
+        ProfileManager.reset_instance()
+        mgr = ProfileManager.get_instance(profiles_dir=profiles_dir)
+        yield mgr
+        ProfileManager.reset_instance()
+
+    def test_singleton_pattern(self, profiles_dir):
+        """ProfileManager follows singleton pattern."""
+        ProfileManager.reset_instance()
+        mgr1 = ProfileManager.get_instance(profiles_dir=profiles_dir)
+        mgr2 = ProfileManager.get_instance()
+        assert mgr1 is mgr2
+        ProfileManager.reset_instance()
+
+    def test_reset_instance(self, profiles_dir):
+        """reset_instance clears the singleton."""
+        ProfileManager.reset_instance()
+        mgr1 = ProfileManager.get_instance(profiles_dir=profiles_dir)
+        ProfileManager.reset_instance()
+        mgr2 = ProfileManager.get_instance(profiles_dir=profiles_dir)
+        assert mgr1 is not mgr2
+        ProfileManager.reset_instance()
+
+    def test_name_to_key(self, manager):
+        """_name_to_key converts names correctly."""
+        assert manager._name_to_key("My Profile") == "my_profile"
+        assert manager._name_to_key("Quick Draft") == "quick_draft"
+        assert manager._name_to_key("   Spaces   ") == "spaces"
+        assert manager._name_to_key("MixedCase") == "mixedcase"
+
+    def test_get_builtin_profile(self, manager):
+        """get_profile returns builtin profiles."""
+        profile = manager.get_profile("default")
+        assert profile is not None
+        assert profile.name == "Default"
+
+    def test_get_builtin_names(self, manager):
+        """get_builtin_names returns only builtin profile keys."""
+        names = manager.get_builtin_names()
+        assert "default" in names
+        assert "quick_draft" in names
+        assert "high_quality" in names
+
+    def test_get_user_profile_names_empty(self, manager):
+        """get_user_profile_names returns empty for fresh manager."""
+        names = manager.get_user_profile_names()
+        assert names == []
+
+    def test_is_builtin(self, manager):
+        """is_builtin correctly identifies builtin profiles."""
+        assert manager.is_builtin("default") is True
+        assert manager.is_builtin("Default") is True
+        assert manager.is_builtin("nonexistent") is False
+
+    def test_is_user_profile_empty(self, manager):
+        """is_user_profile returns False when no user profiles exist."""
+        assert manager.is_user_profile("my_custom") is False
+
+
+class TestProfileManagerSave:
+    """Tests for ProfileManager save operations."""
+
+    @pytest.fixture
+    def profiles_dir(self, tmp_path):
+        """Create a temporary profiles directory."""
+        return tmp_path / "profiles"
+
+    @pytest.fixture
+    def manager(self, profiles_dir):
+        """Create a ProfileManager with temporary directory."""
+        ProfileManager.reset_instance()
+        mgr = ProfileManager.get_instance(profiles_dir=profiles_dir)
+        yield mgr
+        ProfileManager.reset_instance()
+
+    def test_save_profile_creates_file(self, manager, profiles_dir):
+        """save_profile creates a JSON file."""
+        profile = ProcessingProfile(name="My Custom", description="Test profile")
+        key = manager.save_profile(profile)
+
+        assert key == "my_custom"
+        assert (profiles_dir / "my_custom.json").exists()
+
+    def test_save_profile_content(self, manager, profiles_dir):
+        """save_profile writes correct content."""
+        profile = ProcessingProfile(
+            name="Test Profile",
+            voice="en-US-JennyNeural",
+            rate="+10%",
+        )
+        manager.save_profile(profile)
+
+        with open(profiles_dir / "test_profile.json") as f:
+            data = json.load(f)
+
+        assert data["name"] == "Test Profile"
+        assert data["voice"] == "en-US-JennyNeural"
+        assert data["rate"] == "+10%"
+        assert "created_at" in data
+        assert "updated_at" in data
+        assert "version" in data
+
+    def test_save_profile_prevents_overwrite_by_default(self, manager):
+        """save_profile raises FileExistsError without overwrite flag."""
+        profile = ProcessingProfile(name="Duplicate")
+        manager.save_profile(profile)
+
+        with pytest.raises(FileExistsError):
+            manager.save_profile(profile)
+
+    def test_save_profile_with_overwrite(self, manager, profiles_dir):
+        """save_profile allows overwrite when flag is True."""
+        profile = ProcessingProfile(name="Overwrite Me", rate="+10%")
+        manager.save_profile(profile)
+
+        profile2 = ProcessingProfile(name="Overwrite Me", rate="+20%")
+        manager.save_profile(profile2, overwrite=True)
+
+        # Verify the new rate
+        with open(profiles_dir / "overwrite_me.json") as f:
+            data = json.load(f)
+        assert data["rate"] == "+20%"
+
+    def test_save_profile_rejects_builtin_overwrite(self, manager):
+        """save_profile refuses to overwrite builtin profiles."""
+        profile = ProcessingProfile(name="Default")
+
+        with pytest.raises(ValueError, match="built-in"):
+            manager.save_profile(profile)
+
+    def test_is_user_profile_after_save(self, manager):
+        """is_user_profile returns True after saving."""
+        profile = ProcessingProfile(name="Saved Profile")
+        manager.save_profile(profile)
+
+        # is_user_profile uses lowercase comparison against stored keys
+        assert manager.is_user_profile("saved_profile") is True
+        # Keys use underscores, not spaces
+        assert manager.is_user_profile("SAVED_PROFILE") is True
+
+    def test_get_user_profile_names_after_save(self, manager):
+        """get_user_profile_names includes saved profiles."""
+        profile = ProcessingProfile(name="User Created")
+        manager.save_profile(profile)
+
+        # Returns keys (lowercase), not display names
+        names = manager.get_user_profile_names()
+        assert "user_created" in names
+
+
+class TestProfileManagerDelete:
+    """Tests for ProfileManager delete operations."""
+
+    @pytest.fixture
+    def profiles_dir(self, tmp_path):
+        """Create a temporary profiles directory."""
+        return tmp_path / "profiles"
+
+    @pytest.fixture
+    def manager(self, profiles_dir):
+        """Create a ProfileManager with temporary directory."""
+        ProfileManager.reset_instance()
+        mgr = ProfileManager.get_instance(profiles_dir=profiles_dir)
+        yield mgr
+        ProfileManager.reset_instance()
+
+    def test_delete_profile_removes_file(self, manager, profiles_dir):
+        """delete_profile removes the JSON file."""
+        profile = ProcessingProfile(name="To Delete")
+        manager.save_profile(profile)
+
+        assert (profiles_dir / "to_delete.json").exists()
+        manager.delete_profile("to_delete")
+        assert not (profiles_dir / "to_delete.json").exists()
+
+    def test_delete_profile_removes_from_cache(self, manager):
+        """delete_profile removes from internal cache."""
+        profile = ProcessingProfile(name="Cached")
+        manager.save_profile(profile)
+
+        assert manager.get_profile("cached") is not None
+        manager.delete_profile("cached")
+        assert manager.get_profile("cached") is None
+
+    def test_delete_profile_rejects_builtin(self, manager):
+        """delete_profile refuses to delete builtin profiles."""
+        with pytest.raises(ValueError, match="built-in"):
+            manager.delete_profile("default")
+
+    def test_delete_profile_nonexistent(self, manager):
+        """delete_profile returns False for unknown profiles."""
+        result = manager.delete_profile("nonexistent")
+        assert result is False
+
+
+class TestProfileManagerRename:
+    """Tests for ProfileManager rename operations."""
+
+    @pytest.fixture
+    def profiles_dir(self, tmp_path):
+        """Create a temporary profiles directory."""
+        return tmp_path / "profiles"
+
+    @pytest.fixture
+    def manager(self, profiles_dir):
+        """Create a ProfileManager with temporary directory."""
+        ProfileManager.reset_instance()
+        mgr = ProfileManager.get_instance(profiles_dir=profiles_dir)
+        yield mgr
+        ProfileManager.reset_instance()
+
+    def test_rename_profile_updates_file(self, manager, profiles_dir):
+        """rename_profile renames the file."""
+        profile = ProcessingProfile(name="Old Name")
+        manager.save_profile(profile)
+
+        manager.rename_profile("old_name", "New Name")
+
+        assert not (profiles_dir / "old_name.json").exists()
+        assert (profiles_dir / "new_name.json").exists()
+
+    def test_rename_profile_updates_content(self, manager, profiles_dir):
+        """rename_profile updates the name inside the file."""
+        profile = ProcessingProfile(name="Original")
+        manager.save_profile(profile)
+
+        manager.rename_profile("original", "Renamed")
+
+        with open(profiles_dir / "renamed.json") as f:
+            data = json.load(f)
+        assert data["name"] == "Renamed"
+
+    def test_rename_profile_updates_cache(self, manager):
+        """rename_profile updates internal cache."""
+        profile = ProcessingProfile(name="Cache Test")
+        manager.save_profile(profile)
+
+        manager.rename_profile("cache_test", "Updated Cache")
+
+        assert manager.get_profile("cache_test") is None
+        assert manager.get_profile("updated_cache") is not None
+        assert manager.get_profile("updated_cache").name == "Updated Cache"
+
+    def test_rename_profile_rejects_builtin(self, manager):
+        """rename_profile refuses to rename builtin profiles."""
+        with pytest.raises(ValueError, match="built-in"):
+            manager.rename_profile("default", "My Default")
+
+    def test_rename_profile_rejects_conflict(self, manager):
+        """rename_profile refuses when target exists."""
+        profile1 = ProcessingProfile(name="Profile One")
+        profile2 = ProcessingProfile(name="Profile Two")
+        manager.save_profile(profile1)
+        manager.save_profile(profile2)
+
+        with pytest.raises(FileExistsError):
+            manager.rename_profile("profile_one", "Profile Two")
+
+
+class TestProfileManagerExportImport:
+    """Tests for ProfileManager export/import operations."""
+
+    @pytest.fixture
+    def profiles_dir(self, tmp_path):
+        """Create a temporary profiles directory."""
+        return tmp_path / "profiles"
+
+    @pytest.fixture
+    def manager(self, profiles_dir):
+        """Create a ProfileManager with temporary directory."""
+        ProfileManager.reset_instance()
+        mgr = ProfileManager.get_instance(profiles_dir=profiles_dir)
+        yield mgr
+        ProfileManager.reset_instance()
+
+    def test_export_profile_creates_file(self, manager, tmp_path):
+        """export_profile creates a JSON file at destination."""
+        profile = ProcessingProfile(name="Exportable", rate="+15%")
+        manager.save_profile(profile)
+
+        export_path = tmp_path / "exported.json"
+        manager.export_profile("exportable", export_path)
+
+        assert export_path.exists()
+        with open(export_path) as f:
+            data = json.load(f)
+        assert data["name"] == "Exportable"
+        assert data["rate"] == "+15%"
+
+    def test_export_profile_rejects_nonexistent(self, manager, tmp_path):
+        """export_profile returns False for unknown profiles."""
+        result = manager.export_profile("nonexistent", tmp_path / "out.json")
+        assert result is False
+
+    def test_import_profile_loads_file(self, manager, tmp_path):
+        """import_profile loads from external JSON file."""
+        # Create an external profile file
+        import_path = tmp_path / "external.json"
+        data = {
+            "name": "Imported Profile",
+            "voice": "en-US-GuyNeural",
+            "rate": "-5%",
+        }
+        with open(import_path, "w") as f:
+            json.dump(data, f)
+
+        # import_profile returns the ProcessingProfile
+        profile = manager.import_profile(import_path)
+
+        assert profile.name == "Imported Profile"
+        assert profile.voice == "en-US-GuyNeural"
+        assert profile.rate == "-5%"
+
+        # Verify it's now in the manager
+        retrieved = manager.get_profile("imported_profile")
+        assert retrieved is not None
+        assert retrieved.name == "Imported Profile"
+
+    def test_import_profile_rejects_duplicate(self, manager, tmp_path):
+        """import_profile raises FileExistsError if profile exists."""
+        profile = ProcessingProfile(name="Existing")
+        manager.save_profile(profile)
+
+        import_path = tmp_path / "conflict.json"
+        with open(import_path, "w") as f:
+            json.dump({"name": "Existing"}, f)
+
+        with pytest.raises(FileExistsError):
+            manager.import_profile(import_path)
+
+
+class TestProfileManagerRefresh:
+    """Tests for ProfileManager refresh operations."""
+
+    @pytest.fixture
+    def profiles_dir(self, tmp_path):
+        """Create a temporary profiles directory."""
+        return tmp_path / "profiles"
+
+    @pytest.fixture
+    def manager(self, profiles_dir):
+        """Create a ProfileManager with temporary directory."""
+        ProfileManager.reset_instance()
+        mgr = ProfileManager.get_instance(profiles_dir=profiles_dir)
+        yield mgr
+        ProfileManager.reset_instance()
+
+    def test_refresh_loads_new_files(self, manager, profiles_dir):
+        """refresh() picks up externally added files."""
+        # Save a profile normally
+        profile = ProcessingProfile(name="Normal")
+        manager.save_profile(profile)
+
+        # Manually add another profile file
+        profiles_dir.mkdir(parents=True, exist_ok=True)
+        with open(profiles_dir / "external.json", "w") as f:
+            json.dump({"name": "External"}, f)
+
+        # Before refresh, external isn't in cache
+        assert manager.get_profile("external") is None
+
+        manager.refresh()
+
+        # After refresh, external is available
+        assert manager.get_profile("external") is not None
+
+    def test_refresh_removes_deleted_files(self, manager, profiles_dir):
+        """refresh() removes profiles for deleted files."""
+        profile = ProcessingProfile(name="To Remove")
+        manager.save_profile(profile)
+
+        assert manager.get_profile("to_remove") is not None
+
+        # Manually delete the file
+        (profiles_dir / "to_remove.json").unlink()
+
+        manager.refresh()
+
+        assert manager.get_profile("to_remove") is None

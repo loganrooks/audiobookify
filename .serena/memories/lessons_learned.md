@@ -101,4 +101,51 @@ git push
 - This is more reliable across all terminals
 
 ---
-Last updated: 2025-12-05
+## Testing Infrastructure Patterns
+
+### 1. Mock TTS for Fast Testing
+**Pattern**: Tests that call TTS are slow and require network
+**Fix**: Use `enable_test_mode()` / `disable_test_mode()` from audio_generator
+**Example**:
+```python
+try:
+    enable_test_mode()  # Uses MockTTSEngine
+    # ... test code ...
+finally:
+    disable_test_mode()
+```
+
+### 2. MockTTSEngine.generate_sync() and asyncio
+**Learning**: `generate_sync()` is called from ThreadPoolExecutor threads
+**Pattern**: Cannot use `asyncio.get_event_loop().run_until_complete()` in thread
+**Fix**: Implement sync version without asyncio - direct implementation
+
+### 3. Cross-Platform Path Comparison
+**Learning**: Path strings differ across platforms:
+- macOS: `/var/` is symlink to `/private/var/`
+- Windows: Uses 8.3 short names like `RUNNER~1` vs `runneradmin`
+**Fix**: Use `Path(path).resolve()` before comparing paths in tests
+
+### 4. API Naming Conventions
+**Learning**: Always verify actual API before writing tests
+- `FilterConfig` uses `remove_front_matter`, not `filter_front_matter`
+- `EventBus` uses `on()` method, not `subscribe()`
+- `get_flat_chapters()` returns dicts, not ChapterNode objects
+
+---
+## Profile Management Patterns
+
+### 1. Singleton with Reset for Testing
+**Pattern**: Use `get_instance()` + `reset_instance()` for singletons that need testing
+**Example**: ProfileManager has both methods - reset clears cache for test isolation
+
+### 2. Dirty State Tracking
+**Pattern**: Track `_loaded_*_snapshot` dict, compare with `_get_*_settings()` current
+**Fix**: Use dict comparison, not object identity
+
+### 3. Dynamic Select Options
+**Pattern**: Use method `_get_*_options()` instead of class variable for dynamic data
+**Fix**: Textual's `Select.set_options()` refreshes dropdown at runtime
+
+---
+Last updated: 2025-12-16

@@ -2,17 +2,19 @@
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.reactive import reactive
 from textual.widgets import (
     Button,
     Input,
     Label,
     Select,
+    Static,
     Switch,
     TabbedContent,
     TabPane,
 )
 
-from ...core.profiles import get_profile, get_profile_names
+from ...core.profiles import ProcessingProfile, ProfileManager, get_profile
 from ...voice_preview import AVAILABLE_VOICES
 from ..models import VoicePreviewStatus
 
@@ -76,6 +78,28 @@ class SettingsPanel(Vertical):
     SettingsPanel ContentSwitcher {
         height: 1fr;
     }
+
+    SettingsPanel .profile-actions {
+        height: auto;
+        margin: 0 1;
+        padding: 0;
+    }
+
+    SettingsPanel .profile-actions Button {
+        min-width: 10;
+        margin-right: 1;
+    }
+
+    SettingsPanel #dirty-indicator {
+        color: $warning;
+        text-style: bold;
+        margin-left: 1;
+        width: auto;
+    }
+
+    SettingsPanel #dirty-indicator.hidden {
+        display: none;
+    }
     """
 
     # Common voices - use AVAILABLE_VOICES from voice_preview
@@ -131,12 +155,6 @@ class SettingsPanel(Vertical):
         ("rms", "RMS"),
     ]
 
-    # Profile options - dynamically generated from available profiles
-    PROFILE_OPTIONS = [("custom", "Custom")] + [
-        (name, get_profile(name).name if get_profile(name) else name)
-        for name in get_profile_names()
-    ]
-
     # Output naming template presets
     OUTPUT_NAMING_OPTIONS = [
         ("{author} - {title}", "Author - Title"),
@@ -145,6 +163,40 @@ class SettingsPanel(Vertical):
         ("{series} {series_index} - {title}", "Series - Title"),
         ("{title} ({year})", "Title (Year)"),
     ]
+
+    # Reactive state for dirty tracking
+    is_dirty: reactive[bool] = reactive(False)
+
+    def __init__(self, **kwargs) -> None:
+        """Initialize the settings panel with profile state tracking."""
+        super().__init__(**kwargs)
+        # Profile state tracking
+        self._loaded_profile_key: str | None = None  # Key of loaded profile
+        self._loaded_profile_snapshot: dict | None = None  # Snapshot at load time
+
+    def _get_profile_options(self) -> list[tuple[str, str]]:
+        """Get dynamic profile options including user profiles.
+
+        Returns list of (display_name, key) tuples for Select widget.
+        Custom is first, then builtins, then user profiles.
+        """
+        mgr = ProfileManager.get_instance()
+
+        options: list[tuple[str, str]] = [("Custom", "custom")]
+
+        # Add builtin profiles
+        for key in mgr.get_builtin_names():
+            profile = mgr.get_profile(key)
+            if profile:
+                options.append((profile.name, key))
+
+        # Add user profiles (with folder icon distinction)
+        for key in mgr.get_user_profile_names():
+            profile = mgr.get_profile(key)
+            if profile:
+                options.append((f"📁 {profile.name}", key))
+
+        return options
 
     def compose(self) -> ComposeResult:
         with TabbedContent(id="settings-tabs"):
@@ -155,10 +207,24 @@ class SettingsPanel(Vertical):
                     with Horizontal(classes="setting-row"):
                         yield Label("Profile:")
                         yield Select(
-                            [(p[1], p[0]) for p in self.PROFILE_OPTIONS],
+                            self._get_profile_options(),
                             value="custom",
                             id="profile-select",
                         )
+
+                    # Profile management buttons and dirty indicator
+                    with Horizontal(classes="profile-actions"):
+                        yield Button("Save As", id="save-profile-btn", variant="default")
+                        yield Button(
+                            "Overwrite",
+                            id="overwrite-profile-btn",
+                            variant="warning",
+                            disabled=True,
+                        )
+                        yield Button(
+                            "Delete", id="delete-profile-btn", variant="error", disabled=True
+                        )
+                        yield Static("● Modified", id="dirty-indicator", classes="hidden")
 
                     with Horizontal(classes="setting-row"):
                         yield Label("Voice:")
@@ -329,9 +395,11 @@ class SettingsPanel(Vertical):
         self._update_trim_visibility()
         self._update_normalize_visibility()
         self._update_filter_visibility()
+        self._update_dirty_indicator()
+        self._update_profile_buttons()
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
-        """Handle switch changes for progressive disclosure."""
+        """Handle switch changes for progressive disclosure and dirty tracking."""
         if event.switch.id == "trim-silence-switch":
             self._update_trim_visibility()
         elif event.switch.id == "normalize-switch":
@@ -339,20 +407,33 @@ class SettingsPanel(Vertical):
         elif event.switch.id == "filter-front-switch":
             self._update_filter_visibility()
 
-    def on_select_changed(self, event: Select.Changed) -> None:
-        """Handle select changes, including profile selection."""
-        if event.select.id == "profile-select":
-            profile_name = event.value
-            if profile_name != "custom":
-                self._apply_profile(profile_name)
+        # Check dirty state for profile-related settings
+        self._check_dirty()
 
-    def _apply_profile(self, profile_name: str) -> None:
+    def on_select_changed(self, event: Select.Changed) -> None:
+        """Handle select changes, including profile selection and dirty tracking."""
+        if event.select.id == "profile-select":
+            profile_key = event.value
+            if profile_key == "custom":
+                # Reset to custom mode
+                self._loaded_profile_key = None
+                self._loaded_profile_snapshot = None
+                self.is_dirty = False
+            else:
+                self._apply_profile(profile_key)
+            self._update_dirty_indicator()
+            self._update_profile_buttons()
+        else:
+            # Any other setting change triggers dirty check
+            self._check_dirty()
+
+    def _apply_profile(self, profile_key: str) -> None:
         """Apply a profile's settings to all relevant controls.
 
         Args:
-            profile_name: Name of the profile to apply
+            profile_key: Key of the profile to apply
         """
-        profile = get_profile(profile_name)
+        profile = get_profile(profile_key)
         if not profile:
             return
 
@@ -379,6 +460,11 @@ class SettingsPanel(Vertical):
             # Update progressive disclosure visibility
             self._update_trim_visibility()
             self._update_normalize_visibility()
+
+            # Track loaded profile state for dirty detection
+            self._loaded_profile_key = profile_key
+            self._loaded_profile_snapshot = self._get_profile_settings()
+            self.is_dirty = False
 
         except Exception:
             pass  # Some widgets might not be mounted yet
@@ -462,3 +548,183 @@ class SettingsPanel(Vertical):
             "profile": profile_val if profile_val != "custom" else None,
             "output_naming_template": output_naming_val,
         }
+
+    def _get_profile_settings(self) -> dict:
+        """Get current settings in profile-compatible format for dirty comparison.
+
+        Returns only the settings that are part of a profile.
+        """
+        try:
+            return {
+                "voice": self.query_one("#voice-select", Select).value,
+                "rate": self.query_one("#rate-select", Select).value or None,
+                "volume": self.query_one("#volume-select", Select).value or None,
+                "paragraph_pause": self.query_one("#paragraph-pause-select", Select).value,
+                "sentence_pause": self.query_one("#sentence-pause-select", Select).value,
+                "normalize_audio": self.query_one("#normalize-switch", Switch).value,
+                "trim_silence": self.query_one("#trim-silence-switch", Switch).value,
+                "detection_method": self.query_one("#detect-select", Select).value,
+                "hierarchy_style": self.query_one("#hierarchy-select", Select).value,
+            }
+        except Exception:
+            return {}
+
+    def _check_dirty(self) -> None:
+        """Check if current settings differ from loaded profile."""
+        if self._loaded_profile_snapshot is None:
+            self.is_dirty = False
+            return
+
+        current = self._get_profile_settings()
+        self.is_dirty = current != self._loaded_profile_snapshot
+        self._update_dirty_indicator()
+        self._update_profile_buttons()
+
+    def _update_dirty_indicator(self) -> None:
+        """Update the dirty indicator visibility."""
+        try:
+            indicator = self.query_one("#dirty-indicator", Static)
+            indicator.set_class(not self.is_dirty, "hidden")
+        except Exception:
+            pass  # Widget not mounted yet
+
+    def _update_profile_buttons(self) -> None:
+        """Update profile button states based on current profile."""
+        try:
+            mgr = ProfileManager.get_instance()
+            overwrite_btn = self.query_one("#overwrite-profile-btn", Button)
+            delete_btn = self.query_one("#delete-profile-btn", Button)
+
+            if self._loaded_profile_key is None:
+                # Custom/no profile loaded
+                overwrite_btn.disabled = True
+                delete_btn.disabled = True
+            elif mgr.is_builtin(self._loaded_profile_key):
+                # Builtin profile - can't modify
+                overwrite_btn.disabled = True
+                delete_btn.disabled = True
+            else:
+                # User profile - can modify
+                overwrite_btn.disabled = not self.is_dirty
+                delete_btn.disabled = False
+        except Exception:
+            pass  # Widgets not mounted yet
+
+    def _refresh_profile_dropdown(self) -> None:
+        """Refresh the profile dropdown options."""
+        try:
+            select = self.query_one("#profile-select", Select)
+            select.set_options(self._get_profile_options())
+        except Exception:
+            pass  # Widget not mounted yet
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle profile action button presses."""
+        if event.button.id == "save-profile-btn":
+            self._on_save_profile()
+        elif event.button.id == "overwrite-profile-btn":
+            self._on_overwrite_profile()
+        elif event.button.id == "delete-profile-btn":
+            self._on_delete_profile()
+
+    def _on_save_profile(self) -> None:
+        """Handle Save As button press - opens dialog for name input."""
+        # Import here to avoid circular imports
+        from ..screens.profile_dialog import ProfileNameDialog
+
+        self.app.push_screen(ProfileNameDialog(), self._do_save_profile)
+
+    def _do_save_profile(self, name: str | None) -> None:
+        """Actually save the profile after getting name from dialog."""
+        if not name:
+            return
+
+        mgr = ProfileManager.get_instance()
+        settings = self._get_profile_settings()
+
+        profile = ProcessingProfile(
+            name=name,
+            description="",
+            voice=settings.get("voice", "en-US-AndrewNeural"),
+            rate=settings.get("rate"),
+            volume=settings.get("volume"),
+            paragraph_pause=settings.get("paragraph_pause", 1200),
+            sentence_pause=settings.get("sentence_pause", 1200),
+            normalize_audio=settings.get("normalize_audio", False),
+            trim_silence=settings.get("trim_silence", False),
+            detection_method=settings.get("detection_method", "combined"),
+            hierarchy_style=settings.get("hierarchy_style", "flat"),
+        )
+
+        try:
+            key = mgr.save_profile(profile)
+            self._refresh_profile_dropdown()
+            # Select the newly saved profile
+            self.query_one("#profile-select", Select).value = key
+            self._loaded_profile_key = key
+            self._loaded_profile_snapshot = settings.copy()
+            self.is_dirty = False
+            self._update_dirty_indicator()
+            self._update_profile_buttons()
+            self.notify(f"Profile '{name}' saved", severity="information")
+        except FileExistsError:
+            self.notify(f"Profile '{name}' already exists", severity="error")
+        except ValueError as e:
+            self.notify(str(e), severity="error")
+
+    def _on_overwrite_profile(self) -> None:
+        """Handle Overwrite button press."""
+        if not self._loaded_profile_key:
+            return
+
+        mgr = ProfileManager.get_instance()
+        existing = mgr.get_profile(self._loaded_profile_key)
+        if not existing:
+            return
+
+        settings = self._get_profile_settings()
+        updated_profile = ProcessingProfile(
+            name=existing.name,
+            description=existing.description,
+            voice=settings.get("voice", "en-US-AndrewNeural"),
+            rate=settings.get("rate"),
+            volume=settings.get("volume"),
+            paragraph_pause=settings.get("paragraph_pause", 1200),
+            sentence_pause=settings.get("sentence_pause", 1200),
+            normalize_audio=settings.get("normalize_audio", False),
+            trim_silence=settings.get("trim_silence", False),
+            detection_method=settings.get("detection_method", "combined"),
+            hierarchy_style=settings.get("hierarchy_style", "flat"),
+        )
+
+        try:
+            mgr.save_profile(updated_profile, overwrite=True)
+            self._loaded_profile_snapshot = settings.copy()
+            self.is_dirty = False
+            self._update_dirty_indicator()
+            self._update_profile_buttons()
+            self.notify(f"Profile '{existing.name}' updated", severity="information")
+        except ValueError as e:
+            self.notify(str(e), severity="error")
+
+    def _on_delete_profile(self) -> None:
+        """Handle Delete button press."""
+        if not self._loaded_profile_key:
+            return
+
+        mgr = ProfileManager.get_instance()
+
+        try:
+            profile = mgr.get_profile(self._loaded_profile_key)
+            profile_name = profile.name if profile else self._loaded_profile_key
+            mgr.delete_profile(self._loaded_profile_key)
+            self._refresh_profile_dropdown()
+            self._loaded_profile_key = None
+            self._loaded_profile_snapshot = None
+            self.query_one("#profile-select", Select).value = "custom"
+            self.is_dirty = False
+            self._update_dirty_indicator()
+            self._update_profile_buttons()
+            self.notify(f"Profile '{profile_name}' deleted", severity="information")
+        except ValueError as e:
+            self.notify(str(e), severity="error")

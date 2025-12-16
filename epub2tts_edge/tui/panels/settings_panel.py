@@ -175,26 +175,24 @@ class SettingsPanel(Vertical):
         self._loaded_profile_snapshot: dict | None = None  # Snapshot at load time
 
     def _get_profile_options(self) -> list[tuple[str, str]]:
-        """Get dynamic profile options including user profiles.
+        """Get dynamic profile options.
 
         Returns list of (display_name, key) tuples for Select widget.
-        Custom is first, then builtins, then user profiles.
+        Custom is first, then all profiles with star for default.
         """
         mgr = ProfileManager.get_instance()
+        default_key = mgr.get_default_profile()
 
         options: list[tuple[str, str]] = [("Custom", "custom")]
 
-        # Add builtin profiles
-        for key in mgr.get_builtin_names():
+        # Add all profiles, marking the default with a star
+        for key in mgr.get_profile_names():
             profile = mgr.get_profile(key)
             if profile:
-                options.append((profile.name, key))
-
-        # Add user profiles (with folder icon distinction)
-        for key in mgr.get_user_profile_names():
-            profile = mgr.get_profile(key)
-            if profile:
-                options.append((f"📁 {profile.name}", key))
+                if key == default_key:
+                    options.append((f"★ {profile.name}", key))
+                else:
+                    options.append((profile.name, key))
 
         return options
 
@@ -223,6 +221,12 @@ class SettingsPanel(Vertical):
                         )
                         yield Button(
                             "Delete", id="delete-profile-btn", variant="error", disabled=True
+                        )
+                        yield Button(
+                            "Set Default",
+                            id="set-default-btn",
+                            variant="primary",
+                            disabled=True,
                         )
                         yield Static("● Modified", id="dirty-indicator", classes="hidden")
 
@@ -414,7 +418,8 @@ class SettingsPanel(Vertical):
         """Handle select changes, including profile selection and dirty tracking."""
         if event.select.id == "profile-select":
             profile_key = event.value
-            if profile_key == "custom":
+            # Handle blank selection or "custom" option
+            if profile_key == Select.BLANK or profile_key == "custom":
                 # Reset to custom mode
                 self._loaded_profile_key = None
                 self._loaded_profile_snapshot = None
@@ -594,19 +599,24 @@ class SettingsPanel(Vertical):
             mgr = ProfileManager.get_instance()
             overwrite_btn = self.query_one("#overwrite-profile-btn", Button)
             delete_btn = self.query_one("#delete-profile-btn", Button)
+            set_default_btn = self.query_one("#set-default-btn", Button)
 
             if self._loaded_profile_key is None:
                 # Custom/no profile loaded
                 overwrite_btn.disabled = True
                 delete_btn.disabled = True
-            elif mgr.is_builtin(self._loaded_profile_key):
-                # Builtin profile - can't modify
-                overwrite_btn.disabled = True
-                delete_btn.disabled = True
+                set_default_btn.disabled = True
             else:
-                # User profile - can modify
+                # Profile is loaded - all buttons available
                 overwrite_btn.disabled = not self.is_dirty
                 delete_btn.disabled = False
+                # Disable "Set Default" if already the default
+                is_default = mgr.is_default(self._loaded_profile_key)
+                set_default_btn.disabled = is_default
+                if is_default:
+                    set_default_btn.label = "★ Default"
+                else:
+                    set_default_btn.label = "Set Default"
         except Exception:
             pass  # Widgets not mounted yet
 
@@ -626,6 +636,8 @@ class SettingsPanel(Vertical):
             self._on_overwrite_profile()
         elif event.button.id == "delete-profile-btn":
             self._on_delete_profile()
+        elif event.button.id == "set-default-btn":
+            self._on_set_default_profile()
 
     def _on_save_profile(self) -> None:
         """Handle Save As button press - opens dialog for name input."""
@@ -728,3 +740,19 @@ class SettingsPanel(Vertical):
             self.notify(f"Profile '{profile_name}' deleted", severity="information")
         except ValueError as e:
             self.notify(str(e), severity="error")
+
+    def _on_set_default_profile(self) -> None:
+        """Handle Set Default button press."""
+        if not self._loaded_profile_key:
+            return
+
+        mgr = ProfileManager.get_instance()
+
+        if mgr.set_default_profile(self._loaded_profile_key):
+            profile = mgr.get_profile(self._loaded_profile_key)
+            profile_name = profile.name if profile else self._loaded_profile_key
+            self._update_profile_buttons()
+            self._refresh_profile_dropdown()
+            self.notify(f"'{profile_name}' is now the default profile", severity="information")
+        else:
+            self.notify("Failed to set default profile", severity="error")

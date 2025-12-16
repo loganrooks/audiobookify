@@ -88,8 +88,9 @@ class ProcessingProfile:
         )
 
 
-# Built-in profiles for common use cases
-BUILTIN_PROFILES: dict[str, ProcessingProfile] = {
+# Starter profiles - copied to user profiles on first run
+# These are templates, not read-only. Users can edit/delete them freely.
+STARTER_PROFILES: dict[str, ProcessingProfile] = {
     "default": ProcessingProfile(
         name="Default",
         description="Balanced settings for everyday listening",
@@ -157,18 +158,23 @@ BUILTIN_PROFILES: dict[str, ProcessingProfile] = {
     ),
 }
 
+# For backwards compatibility
+BUILTIN_PROFILES = STARTER_PROFILES
+
 
 class ProfileManager:
-    """Manages built-in and user-defined processing profiles.
+    """Manages processing profiles for audiobook conversion.
 
-    User profiles are stored as JSON files in the profiles directory.
+    All profiles are stored as JSON files in the profiles directory.
+    On first run, starter profiles are copied to the profiles directory.
     Profile files use the naming convention: {profile_key}.json
     where profile_key is the normalized name (lowercase, underscores).
     """
 
     _instance: ClassVar[ProfileManager | None] = None
-    _user_profiles: dict[str, ProcessingProfile]
+    _profiles: dict[str, ProcessingProfile]
     _profiles_dir: Path | None
+    _default_profile: str
 
     def __init__(self, profiles_dir: Path | None = None) -> None:
         """Initialize the profile manager.
@@ -177,8 +183,10 @@ class ProfileManager:
             profiles_dir: Custom profiles directory. If None, uses AppConfig.
         """
         self._profiles_dir = profiles_dir
-        self._user_profiles = {}
-        self._load_user_profiles()
+        self._profiles = {}
+        self._default_profile = "default"
+        self._load_profiles()
+        self._ensure_starter_profiles()
 
     @classmethod
     def get_instance(cls, profiles_dir: Path | None = None) -> ProfileManager:
@@ -233,33 +241,76 @@ class ProfileManager:
         """Convert profile key to filename."""
         return f"{key}.json"
 
-    def _load_user_profiles(self) -> None:
-        """Load all user profiles from disk."""
-        self._user_profiles = {}
+    def _load_profiles(self) -> None:
+        """Load all profiles from disk."""
+        self._profiles = {}
         profiles_dir = self._get_profiles_dir()
 
         if not profiles_dir.exists():
             return
 
+        # Load default profile setting
+        config_file = profiles_dir / "_config.json"
+        if config_file.exists():
+            try:
+                with open(config_file) as f:
+                    config = json.load(f)
+                self._default_profile = config.get("default_profile", "default")
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        # Load profile files
         for profile_file in profiles_dir.glob("*.json"):
+            if profile_file.name.startswith("_"):
+                continue  # Skip config files
             try:
                 with open(profile_file) as f:
                     data = json.load(f)
                 profile = ProcessingProfile.from_dict(data)
-                key = profile_file.stem  # Use filename without extension as key
-                self._user_profiles[key] = profile
+                key = profile_file.stem
+                self._profiles[key] = profile
             except (json.JSONDecodeError, OSError, KeyError):
-                # Skip malformed profile files
                 continue
 
+    def _ensure_starter_profiles(self) -> None:
+        """Copy starter profiles if no profiles exist."""
+        if self._profiles:
+            return  # Already have profiles
+
+        self._ensure_profiles_dir()
+
+        # Copy all starter profiles
+        for key, profile in STARTER_PROFILES.items():
+            self._save_profile_to_disk(key, profile)
+            self._profiles[key] = profile
+
+    def _save_profile_to_disk(self, key: str, profile: ProcessingProfile) -> None:
+        """Save a single profile to disk."""
+        data = profile.to_dict()
+        now = datetime.now(UTC).isoformat()
+        data["updated_at"] = now
+        if "created_at" not in data:
+            data["created_at"] = now
+        data["version"] = 1
+
+        profile_file = self._get_profiles_dir() / self._key_to_filename(key)
+        with open(profile_file, "w") as f:
+            json.dump(data, f, indent=2)
+
+    def _save_config(self) -> None:
+        """Save profile manager config (default profile setting)."""
+        self._ensure_profiles_dir()
+        config_file = self._get_profiles_dir() / "_config.json"
+        config = {"default_profile": self._default_profile}
+        with open(config_file, "w") as f:
+            json.dump(config, f, indent=2)
+
     def refresh(self) -> None:
-        """Reload user profiles from disk (cache invalidation)."""
-        self._load_user_profiles()
+        """Reload profiles from disk (cache invalidation)."""
+        self._load_profiles()
 
     def get_profile(self, name: str) -> ProcessingProfile | None:
-        """Get a profile by name (builtin or user).
-
-        Builtin profiles are checked first, then user profiles.
+        """Get a profile by name.
 
         Args:
             name: Profile name or key (case-insensitive)
@@ -268,139 +319,152 @@ class ProfileManager:
             The profile if found, None otherwise
         """
         key = name.lower()
-
-        # Check builtins first
-        if key in BUILTIN_PROFILES:
-            return BUILTIN_PROFILES[key]
-
-        # Check user profiles
-        return self._user_profiles.get(key)
+        return self._profiles.get(key)
 
     def list_profiles(self) -> list[ProcessingProfile]:
-        """Get all available profiles (builtin + user).
+        """Get all available profiles.
 
         Returns:
-            List of all profiles, builtins first
+            List of all profiles
         """
-        profiles = list(BUILTIN_PROFILES.values())
-        profiles.extend(self._user_profiles.values())
-        return profiles
+        return list(self._profiles.values())
 
     def get_profile_names(self) -> list[str]:
-        """Get names of all profiles (builtin keys + user keys).
+        """Get names of all profiles.
 
         Returns:
             List of profile keys
         """
-        names = list(BUILTIN_PROFILES.keys())
-        names.extend(self._user_profiles.keys())
-        return names
+        return list(self._profiles.keys())
 
     def get_builtin_names(self) -> list[str]:
-        """Get names of builtin profiles only.
+        """Get names of starter profiles (for backwards compatibility).
 
         Returns:
-            List of builtin profile keys
+            List of starter profile keys that exist
         """
-        return list(BUILTIN_PROFILES.keys())
+        return [k for k in STARTER_PROFILES.keys() if k in self._profiles]
 
     def get_user_profile_names(self) -> list[str]:
-        """Get names of user profiles only.
+        """Get names of all profiles (all profiles are now user-editable).
 
         Returns:
-            List of user profile keys
+            List of all profile keys
         """
-        return list(self._user_profiles.keys())
+        return list(self._profiles.keys())
 
     def is_builtin(self, name: str) -> bool:
-        """Check if a profile is a built-in profile.
+        """Check if a profile was originally a starter profile.
+
+        Note: This is kept for backwards compatibility but all profiles
+        are now editable. Returns True if the key matches a starter profile.
 
         Args:
             name: Profile name or key
 
         Returns:
-            True if builtin, False otherwise
+            True if key matches a starter profile name
         """
-        return name.lower() in BUILTIN_PROFILES
+        return name.lower() in STARTER_PROFILES
 
     def is_user_profile(self, name: str) -> bool:
-        """Check if a profile is a user-defined profile.
+        """Check if a profile exists (all profiles are user-editable now).
 
         Args:
             name: Profile name or key
 
         Returns:
-            True if user profile, False otherwise
+            True if profile exists
         """
-        return name.lower() in self._user_profiles
+        return name.lower() in self._profiles
+
+    def get_default_profile(self) -> str:
+        """Get the key of the default profile.
+
+        Returns:
+            The default profile key
+        """
+        return self._default_profile
+
+    def set_default_profile(self, name: str) -> bool:
+        """Set a profile as the default.
+
+        Args:
+            name: Profile name or key
+
+        Returns:
+            True if set successfully, False if profile doesn't exist
+        """
+        key = name.lower()
+        if key not in self._profiles:
+            return False
+
+        self._default_profile = key
+        self._save_config()
+        return True
+
+    def is_default(self, name: str) -> bool:
+        """Check if a profile is the default.
+
+        Args:
+            name: Profile name or key
+
+        Returns:
+            True if this is the default profile
+        """
+        return name.lower() == self._default_profile
 
     def save_profile(
         self,
         profile: ProcessingProfile,
         overwrite: bool = False,
     ) -> str:
-        """Save a user profile to disk.
+        """Save a profile to disk.
 
         Args:
             profile: The profile to save
-            overwrite: If True, allow overwriting existing user profiles.
-                       Never overwrites built-in profiles.
+            overwrite: If True, allow overwriting existing profiles
 
         Returns:
             The profile key used for storage
 
         Raises:
-            ValueError: If attempting to overwrite a built-in profile
             FileExistsError: If profile exists and overwrite=False
         """
         key = self._name_to_key(profile.name)
 
-        # Never overwrite builtins
-        if self.is_builtin(key):
-            raise ValueError(f"Cannot overwrite built-in profile: {key}")
-
-        # Check for existing user profile
-        if not overwrite and key in self._user_profiles:
+        # Check for existing profile
+        if not overwrite and key in self._profiles:
             raise FileExistsError(f"Profile already exists: {profile.name}")
 
         self._ensure_profiles_dir()
-
-        # Add metadata for user profiles
-        data = profile.to_dict()
-        now = datetime.now(UTC).isoformat()
-        if key not in self._user_profiles:
-            data["created_at"] = now
-        data["updated_at"] = now
-        data["version"] = 1
-
-        profile_file = self._get_profiles_dir() / self._key_to_filename(key)
-        with open(profile_file, "w") as f:
-            json.dump(data, f, indent=2)
+        self._save_profile_to_disk(key, profile)
 
         # Update cache
-        self._user_profiles[key] = profile
+        self._profiles[key] = profile
 
         return key
 
     def delete_profile(self, name: str) -> bool:
-        """Delete a user profile.
+        """Delete a profile.
 
         Args:
             name: Profile name or key to delete
 
         Returns:
             True if deleted, False if not found
-
-        Raises:
-            ValueError: If attempting to delete a built-in profile
         """
         key = name.lower()
 
-        if self.is_builtin(key):
-            raise ValueError(f"Cannot delete built-in profile: {key}")
-
-        if key not in self._user_profiles:
+        if key not in self._profiles:
             return False
+
+        # If deleting the default, reset to first available profile
+        if key == self._default_profile:
+            remaining = [k for k in self._profiles.keys() if k != key]
+            if remaining:
+                self._default_profile = remaining[0]
+                self._save_config()
 
         profile_file = self._get_profiles_dir() / self._key_to_filename(key)
         try:
@@ -408,11 +472,11 @@ class ProfileManager:
         except OSError:
             pass
 
-        del self._user_profiles[key]
+        del self._profiles[key]
         return True
 
     def rename_profile(self, old_name: str, new_name: str) -> str:
-        """Rename a user profile.
+        """Rename a profile.
 
         Args:
             old_name: Current profile name or key
@@ -422,23 +486,20 @@ class ProfileManager:
             The new profile key
 
         Raises:
-            ValueError: If old_name is builtin or doesn't exist
+            ValueError: If old_name doesn't exist
             FileExistsError: If new_name conflicts with existing profile
         """
         old_key = old_name.lower()
         new_key = self._name_to_key(new_name)
 
-        if self.is_builtin(old_key):
-            raise ValueError(f"Cannot rename built-in profile: {old_key}")
-
-        if old_key not in self._user_profiles:
+        if old_key not in self._profiles:
             raise ValueError(f"Profile not found: {old_key}")
 
-        if self.is_builtin(new_key) or (new_key in self._user_profiles and new_key != old_key):
+        if new_key in self._profiles and new_key != old_key:
             raise FileExistsError(f"Profile name already exists: {new_name}")
 
         # Get existing profile and update name
-        profile = self._user_profiles[old_key]
+        profile = self._profiles[old_key]
         updated_profile = ProcessingProfile(
             name=new_name,
             description=profile.description,
@@ -453,16 +514,26 @@ class ProfileManager:
             hierarchy_style=profile.hierarchy_style,
         )
 
+        # Update default profile if we're renaming it
+        was_default = old_key == self._default_profile
+
         # Delete old file
         old_file = self._get_profiles_dir() / self._key_to_filename(old_key)
         try:
             old_file.unlink()
         except OSError:
             pass
-        del self._user_profiles[old_key]
+        del self._profiles[old_key]
 
         # Save with new name
-        return self.save_profile(updated_profile)
+        result = self.save_profile(updated_profile)
+
+        # Update default if needed
+        if was_default:
+            self._default_profile = new_key
+            self._save_config()
+
+        return result
 
     def export_profile(self, name: str, path: Path) -> bool:
         """Export a profile to a specific path.

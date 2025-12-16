@@ -306,10 +306,13 @@ class TestProfileManager:
         assert "quick_draft" in names
         assert "high_quality" in names
 
-    def test_get_user_profile_names_empty(self, manager):
-        """get_user_profile_names returns empty for fresh manager."""
+    def test_get_user_profile_names_includes_starter(self, manager):
+        """get_user_profile_names returns all profiles including starter profiles."""
         names = manager.get_user_profile_names()
-        assert names == []
+        # Starter profiles are copied on init, so they should all be present
+        assert "default" in names
+        assert "quick_draft" in names
+        assert "high_quality" in names
 
     def test_is_builtin(self, manager):
         """is_builtin correctly identifies builtin profiles."""
@@ -386,12 +389,16 @@ class TestProfileManagerSave:
             data = json.load(f)
         assert data["rate"] == "+20%"
 
-    def test_save_profile_rejects_builtin_overwrite(self, manager):
-        """save_profile refuses to overwrite builtin profiles."""
-        profile = ProcessingProfile(name="Default")
+    def test_save_profile_can_overwrite_starter(self, manager, profiles_dir):
+        """save_profile can overwrite starter profiles with overwrite=True."""
+        # All profiles including starters can be overwritten
+        profile = ProcessingProfile(name="Default", rate="+5%")
+        manager.save_profile(profile, overwrite=True)
 
-        with pytest.raises(ValueError, match="built-in"):
-            manager.save_profile(profile)
+        # Verify the update
+        with open(profiles_dir / "default.json") as f:
+            data = json.load(f)
+        assert data["rate"] == "+5%"
 
     def test_is_user_profile_after_save(self, manager):
         """is_user_profile returns True after saving."""
@@ -447,10 +454,17 @@ class TestProfileManagerDelete:
         manager.delete_profile("cached")
         assert manager.get_profile("cached") is None
 
-    def test_delete_profile_rejects_builtin(self, manager):
-        """delete_profile refuses to delete builtin profiles."""
-        with pytest.raises(ValueError, match="built-in"):
-            manager.delete_profile("default")
+    def test_delete_profile_allows_starter(self, manager, profiles_dir):
+        """delete_profile can delete starter profiles."""
+        # Verify starter profile exists
+        assert manager.get_profile("default") is not None
+        assert (profiles_dir / "default.json").exists()
+
+        # Delete it
+        result = manager.delete_profile("default")
+        assert result is True
+        assert manager.get_profile("default") is None
+        assert not (profiles_dir / "default.json").exists()
 
     def test_delete_profile_nonexistent(self, manager):
         """delete_profile returns False for unknown profiles."""
@@ -506,10 +520,20 @@ class TestProfileManagerRename:
         assert manager.get_profile("updated_cache") is not None
         assert manager.get_profile("updated_cache").name == "Updated Cache"
 
-    def test_rename_profile_rejects_builtin(self, manager):
-        """rename_profile refuses to rename builtin profiles."""
-        with pytest.raises(ValueError, match="built-in"):
-            manager.rename_profile("default", "My Default")
+    def test_rename_profile_allows_starter(self, manager, profiles_dir):
+        """rename_profile can rename starter profiles."""
+        # Verify starter profile exists
+        assert manager.get_profile("default") is not None
+
+        # Rename it
+        new_key = manager.rename_profile("default", "My Default")
+        assert new_key == "my_default"
+
+        # Old name gone, new name exists
+        assert manager.get_profile("default") is None
+        assert manager.get_profile("my_default") is not None
+        assert not (profiles_dir / "default.json").exists()
+        assert (profiles_dir / "my_default.json").exists()
 
     def test_rename_profile_rejects_conflict(self, manager):
         """rename_profile refuses when target exists."""
@@ -642,3 +666,84 @@ class TestProfileManagerRefresh:
         manager.refresh()
 
         assert manager.get_profile("to_remove") is None
+
+
+class TestProfileManagerDefault:
+    """Tests for ProfileManager default profile functionality."""
+
+    @pytest.fixture
+    def profiles_dir(self, tmp_path):
+        """Create a temporary profiles directory."""
+        return tmp_path / "profiles"
+
+    @pytest.fixture
+    def manager(self, profiles_dir):
+        """Create a ProfileManager with temporary directory."""
+        ProfileManager.reset_instance()
+        mgr = ProfileManager.get_instance(profiles_dir=profiles_dir)
+        yield mgr
+        ProfileManager.reset_instance()
+
+    def test_default_profile_starts_as_default(self, manager):
+        """get_default_profile returns 'default' initially."""
+        assert manager.get_default_profile() == "default"
+
+    def test_is_default_initial(self, manager):
+        """is_default returns True for 'default' initially."""
+        assert manager.is_default("default") is True
+        assert manager.is_default("quick_draft") is False
+
+    def test_set_default_profile(self, manager, profiles_dir):
+        """set_default_profile changes the default."""
+        result = manager.set_default_profile("quick_draft")
+        assert result is True
+        assert manager.get_default_profile() == "quick_draft"
+        assert manager.is_default("quick_draft") is True
+        assert manager.is_default("default") is False
+
+        # Verify saved to disk
+        config_file = profiles_dir / "_config.json"
+        assert config_file.exists()
+        with open(config_file) as f:
+            config = json.load(f)
+        assert config["default_profile"] == "quick_draft"
+
+    def test_set_default_profile_nonexistent(self, manager):
+        """set_default_profile returns False for unknown profile."""
+        result = manager.set_default_profile("nonexistent")
+        assert result is False
+        assert manager.get_default_profile() == "default"
+
+    def test_set_default_profile_case_insensitive(self, manager):
+        """set_default_profile is case-insensitive."""
+        result = manager.set_default_profile("QUICK_DRAFT")
+        assert result is True
+        assert manager.get_default_profile() == "quick_draft"
+
+    def test_delete_default_profile_updates_default(self, manager):
+        """Deleting the default profile updates default to another profile."""
+        # Delete the default profile
+        manager.delete_profile("default")
+
+        # Default should be updated to another profile
+        new_default = manager.get_default_profile()
+        assert new_default != "default"
+        assert new_default in manager.get_profile_names()
+
+    def test_default_persists_across_refresh(self, manager, profiles_dir):
+        """Default profile setting persists across refresh."""
+        manager.set_default_profile("audiobook")
+        manager.refresh()
+        assert manager.get_default_profile() == "audiobook"
+
+    def test_rename_default_profile_updates_default(self, manager):
+        """Renaming the default profile updates the default key."""
+        # Make sure default is the default
+        assert manager.get_default_profile() == "default"
+
+        # Rename it
+        manager.rename_profile("default", "My Default")
+
+        # Default should be updated to new key
+        assert manager.get_default_profile() == "my_default"
+        assert manager.is_default("my_default") is True

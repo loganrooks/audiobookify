@@ -435,6 +435,19 @@ source .venv/bin/activate
 pip install -e ".[all]"  # Editable install with all dependencies
 ```
 
+### Running Tests
+
+```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Run with coverage
+python -m pytest tests/ --cov=epub2tts_edge --cov-report=html
+
+# Run in test mode (uses mock TTS, no network calls)
+python -m pytest tests/ -v  # Tests use mock TTS automatically
+```
+
 ## Documentation
 
 - [CLAUDE.md](./CLAUDE.md) - Development context for AI assistants

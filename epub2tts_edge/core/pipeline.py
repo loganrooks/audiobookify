@@ -12,10 +12,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..audio_generator import ProgressCallback, make_m4b, read_book
-from ..chapter_detector import ChapterDetector, ChapterNode, DetectionMethod, HierarchyStyle
+from ..chapter_detector import ChapterDetector, DetectionMethod, HierarchyStyle
 from ..content_filter import FilterConfig, FilterResult
 from ..job_manager import Job, JobManager, JobStatus
 from ..logger import get_logger
@@ -162,14 +162,15 @@ class ConversionPipeline:
     def detect_chapters(
         self,
         source_file: Path,
-    ) -> tuple[list[ChapterNode], FilterResult | None]:
+    ) -> tuple[list[dict[str, Any]], FilterResult | None]:
         """Detect and optionally filter chapters from source file.
 
         Args:
             source_file: Path to source EPUB/MOBI file
 
         Returns:
-            Tuple of (chapters, filter_result)
+            Tuple of (chapters, filter_result) where chapters are dicts
+            with title, level, paragraphs keys.
             filter_result is None if no filtering was applied
         """
         try:
@@ -205,14 +206,14 @@ class ConversionPipeline:
     def export_text(
         self,
         job: Job,
-        chapters: list[ChapterNode],
+        chapters: list[dict[str, Any]],
         include_metadata: bool = True,
     ) -> Path:
         """Export chapters to text file in job directory.
 
         Args:
             job: Job instance (provides output directory)
-            chapters: List of chapters to export
+            chapters: List of chapter dicts (from detect_chapters)
             include_metadata: Whether to include title/author header
 
         Returns:
@@ -242,11 +243,16 @@ class ConversionPipeline:
                 pass  # Skip metadata if can't extract
 
         # Export chapters with level markers
+        # Chapters are dicts with title, level, paragraphs keys
         for chapter in chapters:
-            level_marker = "#" * (chapter.level + 1)
-            lines.append(f"{level_marker} {chapter.title}")
-            if chapter.paragraphs:
-                for para in chapter.paragraphs:
+            level = chapter.get("level", 0)
+            title = chapter.get("title", "Untitled")
+            paragraphs = chapter.get("paragraphs", [])
+
+            level_marker = "#" * (level + 1)
+            lines.append(f"{level_marker} {title}")
+            if paragraphs:
+                for para in paragraphs:
                     lines.append(para)
                     lines.append("")
             lines.append("")

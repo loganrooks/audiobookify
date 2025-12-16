@@ -178,19 +178,19 @@ class SettingsPanel(Vertical):
         """Get dynamic profile options.
 
         Returns list of (display_name, key) tuples for Select widget.
-        Custom is first, then all profiles with star for default.
+        Custom is first, then all profiles with (default) indicator.
         """
         mgr = ProfileManager.get_instance()
         default_key = mgr.get_default_profile()
 
         options: list[tuple[str, str]] = [("Custom", "custom")]
 
-        # Add all profiles, marking the default with a star
+        # Add all profiles, marking the default with (default)
         for key in mgr.get_profile_names():
             profile = mgr.get_profile(key)
             if profile:
                 if key == default_key:
-                    options.append((f"★ {profile.name}", key))
+                    options.append((f"{profile.name} (default)", key))
                 else:
                     options.append((profile.name, key))
 
@@ -210,7 +210,7 @@ class SettingsPanel(Vertical):
                             id="profile-select",
                         )
 
-                    # Profile management buttons and dirty indicator
+                    # Profile management buttons (two rows for readability)
                     with Horizontal(classes="profile-actions"):
                         yield Button("Save As", id="save-profile-btn", variant="default")
                         yield Button(
@@ -222,6 +222,8 @@ class SettingsPanel(Vertical):
                         yield Button(
                             "Delete", id="delete-profile-btn", variant="error", disabled=True
                         )
+
+                    with Horizontal(classes="profile-actions"):
                         yield Button(
                             "Set Default",
                             id="set-default-btn",
@@ -614,7 +616,7 @@ class SettingsPanel(Vertical):
                 is_default = mgr.is_default(self._loaded_profile_key)
                 set_default_btn.disabled = is_default
                 if is_default:
-                    set_default_btn.label = "★ Default"
+                    set_default_btn.label = "Is Default"
                 else:
                     set_default_btn.label = "Set Default"
         except Exception:

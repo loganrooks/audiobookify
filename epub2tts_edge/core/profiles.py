@@ -273,16 +273,14 @@ class ProfileManager:
                 continue
 
     def _ensure_starter_profiles(self) -> None:
-        """Copy starter profiles if no profiles exist."""
-        if self._profiles:
-            return  # Already have profiles
-
+        """Ensure starter profiles exist (create any that are missing)."""
         self._ensure_profiles_dir()
 
-        # Copy all starter profiles
+        # Create any missing starter profiles
         for key, profile in STARTER_PROFILES.items():
-            self._save_profile_to_disk(key, profile)
-            self._profiles[key] = profile
+            if key not in self._profiles:
+                self._save_profile_to_disk(key, profile)
+                self._profiles[key] = profile
 
     def _save_profile_to_disk(self, key: str, profile: ProcessingProfile) -> None:
         """Save a single profile to disk."""

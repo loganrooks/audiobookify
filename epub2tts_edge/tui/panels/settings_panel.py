@@ -178,12 +178,12 @@ class SettingsPanel(Vertical):
         """Get dynamic profile options.
 
         Returns list of (display_name, key) tuples for Select widget.
-        Custom is first, then all profiles with (default) indicator.
+        Shows all profiles with (default) indicator for the default one.
         """
         mgr = ProfileManager.get_instance()
         default_key = mgr.get_default_profile()
 
-        options: list[tuple[str, str]] = [("Custom", "custom")]
+        options: list[tuple[str, str]] = []
 
         # Add all profiles, marking the default with (default)
         for key in mgr.get_profile_names():
@@ -206,8 +206,8 @@ class SettingsPanel(Vertical):
                         yield Label("Profile:")
                         yield Select(
                             self._get_profile_options(),
-                            value="custom",
                             id="profile-select",
+                            prompt="Select profile",
                         )
 
                     # Profile management buttons (two rows for readability)
@@ -397,11 +397,20 @@ class SettingsPanel(Vertical):
                         yield Switch(id="export-only-switch")
 
     def on_mount(self) -> None:
-        """Initialize progressive disclosure state."""
+        """Initialize progressive disclosure state and load default profile."""
         self._update_trim_visibility()
         self._update_normalize_visibility()
         self._update_filter_visibility()
         self._update_dirty_indicator()
+
+        # Select and apply the default profile on startup
+        mgr = ProfileManager.get_instance()
+        default_key = mgr.get_default_profile()
+        if default_key and mgr.get_profile(default_key):
+            select = self.query_one("#profile-select", Select)
+            select.value = default_key
+            self._apply_profile(default_key)
+
         self._update_profile_buttons()
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
@@ -420,14 +429,11 @@ class SettingsPanel(Vertical):
         """Handle select changes, including profile selection and dirty tracking."""
         if event.select.id == "profile-select":
             profile_key = event.value
-            # Handle blank selection or "custom" option
-            if profile_key == Select.BLANK or profile_key == "custom":
-                # Reset to custom mode
-                self._loaded_profile_key = None
-                self._loaded_profile_snapshot = None
-                self.is_dirty = False
-            else:
-                self._apply_profile(profile_key)
+            # Skip blank selection (shouldn't happen with our UI)
+            if profile_key == Select.BLANK:
+                return
+            # Apply the selected profile
+            self._apply_profile(profile_key)
             self._update_dirty_indicator()
             self._update_profile_buttons()
         else:
@@ -623,10 +629,14 @@ class SettingsPanel(Vertical):
             pass  # Widgets not mounted yet
 
     def _refresh_profile_dropdown(self) -> None:
-        """Refresh the profile dropdown options."""
+        """Refresh the profile dropdown options, preserving selection."""
         try:
             select = self.query_one("#profile-select", Select)
+            current_value = self._loaded_profile_key
             select.set_options(self._get_profile_options())
+            # Restore selection if we had one
+            if current_value:
+                select.value = current_value
         except Exception:
             pass  # Widget not mounted yet
 

@@ -31,6 +31,7 @@ from textual.worker import Worker
 from ..batch_processor import BatchConfig, BatchProcessor, BookTask, ProcessingStatus
 from ..config import get_config
 from ..core.events import EventBus, EventType
+from ..core.job_queue import JobQueue
 from ..job_manager import Job, JobManager, JobStatus
 from ..voice_preview import VoicePreview, VoicePreviewConfig
 from .handlers import TUIEventAdapter
@@ -40,8 +41,10 @@ from .models import PreviewChapter, VoicePreviewStatus
 from .panels import (
     EPUBFileItem,
     FilePanel,
+    JobProgressInfo,
     JobsPanel,
     LogPanel,
+    MultiJobProgress,
     PathInput,
     PreviewPanel,
     ProgressPanel,
@@ -175,6 +178,9 @@ class AudiobookifyApp(App):
         # EventBus for decoupled processing updates (Phase 2)
         self.event_bus = EventBus()
         self._event_adapter: TUIEventAdapter | None = None
+        # Parallel job processing queue
+        self._job_queue: JobQueue | None = None
+        self._parallel_mode = True  # Enable parallel processing by default
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -187,6 +193,7 @@ class AudiobookifyApp(App):
                         yield PreviewPanel()
                     with TabPane("▶️ Current", id="current-tab"):
                         yield ProgressPanel()
+                        yield MultiJobProgress(id="multi-job-progress")
                         # Hidden queue panel for internal task tracking
                         yield QueuePanel(classes="queue-hidden")
                     with TabPane("📊 Jobs", id="jobs-tab"):
@@ -204,14 +211,259 @@ class AudiobookifyApp(App):
         self._event_adapter = TUIEventAdapter(self, self.event_bus)
         self._event_adapter.connect()
 
+        # Initialize parallel job queue
+        self._init_job_queue()
+
         self.log_message("Audiobookify TUI started")
         self.log_message("Select EPUB files and press Start (or 's')")
         self.log_message("💡 Press ? for help | Ctrl+/-: font size")
 
     def on_unmount(self) -> None:
+        # Shutdown job queue
+        if self._job_queue:
+            self._job_queue.shutdown(wait=False)
+
         # Disconnect EventBus adapter on app exit (Phase 2)
         if self._event_adapter:
             self._event_adapter.disconnect()
+
+    def _init_job_queue(self) -> None:
+        """Initialize the parallel job processing queue."""
+        # Get max workers from settings (default 3)
+        settings_panel = self.query_one(SettingsPanel)
+        config = settings_panel.get_config()
+        max_workers = config.get("max_concurrent", 3)
+
+        self._job_queue = JobQueue(max_workers=max_workers, event_bus=self.event_bus)
+        self._job_queue.set_job_manager(self.job_manager)
+        self._job_queue.set_executor(self._execute_job)
+        self._job_queue.set_completion_callback(self._on_job_complete)
+
+    def _execute_job(self, job: Job, cancellation_check) -> bool:
+        """Execute a single job (called by JobQueue in worker thread).
+
+        This is the executor function that processes one audiobook conversion.
+        It runs in a worker thread and uses call_from_thread for UI updates.
+
+        Args:
+            job: The Job object containing source file and configuration
+            cancellation_check: Callable that returns True if job should be cancelled
+
+        Returns:
+            True if successful, False otherwise
+        """
+
+        job_id = job.job_id
+        source_path = Path(job.source_file)
+
+        # Get settings from settings panel (thread-safe read)
+        settings_panel = self.query_one(SettingsPanel)
+        config_dict = settings_panel.get_config()
+
+        # Update UI: add job to MultiJobProgress panel
+        job_info = JobProgressInfo(
+            job_id=job_id,
+            title=job.title or source_path.stem,
+            status="Starting...",
+            progress=0.0,
+            chapter_text="",
+        )
+        self.call_from_thread(self._add_job_to_ui, job_info)
+
+        try:
+            # Get app config for output directory
+            app_config = get_config()
+            output_dir = str(app_config.output_dir) if app_config.output_dir else None
+
+            # Create BatchConfig from Job and settings
+            config = BatchConfig(
+                input_path=str(source_path),
+                output_dir=output_dir,
+                speaker=job.speaker or config_dict["speaker"],
+                detection_method=config_dict["detection_method"],
+                hierarchy_style=config_dict["hierarchy_style"],
+                skip_existing=config_dict["skip_existing"],
+                export_only=config_dict["export_only"],
+                # v2.1.0 options
+                tts_rate=job.rate or config_dict.get("tts_rate"),
+                tts_volume=job.volume or config_dict.get("tts_volume"),
+                chapters=config_dict.get("chapters"),
+                # Pause settings
+                sentence_pause=config_dict.get("sentence_pause", 1200),
+                paragraph_pause=config_dict.get("paragraph_pause", 1200),
+                # Parallelization (per-job concurrency)
+                max_concurrent=config_dict.get("max_concurrent", 5),
+            )
+
+            processor = BatchProcessor(config, job_manager=self.job_manager)
+            processor.prepare()
+
+            if not processor.result.tasks:
+                self.call_from_thread(self._update_job_status, job_id, "Skipped (no tasks)")
+                return False
+
+            book_task = processor.result.tasks[0]
+            # Link the book_task to this job
+            book_task.job_id = job_id
+            book_task.job_dir = job.job_dir
+
+            # Progress callback for chapter updates
+            def progress_callback(info):
+                """Handle progress updates from audio generation."""
+                if info.total_chapters > 0:
+                    progress = (info.chapter_num / info.total_chapters) * 100
+                else:
+                    progress = 0.0
+
+                chapter_text = f"Ch {info.chapter_num}/{info.total_chapters}: {info.chapter_title}"
+
+                self.call_from_thread(self._update_job_progress, job_id, progress, chapter_text)
+
+                if info.status == "chapter_start":
+                    self.call_from_thread(
+                        self._update_job_status,
+                        job_id,
+                        f"Converting chapter {info.chapter_num}...",
+                    )
+
+            # Process the book
+            self.call_from_thread(self._update_job_status, job_id, "Exporting text...")
+
+            success = processor.process_book(
+                book_task,
+                progress_callback=progress_callback,
+                cancellation_check=cancellation_check,
+            )
+
+            if success:
+                self.call_from_thread(self._update_job_progress, job_id, 100.0, "Complete")
+                return True
+            else:
+                error_msg = book_task.error_message or "Processing failed"
+                self.call_from_thread(self._update_job_status, job_id, f"Failed: {error_msg}")
+                return False
+
+        except Exception as e:
+            error_msg = str(e)
+            self.call_from_thread(self._update_job_status, job_id, f"Error: {error_msg}")
+            return False
+
+    def _on_job_complete(self, job_id: str, success: bool, error_message: str | None) -> None:
+        """Handle job completion callback (called from JobQueue worker thread).
+
+        Args:
+            job_id: The completed job's ID
+            success: Whether the job completed successfully
+            error_message: Error message if job failed
+        """
+        # Mark job as complete in MultiJobProgress panel
+        self.call_from_thread(self._mark_job_complete_ui, job_id, success)
+
+        # Log the result
+        if success:
+            self.call_from_thread(self.log_message, f"✅ Job completed: {job_id}")
+        else:
+            msg = error_message or "Unknown error"
+            self.call_from_thread(self.log_message, f"❌ Job failed: {job_id} - {msg}")
+
+        # Refresh jobs panel
+        self.call_from_thread(self._refresh_jobs_panel)
+
+        # Update queue statistics
+        self.call_from_thread(self._update_queue_stats)
+
+        # Check if all jobs are complete
+        self.call_from_thread(self._check_all_jobs_complete)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # UI Helper Methods (called via call_from_thread)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _add_job_to_ui(self, job_info: JobProgressInfo) -> None:
+        """Add a job to the MultiJobProgress panel (main thread)."""
+        try:
+            multi_progress = self.query_one(MultiJobProgress)
+            multi_progress.add_job(job_info)
+        except Exception:
+            pass
+
+    def _update_job_progress(self, job_id: str, progress: float, chapter_text: str) -> None:
+        """Update job progress in MultiJobProgress panel (main thread)."""
+        try:
+            multi_progress = self.query_one(MultiJobProgress)
+            multi_progress.update_job_progress(job_id, progress, chapter_text)
+        except Exception:
+            pass
+
+    def _update_job_status(self, job_id: str, status: str) -> None:
+        """Update job status text in MultiJobProgress panel (main thread)."""
+        try:
+            multi_progress = self.query_one(MultiJobProgress)
+            multi_progress.set_job_status(job_id, status)
+        except Exception:
+            pass
+
+    def _mark_job_complete_ui(self, job_id: str, success: bool) -> None:
+        """Mark a job as complete in MultiJobProgress panel (main thread)."""
+        try:
+            multi_progress = self.query_one(MultiJobProgress)
+            multi_progress.mark_job_complete(job_id, success)
+        except Exception:
+            pass
+
+    def _refresh_jobs_panel(self) -> None:
+        """Refresh the jobs panel to show updated job states (main thread)."""
+        try:
+            jobs_panel = self.query_one(JobsPanel)
+            jobs_panel.refresh_jobs()
+        except Exception:
+            pass
+
+    def _update_queue_stats(self) -> None:
+        """Update queue statistics in MultiJobProgress panel (main thread)."""
+        if not self._job_queue:
+            return
+        try:
+            stats = self._job_queue.get_status()
+            multi_progress = self.query_one(MultiJobProgress)
+            multi_progress.update_stats(
+                running=stats["running"],
+                queued=stats["queued"],
+                completed=stats["completed"],
+            )
+        except Exception:
+            pass
+
+    def _check_all_jobs_complete(self) -> None:
+        """Check if all jobs are complete and update UI state (main thread)."""
+        if not self._job_queue:
+            return
+        try:
+            stats = self._job_queue.get_status()
+            if stats["running"] == 0 and stats["queued"] == 0:
+                # All jobs finished
+                total = stats["completed"] + stats["failed"]
+                self.log_message(
+                    f"🎉 All jobs complete: {stats['completed']} succeeded, "
+                    f"{stats['failed']} failed"
+                )
+                self._parallel_processing_complete(total)
+        except Exception:
+            pass
+
+    def _parallel_processing_complete(self, total: int) -> None:
+        """Handle completion of all parallel jobs (main thread)."""
+        self.is_processing = False
+        self.query_one(ProgressPanel).set_running(False)
+        self.query_one(JobsPanel).set_running(False)
+
+        try:
+            multi_progress = self.query_one(MultiJobProgress)
+            multi_progress.set_running(False)
+        except Exception:
+            pass
+
+        self.notify(f"Processing complete: {total} files", title="Done")
 
     def log_message(self, message: str) -> None:
         """Log a message to the log panel."""
@@ -532,6 +784,13 @@ class AudiobookifyApp(App):
             self.action_preview_chapters()
         elif event.button.id == "export-text-btn":
             self.action_export_text()
+        # Parallel queue control buttons (MultiJobProgress panel)
+        elif event.button.id == "start-queue-btn":
+            self._action_start_queue()
+        elif event.button.id == "cancel-all-btn":
+            self._action_cancel_all_jobs()
+        elif event.button.id == "clear-done-btn":
+            self._action_clear_completed_jobs()
 
     def action_preview_voice(self) -> None:
         """Preview the currently selected voice."""
@@ -698,7 +957,11 @@ class AudiobookifyApp(App):
         self.action_resume_job()
 
     def action_start(self) -> None:
-        """Start processing selected files."""
+        """Start processing selected files.
+
+        Routes to either parallel job queue or sequential processing
+        based on the parallel_mode setting and file type.
+        """
         if self.is_processing:
             return
 
@@ -722,11 +985,107 @@ class AudiobookifyApp(App):
 
         # Route to appropriate processor based on file mode
         if file_panel.file_mode == "text":
+            # Text files use sequential processing (no parallel support yet)
             self.log_message(f"Starting text conversion of {len(selected_files)} files...")
             self.current_worker = self.process_text_files(selected_files)
+        elif self._parallel_mode and self._job_queue and len(selected_files) > 1:
+            # Multiple EPUB files: use parallel job queue
+            self.log_message(f"Starting parallel processing of {len(selected_files)} files...")
+            self._start_parallel_processing(selected_files)
         else:
+            # Single file or parallel disabled: use sequential processing
             self.log_message(f"Starting processing of {len(selected_files)} files...")
             self.current_worker = self.process_files(selected_files)
+
+    def _start_parallel_processing(self, files: list[Path]) -> None:
+        """Start parallel processing of multiple files via JobQueue.
+
+        Creates Job objects for each file and submits them to the queue.
+        Jobs are processed concurrently by the ThreadPoolExecutor.
+
+        Args:
+            files: List of file paths to process
+        """
+        if not self._job_queue:
+            self.log_message("Error: Job queue not initialized")
+            return
+
+        # Get current settings for job configuration
+        settings_panel = self.query_one(SettingsPanel)
+        config_dict = settings_panel.get_config()
+
+        # Initialize MultiJobProgress panel
+        multi_progress = self.query_one(MultiJobProgress)
+        multi_progress.clear_all()
+        multi_progress.set_running(True)
+
+        # Create and submit jobs for each file
+        jobs_to_submit: list[Job] = []
+        for file_path in files:
+            try:
+                # Create job via job manager (handles directory creation, deduplication)
+                job = self.job_manager.create_job(
+                    source_path=str(file_path),
+                    speaker=config_dict["speaker"],
+                    rate=config_dict.get("tts_rate"),
+                    volume=config_dict.get("tts_volume"),
+                )
+                jobs_to_submit.append(job)
+                self.log_message(f"  📋 Queued: {file_path.name} ({job.job_id})")
+            except Exception as e:
+                self.log_message(f"  ❌ Failed to create job for {file_path.name}: {e}")
+
+        # Submit all jobs to the queue
+        submitted_count = 0
+        for job in jobs_to_submit:
+            if self._job_queue.submit(job):
+                submitted_count += 1
+
+        self.log_message(f"Submitted {submitted_count} jobs to parallel queue")
+
+        # Update queue statistics
+        self._update_queue_stats()
+
+    def _action_start_queue(self) -> None:
+        """Handle Start All button - starts processing the job queue.
+
+        Note: With the current design, jobs start immediately when submitted.
+        This button could be used for a future "pause queue" feature.
+        """
+        if not self._job_queue:
+            self.log_message("Job queue not initialized")
+            return
+
+        stats = self._job_queue.get_status()
+        if stats["running"] > 0 or stats["queued"] > 0:
+            self.log_message("Queue is already processing")
+        else:
+            self.log_message("No jobs in queue. Select files and click Start.")
+
+    def _action_cancel_all_jobs(self) -> None:
+        """Handle Cancel All button - cancels all running and queued jobs."""
+        if not self._job_queue:
+            self.log_message("Job queue not initialized")
+            return
+
+        # Cancel all jobs in the queue
+        cancelled = self._job_queue.cancel_all()
+        if cancelled > 0:
+            self.log_message(f"Cancelled {cancelled} jobs")
+        else:
+            self.log_message("No jobs to cancel")
+
+        # Update UI
+        self._update_queue_stats()
+
+    def _action_clear_completed_jobs(self) -> None:
+        """Handle Clear Done button - removes completed jobs from the UI."""
+        try:
+            multi_progress = self.query_one(MultiJobProgress)
+            multi_progress.clear_completed()
+            self.log_message("Cleared completed jobs from display")
+        except Exception:
+            pass
 
     def action_stop(self) -> None:
         """Stop processing."""

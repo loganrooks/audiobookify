@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Full conversion could never produce an audiobook.**
+  `ConversionPipeline.package_audiobook()` called `make_m4b()` with
+  `chapternames=`, `cover=` and `output=`, none of which that function accepts,
+  so every EPUB→M4B run died with `TypeError: make_m4b() got an unexpected
+  keyword argument 'chapternames'` at the packaging step. `audiobookify
+  book.epub` routes through this pipeline, so the primary documented workflow
+  was broken regardless of TTS. No test had ever called `make_m4b` — the only
+  reference in the suite was `assert make_m4b is not None`. Three consequences
+  of that code path never running are fixed at the same time: chapter markers
+  were never generated (`generate_metadata()` was not called), cover art was
+  silently dropped (`add_cover()` was not called), and `--normalize` /
+  `--trim-silence` were accepted but never applied.
+- **Finished audiobooks were left in the job scratch directory.** Output stayed
+  in `~/.audiobookify/jobs/<id>/`, so the documented
+  `docker run --rm -v ./books:/books` workflow destroyed the result and the
+  bind mount received nothing. The M4B is now delivered next to the source file
+  (matching existing TUI behaviour), falling back to the job directory with a
+  warning when the destination is not writable.
 - **Docker image was unusable.** `pyproject.toml` was never copied into the build
   context, so `pip install -e .` fell back to the minimal `setup.py`, which
   declares no `[project.scripts]`. The `audiobookify` console script was never
@@ -26,6 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   extras that did not exist. Both are now defined in `pyproject.toml`.
 
 ### Added
+- Regression tests covering the pipeline→`make_m4b` call contract, chapter-title
+  propagation, output delivery location, and an ffmpeg-backed end-to-end test
+  that ffprobes the resulting M4B for ordered chapter markers.
 - `--version` flag and `epub2tts_edge.__version__`, both sourced from installed
   package metadata.
 - Tag-driven release pipeline (`.github/workflows/release.yml`): publishes to
@@ -42,6 +63,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wheel and Docker smoke tests in CI that actually execute the built artifacts.
 
 ### Changed
+- README documents that the Docker image runs as uid 1000 and needs
+  `--user "$(id -u):$(id -g)" -e HOME=/tmp` to write into a bind-mounted
+  directory, which keeps its host ownership regardless of the build-time `chown`.
+- `scripts/doctor.sh` starts a stopped Docker daemon before judging Docker
+  availability, and probes real Edge TTS *synthesis* rather than the voice list —
+  a plain GET that succeeds even when the WebSocket upgrade is refused. It now
+  distinguishes "reachable", "TLS verification failed" and "refused by the
+  service" instead of reporting one undifferentiated "unreachable".
 - CI no longer calls Microsoft's TTS service. `SKIP_TTS_TESTS=1` is set for the
   whole workflow, so a Microsoft outage can no longer turn a contributor's PR red.
 - CI runs `mypy` (non-blocking, pending backlog cleanup) and `bandit`, which were

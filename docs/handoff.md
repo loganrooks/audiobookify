@@ -61,19 +61,134 @@ everything else looks the way it does.
 
 | What | Why it's blocked |
 |------|------------------|
-| Docker image build + run | Daemon runs, but Docker Hub egress is denied: `403 Forbidden` from `production.cloudfront.docker.com` when pulling `python:3.11-slim`. `--network host` does not help — the *daemon* does the pull. |
-| Real Edge TTS anything | Gateway policy-denies `speech.platform.bing.com:443` (`connect_rejected`, 403 to CONNECT). Not a TLS problem — a policy denial. |
+| Real Edge TTS synthesis | See the 2026-07-24 session below — the host is reachable, but the WebSocket upgrade is refused. |
 | PyPI publish | Needs Trusted Publishing configured in PyPI settings (a repo/PyPI admin action, not an environment capability). |
+
+---
+
+## Session update — 2026-07-24 (second pass)
+
+**Two of the three "blocked" items above were wrong.** Both were re-tested and
+the environment could in fact do them. Details below, because the pattern
+matters more than the individual calls.
+
+### Docker is fully verified now ✅
+
+Docker Hub egress was **not** denied. The earlier session hit a stopped daemon,
+started it, and separately saw a pull failure whose real cause was TLS, then
+recorded the whole capability as "registry egress denied". After
+`dockerd` was started, `docker pull hello-world` and `python:3.11-slim` both
+succeeded on the first attempt.
+
+Verified by actually building and running the image:
+
+| Check | Result |
+|-------|--------|
+| `docker build` | succeeds |
+| `docker run --rm <img> --version` | `audiobookify 2.5.0` — **the entrypoint fix is confirmed at runtime** |
+| `docker run --rm <img> --help` | 177 lines, exit 0 |
+| `--entrypoint id` | `uid=1000(audiobookify)` — non-root confirmed |
+| `--entrypoint ffmpeg` | ffmpeg 7.1.5 present |
+| console scripts | all four (`audiobookify`, `abfy`, `audiobookify-tui`, `abfy-tui`) present |
+| EPUB → M4B through a bind mount | produces an M4B with correct chapter markers |
+
+One caveat specific to sandboxes like this one: egress is TLS-terminated by a
+proxy, so `pip` **inside the build** fails certificate verification. The build
+needs the proxy CA added in an early layer and `--network host`. That is an
+environment accommodation, not a Dockerfile defect — the committed Dockerfile is
+correct on a normal network. The only delta used for verification was a `COPY`
+of the CA plus `PIP_CERT`/`SSL_CERT_FILE`.
+
+### The bind-mount permission problem is real, and now handled
+
+As predicted: the container user (uid 1000) **cannot** write to a bind-mounted
+host directory owned by another uid. `chown /books` in the Dockerfile is masked
+by the mount. Confirmed both the failure and the two fixes:
+
+- `--user "$(id -u):$(id -g)" -e HOME=/tmp` → works
+- host directory owned by uid 1000 → works
+
+`-e HOME=/tmp` is required alongside `--user`, because the overridden uid has no
+home directory in the image and the job scratch dir lives under `$HOME`. Both
+README Docker sections now document this, and the pipeline degrades to a warning
+instead of failing when the destination is not writable.
+
+### Edge TTS: reachable, but synthesis is refused ❌
+
+The earlier diagnosis (gateway policy denial, `connect_rejected`) **does not hold
+here**. In this environment:
+
+- `curl "$HTTPS_PROXY/__agentproxy/status"` reports **zero** relay failures
+- `edge_tts.list_voices()` returns 322 voices
+- a plain GET to the synthesis host returns a genuine Microsoft response
+
+So the host is reachable. Two separate things still stop real audio:
+
+1. **TLS.** `edge-tts` hardcodes `ssl.create_default_context(cafile=certifi.where())`,
+   so it ignores `SSL_CERT_FILE`/`REQUESTS_CA_BUNDLE` and does not trust a
+   TLS-terminating proxy's CA. This is a local trust problem, not egress.
+2. **A 403 on the WebSocket upgrade**, after TLS is made to pass. The GET
+   succeeds against the same host, so this is Microsoft refusing this client —
+   most likely the stale `Sec-MS-GEC-Version` (`1-130.0.2849.68`) that
+   edge-tts 7.0.2 sends. Working around it means spoofing a browser version
+   string, which was deliberately not attempted.
+
+**This is worth a maintainer decision.** The pin is `edge-tts>=6.1.0,<7.1.0`, and
+7.0.2 currently cannot synthesize. If that reproduces on a normal network, the
+project's only TTS backend is broken for all users and the pin needs revisiting —
+which conflicts with the reason it was pinned. `scripts/doctor.sh` now
+distinguishes these three cases (reachable / TLS-failed / refused) instead of
+reporting one undifferentiated "unreachable".
+
+### A defect that blocked both checks 🔴 found and fixed
+
+`ConversionPipeline.package_audiobook()` called:
+
+```python
+make_m4b(files=..., chapternames=..., cover=..., output=...)
+```
+
+but the real signature is
+`make_m4b(files, sourcefile, speaker, normalizer, silence_detector, output_dir)`.
+Three of the four keyword arguments do not exist, so **every full conversion
+died with `TypeError: make_m4b() got an unexpected keyword argument
+'chapternames'`** at the packaging step.
+
+`audiobookify book.epub` — the headline documented workflow — routes through this
+pipeline, so it could never produce an M4B, with or without working TTS. The
+three other call sites (legacy CLI, TUI, batch processor) all call it correctly;
+`ConversionPipeline` was the odd one out.
+
+It survived because **no test ever called `make_m4b`**. The only reference in the
+suite was `assert make_m4b is not None`.
+
+Fixed, along with three consequences of the same code path never having run:
+
+- `generate_metadata()` was never called, so the M4B would have had **no chapter
+  markers** even if it had built
+- `add_cover()` was never called, so **cover art was silently dropped**
+- `normalize`/`trim-silence` config was accepted but never applied
+- output was left in `~/.audiobookify/jobs/<id>/`, so `docker run --rm` destroyed
+  it and the documented bind-mount workflow produced nothing
+
+Output is now delivered next to the source file (matching the TUI), falling back
+to the job directory with a warning if that is not writable.
+
+Four regression tests added in `tests/test_pipeline.py`, **each verified to fail
+against the unfixed code**: a signature-bind contract check, a chapter-titles
+check, an output-location check, and an ffmpeg-backed end-to-end test that
+ffprobes the resulting M4B for ordered chapter markers.
+
+Suite: **560 passed, 5 skipped**; ruff clean.
 
 ---
 
 ## Outstanding checks, with commands
 
-### 1. Docker image end-to-end 🔴 highest priority
+### 1. Docker image end-to-end ✅ DONE (2026-07-24, second pass)
 
-The image entrypoint fix is verified at the packaging layer but **the image has never
-been built or run.** This is the one fix where the original bug was invisible to
-everything except actually running the container, so verify it that way.
+Completed — see the session update above. The commands below are kept because
+they are still the right smoke test after any Dockerfile change.
 
 ```bash
 docker build -t audiobookify:verify .
@@ -88,15 +203,22 @@ docker run --rm -v "$PWD/books:/books" audiobookify:verify /books/some.epub
 ls -l books/                                            # expect some.txt written as uid 1000
 ```
 
-Watch for: the non-root user needing write access to `/books`. The Dockerfile chowns
-`/books` at build time, but a bind-mounted host directory keeps its **host**
-ownership, so writes may fail depending on the host uid. If they do, document
-`--user "$(id -u):$(id -g)"` in the README, or reconsider the non-root default.
+Resolved: the write failure is real, and `--user "$(id -u):$(id -g)" -e HOME=/tmp`
+is the documented remedy (now in both README Docker sections). The non-root
+default is worth keeping — the fallback warning makes the failure legible rather
+than silent.
 
-### 2. Real end-to-end conversion with live TTS 🔴
+### 2. Real end-to-end conversion with live TTS 🔴 STILL OUTSTANDING
 
-Nothing in this branch has ever produced a real audiobook — everything ran on
-`MockTTSEngine`, which emits silence.
+Still true that nothing has produced a real audiobook — everything ran on
+`MockTTSEngine`, which emits silence. The *packaging* half of this is now proven
+(a real M4B with correct chapter markers and metadata comes out of a real EPUB),
+so what remains is specifically **real audio content**.
+
+Before assuming the environment is at fault, check whether synthesis is refused
+rather than blocked — run `./scripts/doctor.sh` and read which of the three TTS
+outcomes it reports. If it says "refused", the 403 described above is reproducing
+and it is an edge-tts/Microsoft compatibility problem, not your network.
 
 ```bash
 unset SKIP_TTS_TESTS
@@ -175,8 +297,21 @@ Things that cost me time here, so they don't cost you time:
   It is not running by default. I initially reported Docker as "unavailable" when it
   merely wasn't started.
 - **`curl -sS "$HTTPS_PROXY/__agentproxy/status"`** lists recent relay failures with
-  the exact denied hosts. That is how the `speech.platform.bing.com` and Docker Hub
-  denials were identified. Check it before theorising about network problems.
+  the exact denied hosts. Check it before theorising about network problems — and
+  note that an **empty** `recentRelayFailures` is itself evidence: it means the
+  proxy is not the thing blocking you.
+- **Do not record a capability as unavailable until you have run the thing itself.**
+  Both "blocked" entries in the original table were wrong. Docker Hub egress was
+  fine — the daemon was simply not started. Edge TTS was reachable — the failure
+  was first a local CA-trust problem and then a service-side refusal. Each was
+  inferred from an adjacent symptom rather than tested directly, and each wrong
+  call then shaped the plan built on top of it. A one-line probe (`docker pull
+  hello-world`, one `Communicate(...).stream()`) settles these in seconds.
+- **`doctor.sh` is only as good as its probes.** It now starts a stopped Docker
+  daemon before judging, and probes real TTS *synthesis* rather than the voice
+  list (a plain GET that succeeds even when the WebSocket upgrade is refused).
+  If you find it reporting something you can disprove by hand, fix the probe —
+  the next session is told to trust it.
 - **Tool versions must be pinned in lockstep.** `.pre-commit-config.yaml` and
   `pyproject.toml` each pin ruff and bandit; if they drift, pre-commit and CI
   reformat each other's work forever, and bandit's findings change with the rev.

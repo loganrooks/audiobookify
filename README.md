@@ -70,23 +70,36 @@ audiobookify --tui
 
 ### Docker
 
+The image runs as a non-root user (uid 1000). A bind-mounted directory keeps its
+**host** ownership, so pass `--user "$(id -u):$(id -g)"` unless your host uid
+already happens to be 1000 — otherwise the container cannot write the finished
+audiobook back into the mount, and you get a "Could not move audiobook" warning
+with the output stranded inside the container.
+
 ```bash
 # Build the image
 docker build -t audiobookify .
 
 # Export EPUB to text
-docker run -v $(pwd)/books:/books audiobookify /books/mybook.epub
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    -v $(pwd)/books:/books audiobookify /books/mybook.epub
 
 # Convert to audiobook
-docker run -v $(pwd)/books:/books audiobookify /books/mybook.txt
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    -v $(pwd)/books:/books audiobookify /books/mybook.txt
 
 # Batch processing
-docker run -v $(pwd)/books:/books audiobookify /books --batch
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    -v $(pwd)/books:/books audiobookify /books --batch
 
 # Using docker-compose
 docker-compose build
 docker-compose run audiobookify /books/mybook.epub
 ```
+
+`-e HOME=/tmp` is needed alongside `--user` because the overridden uid has no
+home directory in the image, and the job scratch directory lives under `$HOME`.
+Output is written next to the source file, so it lands in your mounted folder.
 
 ### Calibre Plugin
 
@@ -423,14 +436,19 @@ pip install -e .
 <details>
 <summary><b>Docker</b></summary>
 
+The image runs as uid 1000; pass `--user` so it can write into your bind mount
+(see [Docker](#docker) above).
+
 ```bash
 docker build . -t audiobookify
 
 # Export EPUB
-docker run --rm -v ~/Books:/files audiobookify "/files/mybook.epub"
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    -v ~/Books:/files audiobookify "/files/mybook.epub"
 
 # Convert to audiobook
-docker run --rm -v ~/Books:/files audiobookify "/files/mybook.txt"
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    -v ~/Books:/files audiobookify "/files/mybook.txt"
 ```
 </details>
 

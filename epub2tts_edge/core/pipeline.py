@@ -9,12 +9,19 @@ Bug fixes in this module automatically apply to all interfaces.
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ..audio_generator import ProgressCallback, make_m4b, read_book
+from ..audio_generator import (
+    ProgressCallback,
+    add_cover,
+    generate_metadata,
+    make_m4b,
+    read_book,
+)
 from ..chapter_detector import ChapterDetector, DetectionMethod, HierarchyStyle
 from ..content_filter import FilterConfig, FilterResult
 from ..job_manager import Job, JobManager, JobStatus
@@ -347,27 +354,97 @@ class ConversionPipeline:
         """
         self.job_manager.update_status(job.job_id, JobStatus.FINALIZING)
 
-        # Determine output path
         source_name = Path(job.source_file).stem
-        output_path = Path(job.job_dir) / f"{source_name}.m4b"
+        files = [str(f) for f in audio_files]
 
         # Get chapter info from text file
         text_file = Path(job.job_dir) / f"{source_name}.txt"
         book_contents = self._parse_text_file(text_file) if text_file.exists() else []
+        chapter_titles = [c.get("title", f"Chapter {i + 1}") for i, c in enumerate(book_contents)]
 
-        # Create M4B
-        make_m4b(
-            files=[str(f) for f in audio_files],
-            chapternames=[c.get("title", f"Chapter {i + 1}") for i, c in enumerate(book_contents)],
-            cover=str(cover_image) if cover_image else None,
-            output=str(output_path),
+        # make_m4b reads FFMETADATAFILE from output_dir to place the chapter
+        # markers, so the metadata file has to be written first.
+        generate_metadata(
+            files,
+            job.author or "Unknown",
+            job.title or source_name,
+            chapter_titles,
+            output_dir=job.job_dir,
         )
+
+        output_path = Path(
+            make_m4b(
+                files,
+                str(text_file),
+                self.config.speaker,
+                normalizer=self._build_normalizer(),
+                silence_detector=self._build_silence_detector(),
+                output_dir=job.job_dir,
+            )
+        )
+
+        if cover_image:
+            add_cover(str(cover_image), str(output_path))
+
+        # The job directory is internal scratch space; deliver the finished book
+        # next to the file the user pointed at, which is also what makes the
+        # documented `docker run -v ...:/books` workflow produce output.
+        output_path = self._deliver_output(job, output_path)
 
         # Update job status
         self.job_manager.complete_job(job.job_id, str(output_path))
         logger.info("Created audiobook: %s", output_path)
 
         return output_path
+
+    def _build_normalizer(self):
+        """Build an AudioNormalizer from config, or None if disabled."""
+        if not self.config.normalize_audio:
+            return None
+        from ..audio_normalization import AudioNormalizer, NormalizationConfig
+
+        return AudioNormalizer(
+            NormalizationConfig(
+                target_dbfs=self.config.normalize_target,
+                method=self.config.normalize_method,
+                enabled=True,
+            )
+        )
+
+    def _build_silence_detector(self):
+        """Build a SilenceDetector from config, or None if disabled."""
+        if not self.config.trim_silence:
+            return None
+        from ..silence_detection import SilenceConfig, SilenceDetector
+
+        return SilenceDetector(
+            SilenceConfig(
+                silence_thresh=self.config.silence_threshold,
+                max_silence_len=self.config.max_silence_ms,
+                enabled=True,
+            )
+        )
+
+    def _deliver_output(self, job: Job, output_path: Path) -> Path:
+        """Move the finished M4B beside the source file.
+
+        Returns the final location, falling back to the job directory if the
+        destination is not writable (e.g. a read-only bind mount).
+        """
+        destination = Path(job.source_file).resolve().parent / output_path.name
+        if destination == output_path:
+            return output_path
+        try:
+            shutil.move(str(output_path), str(destination))
+            return destination
+        except OSError as exc:
+            logger.warning(
+                "Could not move audiobook to %s (%s); leaving it at %s",
+                destination,
+                exc,
+                output_path,
+            )
+            return output_path
 
     def run(
         self,

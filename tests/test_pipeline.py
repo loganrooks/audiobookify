@@ -571,3 +571,173 @@ class TestConversionPipelineIntegration:
 
         finally:
             disable_test_mode()
+
+
+class TestPackageAudiobookContract:
+    """Guard the call contract between the pipeline and make_m4b.
+
+    ``package_audiobook`` used to call ``make_m4b`` with ``chapternames=``,
+    ``cover=`` and ``output=`` -- none of which that function accepts -- so every
+    full conversion died with a TypeError at the packaging step. Nothing caught
+    it because no test ever exercised the call, so these tests do.
+    """
+
+    def test_make_m4b_called_with_bindable_arguments(self, temp_dir, monkeypatch):
+        """Whatever package_audiobook passes must bind to the real signature."""
+        import inspect
+
+        from epub2tts_edge import audio_generator
+        from epub2tts_edge.core import pipeline as pipeline_mod
+
+        real_signature = inspect.signature(audio_generator.make_m4b)
+        recorded = {}
+
+        def fake_make_m4b(*args, **kwargs):
+            # Raises TypeError if the call would not bind to the real function.
+            real_signature.bind(*args, **kwargs)
+            recorded["args"] = args
+            recorded["kwargs"] = kwargs
+            out = Path(kwargs["output_dir"]) / "book (en-US-AndrewNeural).m4b"
+            out.write_bytes(b"m4b")
+            return str(out)
+
+        monkeypatch.setattr(pipeline_mod, "make_m4b", fake_make_m4b)
+        monkeypatch.setattr(pipeline_mod, "generate_metadata", lambda *a, **k: "FFMETADATAFILE")
+
+        source = temp_dir / "book.epub"
+        source.write_bytes(b"stub")
+
+        job_manager = JobManager(str(temp_dir / "jobs"))
+        pipeline = ConversionPipeline(job_manager)
+        job = pipeline.create_job(source)
+
+        audio = Path(job.job_dir) / "chapter1.flac"
+        audio.parent.mkdir(parents=True, exist_ok=True)
+        audio.write_bytes(b"audio")
+
+        pipeline.package_audiobook(job, [audio])
+
+        assert recorded, "make_m4b was never called"
+
+    def test_chapter_titles_are_passed_to_generate_metadata(self, temp_dir, monkeypatch):
+        """Chapter markers come from generate_metadata, so it must receive titles."""
+        from epub2tts_edge.core import pipeline as pipeline_mod
+
+        recorded = {}
+
+        def fake_generate_metadata(files, author, title, chapter_titles, output_dir=None):
+            recorded["chapter_titles"] = chapter_titles
+            recorded["author"] = author
+            recorded["title"] = title
+            return "FFMETADATAFILE"
+
+        def fake_make_m4b(files, sourcefile, speaker, **kwargs):
+            out = Path(kwargs["output_dir"]) / "book (voice).m4b"
+            out.write_bytes(b"m4b")
+            return str(out)
+
+        monkeypatch.setattr(pipeline_mod, "generate_metadata", fake_generate_metadata)
+        monkeypatch.setattr(pipeline_mod, "make_m4b", fake_make_m4b)
+
+        source = temp_dir / "book.epub"
+        source.write_bytes(b"stub")
+
+        job_manager = JobManager(str(temp_dir / "jobs"))
+        pipeline = ConversionPipeline(job_manager)
+        job = pipeline.create_job(source, title="A Title", author="An Author")
+
+        text_file = Path(job.job_dir) / "book.txt"
+        text_file.write_text(
+            "Title: A Title\nAuthor: An Author\n\n# First\nSome words.\n\n# Second\nMore words.\n",
+            encoding="utf-8",
+        )
+
+        audio = Path(job.job_dir) / "chapter1.flac"
+        audio.write_bytes(b"audio")
+
+        pipeline.package_audiobook(job, [audio])
+
+        assert recorded["chapter_titles"] == ["First", "Second"]
+        assert recorded["author"] == "An Author"
+        assert recorded["title"] == "A Title"
+
+    def test_output_is_delivered_beside_the_source_file(self, temp_dir, monkeypatch):
+        """The job directory is scratch space; the book belongs next to the source."""
+        from epub2tts_edge.core import pipeline as pipeline_mod
+
+        def fake_make_m4b(files, sourcefile, speaker, **kwargs):
+            out = Path(kwargs["output_dir"]) / "book (voice).m4b"
+            out.write_bytes(b"m4b")
+            return str(out)
+
+        monkeypatch.setattr(pipeline_mod, "make_m4b", fake_make_m4b)
+        monkeypatch.setattr(pipeline_mod, "generate_metadata", lambda *a, **k: "FFMETADATAFILE")
+
+        source_dir = temp_dir / "books"
+        source_dir.mkdir()
+        source = source_dir / "book.epub"
+        source.write_bytes(b"stub")
+
+        job_manager = JobManager(str(temp_dir / "jobs"))
+        pipeline = ConversionPipeline(job_manager)
+        job = pipeline.create_job(source)
+
+        audio = Path(job.job_dir) / "chapter1.flac"
+        audio.parent.mkdir(parents=True, exist_ok=True)
+        audio.write_bytes(b"audio")
+
+        result = pipeline.package_audiobook(job, [audio])
+
+        assert result.parent == source_dir.resolve()
+        assert result.exists()
+
+
+@pytest.mark.requires_ffmpeg
+class TestPackageAudiobookEndToEnd:
+    """Run the whole pipeline and inspect the real M4B that comes out."""
+
+    def test_full_conversion_produces_m4b_with_chapter_markers(self, temp_dir, sample_epub):
+        """A full run must yield a playable M4B whose markers match the titles."""
+        import json
+        import subprocess
+
+        from epub2tts_edge.audio_generator import disable_test_mode, enable_test_mode
+
+        job_manager = JobManager(str(temp_dir / "jobs"))
+        pipeline = ConversionPipeline(job_manager)
+
+        try:
+            enable_test_mode()
+            result = pipeline.run(sample_epub)
+        finally:
+            disable_test_mode()
+
+        assert result.success, f"pipeline failed: {result.error}"
+        assert result.output_path is not None
+        output = Path(result.output_path)
+        assert output.exists(), f"no audiobook at {output}"
+        assert output.suffix == ".m4b"
+
+        probe = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-print_format",
+                "json",
+                "-show_chapters",
+                str(output),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        chapters = json.loads(probe.stdout)["chapters"]
+        assert chapters, "M4B contains no chapter markers"
+
+        titles = [c["tags"]["title"] for c in chapters]
+        assert any("Chapter" in t for t in titles), titles
+        # Markers must be ordered and non-degenerate.
+        starts = [float(c["start_time"]) for c in chapters]
+        assert starts == sorted(starts)
+        assert float(chapters[-1]["end_time"]) > 0

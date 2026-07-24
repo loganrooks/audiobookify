@@ -26,6 +26,7 @@ CAN_TEST=1
 CAN_FFMPEG=0
 CAN_DOCKER_BUILD=0
 CAN_TTS=0
+DOCKER_DAEMON_DOWN=0
 
 # ------------------------------------------------------------------ toolchain
 
@@ -83,8 +84,24 @@ head_ "Docker"
 
 if ! command -v docker >/dev/null 2>&1; then
   warn "docker CLI" "not installed -- cannot verify the image"
+else
+  # A stopped daemon is not the same as a missing capability. Try to start it
+  # before concluding anything, or the summary below blames the network for
+  # what is really just an unstarted service.
+  if ! docker info >/dev/null 2>&1 && command -v dockerd >/dev/null 2>&1; then
+    dockerd >/tmp/dockerd.log 2>&1 &
+    for _ in $(seq 1 15); do
+      docker info >/dev/null 2>&1 && break
+      sleep 1
+    done
+  fi
+fi
+
+if ! command -v docker >/dev/null 2>&1; then
+  :
 elif ! docker info >/dev/null 2>&1; then
   warn "docker daemon" "not running -- try: dockerd >/tmp/dockerd.log 2>&1 &"
+  DOCKER_DAEMON_DOWN=1
 else
   pass "docker daemon" "$(docker version --format '{{.Server.Version}}' 2>/dev/null)"
   # A running daemon is not enough: pulling the base image needs egress to
@@ -111,17 +128,67 @@ else
   warn "PyPI" "unreachable -- pip installs will fail"
 fi
 
-if [[ -x "$VENV/bin/python" ]] && "$VENV/bin/python" - <<'PY' >/dev/null 2>&1
-import asyncio, edge_tts
-voices = asyncio.run(asyncio.wait_for(edge_tts.list_voices(), timeout=25))
-raise SystemExit(0 if voices else 1)
+# Listing voices is a plain HTTPS GET; synthesis is a WebSocket upgrade that
+# Microsoft can reject on its own terms even when the host is perfectly
+# reachable. Only the second one tells you whether real conversions work, so
+# probe that, and report the two separately when they disagree.
+TTS_PROBE=""
+if [[ -x "$VENV/bin/python" ]]; then
+  TTS_PROBE="$("$VENV/bin/python" - <<'PY' 2>/dev/null
+import asyncio
+
+async def probe():
+    import edge_tts
+    try:
+        voices = await asyncio.wait_for(edge_tts.list_voices(), timeout=25)
+    except Exception as exc:
+        return f"list-failed:{type(exc).__name__}"
+    if not voices:
+        return "list-failed:empty"
+    try:
+        comm = edge_tts.Communicate("Test.", "en-US-AndrewNeural")
+        async for chunk in comm.stream():
+            if chunk["type"] == "audio" and chunk["data"]:
+                return "ok"
+        return "synth-failed:no-audio"
+    except Exception as exc:
+        name = type(exc).__name__
+        # A certificate error is a local trust problem (e.g. a TLS-terminating
+        # egress proxy whose CA is not in certifi), not the service saying no.
+        if "Certificate" in name or "SSL" in name or "CERTIFICATE_VERIFY" in str(exc):
+            return f"tls-failed:{name}"
+        status = getattr(exc, "status", None)
+        return f"synth-refused:{name}" + (f":{status}" if status else "")
+
+try:
+    print(asyncio.run(asyncio.wait_for(probe(), timeout=60)))
+except Exception as exc:
+    print(f"probe-failed:{type(exc).__name__}")
 PY
-then
-  pass "Edge TTS (speech.platform...)" "reachable -- real conversions work"
-  CAN_TTS=1
-else
-  fail "Edge TTS (speech.platform...)" "unreachable/blocked -- no real TTS verification here"
+)"
 fi
+
+case "$TTS_PROBE" in
+  ok)
+    pass "Edge TTS synthesis" "reachable -- real conversions work"
+    CAN_TTS=1
+    ;;
+  synth-refused:*)
+    fail "Edge TTS synthesis" "host reachable but synthesis refused (${TTS_PROBE#synth-refused:})"
+    warn "  -> " "not a network block: the service rejected this edge-tts client"
+    ;;
+  tls-failed:*)
+    fail "Edge TTS synthesis" "TLS verification failed (${TTS_PROBE#tls-failed:})"
+    warn "  -> " "local trust issue, not an egress block: edge-tts pins certifi's"
+    warn "  -> " "CA bundle, so a TLS-terminating proxy's CA is not trusted"
+    ;;
+  synth-failed:*)
+    fail "Edge TTS synthesis" "no audio returned (${TTS_PROBE#synth-failed:})"
+    ;;
+  *)
+    fail "Edge TTS (speech.platform...)" "unreachable/blocked -- no real TTS verification here"
+    ;;
+esac
 
 # ---------------------------------------------------------------- verdict
 
@@ -129,7 +196,7 @@ head_ "What you can verify here"
 
 if [[ $CAN_TEST -eq 1 ]]; then
   if [[ $CAN_FFMPEG -eq 1 ]]; then
-    pass "full test suite" "expect 553 passed, 5 skipped (TTS)"
+    pass "full test suite" "expect 560 passed, 5 skipped (TTS)"
   else
     warn "test suite (partial)" "expect ~544 passed, ~14 skipped (ffmpeg + TTS)"
   fi
@@ -141,10 +208,23 @@ fi
 
 [[ $CAN_FFMPEG -eq 1 ]]      && pass "audio pipeline (mock TTS)" "read_book, make_m4b, normalization" \
                              || fail "audio pipeline" "needs ffmpeg"
-[[ $CAN_DOCKER_BUILD -eq 1 ]] && pass "Docker image build + run" "docker build . && docker run --rm <img> --version" \
-                             || fail "Docker image build + run" "needs registry egress"
-[[ $CAN_TTS -eq 1 ]]          && pass "real end-to-end conversion" "EPUB -> M4B with live TTS" \
-                             || fail "real end-to-end conversion" "needs Edge TTS access"
+if [[ $CAN_DOCKER_BUILD -eq 1 ]]; then
+  pass "Docker image build + run" "docker build . && docker run --rm <img> --version"
+elif [[ $DOCKER_DAEMON_DOWN -eq 1 ]]; then
+  fail "Docker image build + run" "daemon not running -- start it, this is not a network limit"
+else
+  fail "Docker image build + run" "needs registry egress"
+fi
+
+if [[ $CAN_TTS -eq 1 ]]; then
+  pass "real end-to-end conversion" "EPUB -> M4B with live TTS"
+elif [[ "$TTS_PROBE" == synth-refused:* ]]; then
+  fail "real end-to-end conversion" "Edge TTS reachable but refusing synthesis"
+elif [[ "$TTS_PROBE" == tls-failed:* ]]; then
+  fail "real end-to-end conversion" "Edge TTS blocked by local TLS trust, not egress"
+else
+  fail "real end-to-end conversion" "needs Edge TTS access"
+fi
 
 if [[ $CAN_DOCKER_BUILD -eq 0 || $CAN_TTS -eq 0 ]]; then
   printf '\n\033[1;33mSome verification requires a more permissive environment.\033[0m\n'

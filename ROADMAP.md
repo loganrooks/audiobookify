@@ -8,8 +8,8 @@ The following design documents detail implementation plans for major features:
 
 | Document | Description | Status |
 |----------|-------------|--------|
-| [Architecture Refactor](./claudedocs/ARCHITECTURE_REFACTOR.md) | Module extraction, unified pipeline, EventBus | ✅ Complete (Phases 0-3) |
-| [Testing Strategy](./claudedocs/TESTING_STRATEGY.md) | TUI tests, fixtures, CI integration | ✅ Complete (558 tests) |
+| [Architecture Refactor](./docs/architecture.md) | Module extraction, unified pipeline, EventBus | ✅ Complete (Phases 0-3) |
+| [Testing Strategy](./docs/testing.md) | TUI tests, fixtures, CI integration | ✅ Complete (558 tests) |
 
 ---
 
@@ -86,7 +86,7 @@ The following design documents detail implementation plans for major features:
 - [x] **Path autocomplete** - Tab completion for directory input (Tab key in path field)
 - [x] **Settings panel redesign** - Tabbed settings (Voice, Audio, Chapters, Advanced tabs)
 
-#### TUI Architecture (v2.5.0) - See [Architecture Refactor](./claudedocs/ARCHITECTURE_REFACTOR.md)
+#### TUI Architecture (v2.5.0) - See [Architecture Refactor](./docs/architecture.md)
 
 **Phase 0: Core Backend Extraction** ✅
 - [x] Create unified `core/pipeline.py` with `ConversionPipeline`
@@ -114,7 +114,7 @@ The following design documents detail implementation plans for major features:
 - [ ] Parallel job processing (configurable concurrency)
 - [ ] Progress estimation based on word count
 
-#### Testing Infrastructure ✅ - See [Testing Strategy](./claudedocs/TESTING_STRATEGY.md)
+#### Testing Infrastructure ✅ - See [Testing Strategy](./docs/testing.md)
 - [x] Set up TUI integration tests with Textual's AppTest (55 tests)
 - [x] Create test fixtures (create_test_epub helper, 8 fixture types)
 - [x] Implement MockTTSEngine for fast testing (no network calls)
@@ -166,7 +166,7 @@ The following design documents detail implementation plans for major features:
 
 ### TUI Architecture Improvements (Completed in v2.5.0)
 
-The following architectural issues have been addressed (see [Architecture Refactor](./claudedocs/ARCHITECTURE_REFACTOR.md)):
+The following architectural issues have been addressed (see [Architecture Refactor](./docs/architecture.md)):
 
 1. ✅ **tui.py monolith** - Reduced from 4,277 → 1,995 lines (53% reduction)
 2. ✅ **EventBus integration** - Processing status logging via unified event system

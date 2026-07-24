@@ -21,31 +21,45 @@ python -m venv venv
 source venv/bin/activate  # Linux/Mac
 # or: venv\Scripts\activate  # Windows
 
-# Install dependencies
-pip install -r requirements.txt
+# Install the package plus dev/test tooling
+pip install -e ".[dev]"
 
-# Install in development mode
-pip install -e .
+# Install the pre-commit hooks (ruff, bandit, secret detection)
+pre-commit install
 
 # Run tests
-python -m pytest tests/ -v
+python -m pytest tests/
 ```
+
+### System dependencies
+
+| Tool | Required for | Install |
+|------|--------------|---------|
+| FFmpeg | All audio processing | `apt install ffmpeg` / `brew install ffmpeg` / `choco install ffmpeg` |
+| espeak-ng | Some pydub operations | `apt install espeak-ng` / `brew install espeak` |
+
+Tests that need FFmpeg skip automatically if it isn't on your PATH, so you can
+work on chapter detection, parsing, and TUI code without installing it.
 
 ## Project Structure
 
 ```
 audiobookify/
 ├── epub2tts_edge/          # Main package
-│   ├── __init__.py         # Package exports
-│   ├── epub2tts_edge.py    # CLI and audio generation
-│   ├── chapter_detector.py # Chapter detection logic
-│   ├── batch_processor.py  # Batch processing
-│   └── tui.py             # Terminal UI
-├── tests/                  # Test files
-├── CLAUDE.md              # Development context for AI
-├── ROADMAP.md             # Future plans
-├── CONTRIBUTING.md        # This file
-└── README.md              # User documentation
+│   ├── epub2tts_edge.py    # CLI entry point and argument parsing
+│   ├── audio_generator.py  # TTS calls, audio assembly, M4B creation
+│   ├── chapter_detector.py # TOC/heading chapter detection
+│   ├── batch_processor.py  # Multi-book batch processing
+│   ├── job_manager.py      # Job tracking and per-job directory isolation
+│   ├── core/               # Shared pipeline: ConversionPipeline, EventBus,
+│   │                       #   profiles, output naming
+│   ├── testing/            # MockTTSEngine backing --test-mode (shipped in the
+│   │                       #   wheel, so it works for installed users)
+│   └── tui/                # Terminal UI: app, panels/, models/, handlers/
+├── tests/                  # Test suite
+├── scripts/                # Repo maintenance checks
+├── docs/                   # Architecture and design docs (archive/ = historical)
+└── .github/workflows/      # ci.yml, release.yml, tts-canary.yml
 ```
 
 ## How to Contribute
@@ -123,8 +137,8 @@ def process_chapter(
 
 ### Running Tests
 ```bash
-# All tests (uses mock TTS automatically - no network calls)
-python -m pytest tests/ -v
+# All tests (mock TTS, no network calls)
+python -m pytest tests/
 
 # Specific file
 python -m pytest tests/test_chapter_detector.py -v
@@ -168,6 +182,33 @@ def test_audio_generation(self, sample_epub, temp_dir):
         disable_test_mode()
 ```
 
+## Release Process
+
+Releases are tag-driven and fully automated. Maintainers only need to do this:
+
+```bash
+# 1. Bump the version in pyproject.toml
+# 2. Move the [Unreleased] entries into a new "## [X.Y.Z] - YYYY-MM-DD" section
+# 3. Commit, then tag and push
+git commit -am "Release vX.Y.Z"
+git tag vX.Y.Z
+git push origin main --tags
+```
+
+`.github/workflows/release.yml` then:
+
+1. Verifies the tag matches `pyproject.toml` and that CHANGELOG has a matching section
+2. Builds the sdist + wheel and smoke-tests the wheel in a clean venv
+3. Publishes to PyPI via Trusted Publishing (no API token is stored)
+4. Pushes multi-arch images to `ghcr.io/loganrooks/audiobookify`
+5. Creates a GitHub Release with notes extracted from CHANGELOG
+
+**One-time setup required before the first automated release:**
+
+- Configure [PyPI Trusted Publishing](https://pypi.org/manage/project/audiobookify/settings/publishing/)
+  with owner `loganrooks`, repo `audiobookify`, workflow `release.yml`, environment `pypi`
+- Create a `pypi` environment in the repository settings (ideally with required reviewers)
+
 ## Areas for Contribution
 
 ### High Priority
@@ -188,7 +229,7 @@ def test_audio_generation(self, sample_epub, temp_dir):
 ## Questions?
 
 - Open an issue for questions
-- Check [CLAUDE.md](./CLAUDE.md) for technical context
+- Check [docs/architecture.md](./docs/architecture.md) for technical context
 - See [ROADMAP.md](./ROADMAP.md) for project direction
 
 ## License

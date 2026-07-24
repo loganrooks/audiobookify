@@ -1,14 +1,23 @@
-beautifulsoup4
-ebooklib
+# Runtime dependencies for audiobookify.
+#
+# pyproject.toml is the single source of truth for dependency versions. This
+# file is kept only because the Dockerfile installs it as a separate layer for
+# build caching, and it must stay in sync with [project.dependencies].
+#
+# For normal installs use:  pip install audiobookify
+#              or locally:  pip install -e .
+
+beautifulsoup4>=4.12.0
+ebooklib>=0.18
 edge-tts>=6.1.0,<7.1.0  # Pin below 7.1.0 due to SSL fingerprinting issues
-lxml
-mobi
-mutagen
-nltk
-pillow
-pydub
-setuptools
+lxml>=4.9.0
+mobi>=0.3.0
+mutagen>=1.46.0
+nltk>=3.8.0
+pillow>=10.0.0
+pydub>=0.25.0
+setuptools>=61.0
 textual>=0.40.0
-tqdm
-# audioop backport for Python 3.13+
+tqdm>=4.65.0
+# audioop was removed in Python 3.13, pydub needs this backport
 audioop-lts; python_version >= "3.13"

@@ -48,6 +48,20 @@ namespaces = {
 warnings.filterwarnings("ignore", module="ebooklib.epub")
 
 
+def _get_version() -> str:
+    """Return the installed audiobookify version.
+
+    Read from package metadata rather than importing the package's ``__init__``,
+    which imports this module and would be circular.
+    """
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("audiobookify")
+    except PackageNotFoundError:  # pragma: no cover - running from a source tree
+        return "0.0.0.dev0"
+
+
 def ensure_punkt() -> None:
     """Ensure NLTK punkt tokenizer is available."""
     try:
@@ -506,6 +520,12 @@ Hierarchy Styles:
   arrow      - Part 1 > Chapter 1 > Section 1
   breadcrumb - Part 1 / Chapter 1 / Section 1
         """,
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {_get_version()}",
+        help="Show the installed audiobookify version and exit",
     )
     parser.add_argument(
         "sourcefile",

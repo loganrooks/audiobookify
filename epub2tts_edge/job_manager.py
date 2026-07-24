@@ -235,7 +235,8 @@ class JobManager:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         # Add a short hash for uniqueness (include random for Windows low time resolution)
         hash_input = f"{source_file}{time.time()}{random.randint(0, 999999)}"
-        short_hash = hashlib.md5(hash_input.encode()).hexdigest()[:6]
+        # Not a security primitive: this only disambiguates job directory names.
+        short_hash = hashlib.md5(hash_input.encode(), usedforsecurity=False).hexdigest()[:6]
         return f"{name}_{timestamp}_{short_hash}"
 
     def _compute_source_hash(self, source_file: str) -> str:

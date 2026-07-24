@@ -25,6 +25,11 @@ epub2tts_edge/
 ├── multi_voice.py          # Multiple voice support (v2.2.0)
 ├── mobi_parser.py          # MOBI/AZW file parsing (v2.3.0)
 ├── job_manager.py          # Job tracking and persistence (v2.5.0)
+├── config.py               # Configuration handling
+├── errors.py               # Custom exception hierarchy
+├── logger.py               # Logging setup
+├── testing/                # MockTTSEngine backing --test-mode (shipped in wheel)
+│   └── mock_tts.py
 ├── core/                   # Core pipeline infrastructure (v2.5.0)
 │   ├── pipeline.py         # ConversionPipeline (unified CLI/TUI)
 │   ├── events.py           # EventBus pub-sub system
@@ -85,7 +90,7 @@ Features:
 - Resume interrupted batches
 - JSON report generation
 
-### 3. Terminal UI (`tui.py`)
+### 3. Terminal UI (`tui/`)
 Built with [Textual](https://textual.textualize.io/):
 - **FilePanel**: EPUB file browser and selection
 - **SettingsPanel**: Voice, detection, hierarchy options
@@ -201,8 +206,9 @@ At the start of each session:
 ## Git Workflow Rules
 
 **CRITICAL**: Always follow this sequence for commits:
-1. Run tests: `python -m pytest tests/ -v`
-2. Format code: `ruff format .`
+1. Run tests: `python -m pytest tests/`
+2. Format code: `ruff format epub2tts_edge tests setup.py`
+   (scoped to Python: ruff >=0.16 also reformats Markdown code blocks)
 3. Check lint: `ruff check .` (fix with `--fix` if needed)
 4. Commit AND push together: `git add -A && git commit -m "message" && git push`
 5. Verify push succeeded with `git status`
@@ -218,8 +224,12 @@ git add -A && git commit -m "descriptive message" && git push
 
 ### Running Tests
 ```bash
-# Run all tests (558 tests, uses mock TTS - no network)
-python -m pytest tests/ -v
+# Run all tests (mock TTS - no network)
+python -m pytest tests/
+
+# Note: tests/test_tts_connectivity.py makes REAL calls to Microsoft's TTS
+# service. CI sets SKIP_TTS_TESTS=1; the weekly tts-canary workflow runs them.
+SKIP_TTS_TESTS=1 python -m pytest tests/
 
 # Run with coverage
 python -m pytest tests/ --cov=epub2tts_edge --cov-report=html
@@ -281,8 +291,8 @@ Uses FFmpeg metadata format with chapter markers including start/end times in mi
 - [ROADMAP.md](./ROADMAP.md) - Future plans and features
 - [CONTRIBUTING.md](./CONTRIBUTING.md) - Contribution guidelines
 - [README.md](./README.md) - User documentation
-- [TESTING_STRATEGY.md](./claudedocs/TESTING_STRATEGY.md) - Testing infrastructure (558 tests)
-- [ARCHITECTURE_REFACTOR.md](./claudedocs/ARCHITECTURE_REFACTOR.md) - v2.5.0 architecture
+- [Testing Strategy](./docs/testing.md) - Testing infrastructure (558 tests)
+- [Architecture](./docs/architecture.md) - v2.5.0 architecture
 
 ## Common Tasks
 
@@ -293,8 +303,8 @@ Uses FFmpeg metadata format with chapter markers including start/end times in mi
 4. Update tests
 
 ### Adding a new TUI panel
-1. Create widget class in `tui.py`
-2. Add to `AudiobookifyApp.compose()`
+1. Create widget class in `tui/panels/`
+2. Add to `AudiobookifyApp.compose()` in `tui/app.py`
 3. Wire up event handlers
 4. Update CSS if needed
 

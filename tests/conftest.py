@@ -10,6 +10,10 @@ import pytest
 from tests.fixtures.epub_factory import FIXTURES, create_fixture_epub, create_test_epub
 from tests.mocks.tts_mock import MockTTSEngine
 
+# True when both ffmpeg and ffprobe are on PATH. pydub shells out to them for
+# any real audio work, so tests that touch AudioSegment need them present.
+HAS_FFMPEG = shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
+
 
 # Mark test categories
 def pytest_configure(config):
@@ -17,6 +21,23 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "slow: marks tests as slow")
     config.addinivalue_line("markers", "integration: marks tests as integration tests")
     config.addinivalue_line("markers", "unit: marks tests as unit tests")
+    config.addinivalue_line("markers", "requires_ffmpeg: test needs ffmpeg/ffprobe on PATH to run")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip ffmpeg-dependent tests when ffmpeg is not installed.
+
+    Without this, a contributor who has not installed ffmpeg gets a wall of
+    confusing FileNotFoundError failures rather than a clear skip reason.
+    """
+    if HAS_FFMPEG:
+        return
+    skip_ffmpeg = pytest.mark.skip(
+        reason="ffmpeg/ffprobe not found on PATH; install ffmpeg to run this test"
+    )
+    for item in items:
+        if "requires_ffmpeg" in item.keywords:
+            item.add_marker(skip_ffmpeg)
 
 
 @pytest.fixture

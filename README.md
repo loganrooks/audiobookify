@@ -1,8 +1,17 @@
 # Audiobookify
 
+[![CI](https://github.com/loganrooks/audiobookify/actions/workflows/ci.yml/badge.svg)](https://github.com/loganrooks/audiobookify/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/audiobookify.svg)](https://pypi.org/project/audiobookify/)
+[![Python](https://img.shields.io/pypi/pyversions/audiobookify.svg)](https://pypi.org/project/audiobookify/)
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](./LICENSE)
+
 > Convert EPUB and MOBI/AZW files to high-quality M4B audiobooks using Microsoft Edge's cloud-based text-to-speech.
 
 Forked from [epub2tts-edge](https://github.com/aedocw/epub2tts-edge) with enhanced chapter detection, batch processing, and a terminal UI.
+
+> **Requires an internet connection.** Edge TTS is a cloud service: the text of
+> every book you convert is sent to Microsoft's speech endpoint. There is no
+> offline mode yet — see [ROADMAP.md](./ROADMAP.md).
 
 ## Features
 
@@ -367,7 +376,7 @@ git clone https://github.com/loganrooks/audiobookify
 cd audiobookify
 python3 -m venv .venv
 source .venv/bin/activate
-pip install ".[tui]"
+pip install -e .
 ```
 </details>
 
@@ -386,7 +395,7 @@ git clone https://github.com/loganrooks/audiobookify
 cd audiobookify
 python3 -m venv .venv
 source .venv/bin/activate
-pip install ".[tui]"
+pip install -e .
 ```
 </details>
 
@@ -407,7 +416,7 @@ git clone https://github.com/loganrooks/audiobookify
 cd audiobookify
 py -m venv .venv
 .venv\Scripts\activate
-pip install ".[tui]"
+pip install -e .
 ```
 </details>
 
@@ -432,27 +441,34 @@ git clone https://github.com/loganrooks/audiobookify
 cd audiobookify
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[all]"  # Editable install with all dependencies
+pip install -e ".[dev]"  # Editable install with dev/test tooling
 ```
 
 ### Running Tests
 
 ```bash
-# Run all tests
-python -m pytest tests/ -v
+# Run all tests (no network calls; TTS is mocked)
+python -m pytest tests/
 
 # Run with coverage
 python -m pytest tests/ --cov=epub2tts_edge --cov-report=html
-
-# Run in test mode (uses mock TTS, no network calls)
-python -m pytest tests/ -v  # Tests use mock TTS automatically
 ```
+
+Tests requiring `ffmpeg` skip automatically if it isn't installed. The live
+Edge TTS connectivity tests in `tests/test_tts_connectivity.py` do make real
+network calls — set `SKIP_TTS_TESTS=1` to skip them (CI does this, and runs
+them separately on a schedule).
 
 ## Documentation
 
-- [CLAUDE.md](./CLAUDE.md) - Development context for AI assistants
-- [ROADMAP.md](./ROADMAP.md) - Future plans and features
-- [CONTRIBUTING.md](./CONTRIBUTING.md) - Contribution guidelines
+**For users**
+- [CHANGELOG.md](./CHANGELOG.md) - What changed in each release
+- [ROADMAP.md](./ROADMAP.md) - Planned features and known limitations
+- [SECURITY.md](./SECURITY.md) - Reporting vulnerabilities, privacy notes
+
+**For contributors**
+- [CONTRIBUTING.md](./CONTRIBUTING.md) - Development setup and contribution guidelines
+- [docs/](./docs/) - Architecture notes, testing strategy, and design records
 
 ## Credits
 

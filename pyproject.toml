@@ -65,6 +65,16 @@ dev = [
     "ruff>=0.8.0",
     "pre-commit>=3.6.0",
     "bandit[toml]>=1.7.0",
+    "build>=1.0.0",
+    "twine>=5.0.0",
+]
+# The TUI ships in the base install; this extra exists so the documented
+# `pip install ".[tui]"` resolves instead of warning about an unknown extra.
+tui = [
+    "textual>=0.40.0",
+]
+all = [
+    "audiobookify[dev,tui]",
 ]
 
 [project.scripts]

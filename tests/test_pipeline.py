@@ -6,6 +6,8 @@ These tests verify the unified conversion pipeline that both CLI and TUI use.
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from epub2tts_edge.content_filter import FilterConfig
 from epub2tts_edge.core.pipeline import ConversionPipeline, PipelineConfig, PipelineResult
 from epub2tts_edge.job_manager import Job, JobManager, JobStatus
@@ -388,6 +390,7 @@ More content.
         assert chapters == []
 
 
+@pytest.mark.requires_ffmpeg
 class TestConversionPipelineWithMockTTS:
     """Test ConversionPipeline with mock TTS for audio generation."""
 
@@ -539,6 +542,7 @@ class TestConversionPipelineIntegration:
         assert len(content) > 100  # Should have substantial content
         assert "# " in content  # Should have chapter markers
 
+    @pytest.mark.requires_ffmpeg
     def test_full_workflow_with_mock_tts(self, temp_dir, sample_epub):
         """Test full workflow including audio generation with mock TTS."""
         from epub2tts_edge.audio_generator import disable_test_mode, enable_test_mode

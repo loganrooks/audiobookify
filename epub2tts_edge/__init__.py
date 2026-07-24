@@ -1,3 +1,11 @@
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
+
+try:
+    __version__ = _pkg_version("audiobookify")
+except PackageNotFoundError:  # pragma: no cover - running from a source tree
+    __version__ = "0.0.0.dev0"
+
 # Audio generation
 from .audio_generator import (
     DEFAULT_CONCURRENT_TASKS,
@@ -149,6 +157,8 @@ from .voice_preview import (
 )
 
 __all__ = [
+    # Version
+    "__version__",
     # Main entry point
     "main",
     # TUI

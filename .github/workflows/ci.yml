@@ -2,18 +2,34 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+# Least-privilege default. Jobs that need more request it explicitly.
+permissions:
+  contents: read
+
+# Supersede in-flight runs for the same ref instead of paying for both.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The test suite must never call Microsoft's TTS service. Live connectivity
+  # is verified separately by .github/workflows/tts-canary.yml.
+  SKIP_TTS_TESTS: "1"
 
 jobs:
   test:
+    name: test (${{ matrix.os }}, py${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -32,34 +48,38 @@ jobs:
 
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
-        run: |
-          brew install ffmpeg
+        run: brew install ffmpeg
 
       - name: Install system dependencies (Windows)
         if: runner.os == 'Windows'
+        run: choco install ffmpeg -y
+
+      - name: Verify ffmpeg is on PATH
         run: |
-          choco install ffmpeg -y
+          ffmpeg -version
+          ffprobe -version
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
-          pip install -e .
+          pip install -e ".[dev]"
+
+      - name: Cache NLTK data
+        uses: actions/cache@v4
+        with:
+          path: ~/nltk_data
+          key: nltk-punkt-${{ runner.os }}-v1
 
       - name: Download NLTK data
-        run: |
-          python -c "import nltk; nltk.download('punkt', quiet=True); nltk.download('punkt_tab', quiet=True)"
+        run: python -c "import nltk; nltk.download('punkt', quiet=True); nltk.download('punkt_tab', quiet=True)"
 
       - name: Run tests
         if: matrix.os != 'ubuntu-latest' || matrix.python-version != '3.11'
-        run: |
-          pytest tests/ -v --tb=short
+        run: pytest tests/ --tb=short
 
       - name: Run tests with coverage
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
-        run: |
-          pytest tests/ -v --tb=short --cov=epub2tts_edge --cov-report=xml --cov-report=html --cov-report=term-missing
+        run: pytest tests/ --tb=short --cov=epub2tts_edge --cov-report=xml --cov-report=html --cov-report=term-missing
 
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
@@ -67,7 +87,7 @@ jobs:
         with:
           files: ./coverage.xml
           fail_ci_if_error: false
-          verbose: true
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage HTML report
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
@@ -78,6 +98,7 @@ jobs:
           retention-days: 30
 
   lint:
+    name: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -91,18 +112,33 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff mypy
+          pip install -e ".[dev]"
 
       - name: Run Ruff linter
-        run: |
-          ruff check . --output-format=github
+        run: ruff check . --output-format=github
 
+      # Scoped to Python sources: ruff >=0.16 also reformats fenced code blocks
+      # inside Markdown, which we do not want to gate CI on.
       - name: Run Ruff formatter check
-        run: |
-          ruff format --check .
+        run: ruff format --check epub2tts_edge tests setup.py
+
+      # Not yet blocking: there is a known backlog of type errors. Tracked in
+      # ROADMAP.md; flip to blocking once the baseline is clean.
+      - name: Run mypy
+        run: mypy epub2tts_edge
         continue-on-error: true
 
+      # -ll gates on medium+ severity. The remaining low-severity findings are
+      # subprocess-usage notices for the ffmpeg calls, which pass argument lists
+      # (never shell=True) and are reviewed as safe.
+      - name: Run bandit security scan
+        run: bandit -c pyproject.toml -r epub2tts_edge/ -ll
+
+      - name: Check requirements.txt matches pyproject.toml
+        run: python scripts/check_requirements_sync.py
+
   build:
+    name: build distribution
     runs-on: ubuntu-latest
     needs: [test, lint]
     steps:
@@ -119,12 +155,21 @@ jobs:
           pip install build twine
 
       - name: Build package
-        run: |
-          python -m build
+        run: python -m build
 
       - name: Check package
+        run: twine check --strict dist/*
+
+      # Guards the packaging bug where --test-mode imported from the
+      # non-distributed `tests` package and blew up for installed users.
+      - name: Smoke test the built wheel
         run: |
-          twine check dist/*
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install dist/*.whl
+          cd /tmp
+          /tmp/smoke/bin/audiobookify --version
+          /tmp/smoke/bin/audiobookify --help > /dev/null
+          /tmp/smoke/bin/python -c "from epub2tts_edge.audio_generator import enable_test_mode; enable_test_mode(); print('test mode OK from installed wheel')"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -133,9 +178,9 @@ jobs:
           path: dist/
 
   docker:
+    name: docker image
     runs-on: ubuntu-latest
     needs: [test]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
 
@@ -147,6 +192,16 @@ jobs:
         with:
           context: .
           push: false
-          tags: audiobookify:latest
+          load: true
+          tags: audiobookify:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Building alone never caught that the image had no `audiobookify`
+      # binary. Actually run it.
+      - name: Smoke test the image
+        run: |
+          docker run --rm audiobookify:ci --version
+          docker run --rm audiobookify:ci --help > /dev/null
+          docker run --rm --entrypoint ffmpeg audiobookify:ci -version > /dev/null
+          echo "image smoke test passed"

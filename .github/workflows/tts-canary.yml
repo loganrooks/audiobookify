@@ -1,0 +1,80 @@
+name: TTS Canary
+
+# Audiobookify depends on an undocumented Microsoft endpoint that can break
+# without notice (see the edge-tts >=7.1.0 SSL fingerprinting incident).
+#
+# These checks make real network calls, so they are deliberately kept OUT of
+# the PR path -- a Microsoft outage must never turn a contributor's PR red.
+# Instead they run on a schedule and open an issue when the integration breaks.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: live Edge TTS connectivity
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run live TTS connectivity tests
+        id: tts
+        run: pytest tests/test_tts_connectivity.py -v --tb=short
+
+      - name: Open an issue if the integration is broken
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = 'TTS canary failing: Edge TTS connectivity broken';
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'tts-canary',
+            });
+            const body = [
+              'The weekly Edge TTS connectivity canary failed.',
+              '',
+              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              '',
+              'This usually means one of:',
+              '- Microsoft changed the speech endpoint or its auth/DRM handshake',
+              '- the pinned `edge-tts` range no longer works against the live service',
+              '- a transient outage (re-run to confirm before digging in)',
+            ].join('\n');
+
+            if (existing.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing[0].number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['tts-canary', 'bug'],
+              });
+            }

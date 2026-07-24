@@ -7,29 +7,105 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- **Testing Infrastructure** - Comprehensive test suite improvements
-  - Mock TTS engine for fast, offline testing (no network calls)
-  - `--test-mode` CLI flag for development/CI testing
-  - Test mode APIs: `enable_test_mode()`, `disable_test_mode()`, `is_test_mode()`, `get_mock_engine()`
-  - E2E workflow tests covering EPUB → text → audio → M4B pipeline (14 tests)
-  - Core pipeline tests for ConversionPipeline, PipelineConfig, PipelineResult (29 tests)
-  - Error handling tests for file errors, invalid formats, TTS failures (15 tests)
-  - TUI lazy import verification tests
-  - Processing initiation workflow tests
-
 ### Fixed
-- Fixed type mismatch bug in `ConversionPipeline.export_text()` where it expected `ChapterNode` objects but received dicts from `detect_chapters()`
+- **Docker image was unusable.** `pyproject.toml` was never copied into the build
+  context, so `pip install -e .` fell back to the minimal `setup.py`, which
+  declares no `[project.scripts]`. The `audiobookify` console script was never
+  created and `ENTRYPOINT ["audiobookify"]` could not resolve. CI only ran
+  `docker build`, never `docker run`, so this was never caught.
+- **`--test-mode` crashed for installed users.** `audio_generator.enable_test_mode()`
+  imported `MockTTSEngine` from the `tests` package, which is not distributed in
+  the wheel, raising `ModuleNotFoundError: No module named 'tests'`. The mock now
+  ships as `epub2tts_edge.testing`.
+- **`IndexError` on chapters with no readable content.** `read_book()` indexed
+  `files[-1]` / `filenames[-1]` without checking for empty lists, so a chapter
+  with no paragraphs (or a whitespace-only paragraph) crashed the conversion.
+  Empty chapters now emit a silent placeholder segment, which also keeps segment
+  count aligned with `chapter_titles` in `generate_metadata()`.
+- Documented `pip install ".[tui]"` and `pip install -e ".[all]"` referenced
+  extras that did not exist. Both are now defined in `pyproject.toml`.
+
+### Added
+- `--version` flag and `epub2tts_edge.__version__`, both sourced from installed
+  package metadata.
+- Tag-driven release pipeline (`.github/workflows/release.yml`): publishes to
+  PyPI via Trusted Publishing, pushes multi-arch images to GHCR, and creates a
+  GitHub Release with notes extracted from this changelog. Verifies the tag
+  matches `pyproject.toml` and that a changelog entry exists before publishing.
+- Weekly TTS canary (`.github/workflows/tts-canary.yml`) that exercises the live
+  Edge TTS service and opens an issue when the integration breaks.
+- `requires_ffmpeg` pytest marker; those tests now skip with a clear reason
+  instead of failing with `FileNotFoundError` when ffmpeg is absent.
+- `scripts/check_requirements_sync.py`, enforced in CI, to stop `requirements.txt`
+  drifting from `[project.dependencies]`.
+- Dependabot config, issue/PR templates, and `SECURITY.md`.
+- Wheel and Docker smoke tests in CI that actually execute the built artifacts.
 
 ### Changed
-- Enhanced CI workflow with coverage reporting (Codecov integration)
-- Test count increased from ~500 to 558 tests
+- CI no longer calls Microsoft's TTS service. `SKIP_TTS_TESTS=1` is set for the
+  whole workflow, so a Microsoft outage can no longer turn a contributor's PR red.
+- CI runs `mypy` (non-blocking, pending backlog cleanup) and `bandit`, which were
+  previously installed or configured but never executed.
+- `ruff format --check` is now enforced instead of `continue-on-error`, scoped to
+  Python sources (ruff >=0.16 also reformats Markdown code blocks).
+- Added Python 3.13 to the test matrix, least-privilege `permissions`,
+  `concurrency` cancellation, and `workflow_dispatch` to CI.
+- Docker image now runs as a non-root user and uses OCI-standard labels with a
+  build-arg version instead of a hardcoded, stale `2.3.0`.
+- Internal design docs moved from `claudedocs/` to `docs/`; completed working
+  documents archived under `docs/archive/`.
+
+## [2.5.0] - 2025-12
+
+### Added
+- **Unified conversion pipeline** - `core/pipeline.py` with `ConversionPipeline`
+  shared by both CLI and TUI
+- **EventBus** - Decoupled pub-sub communication with 17 event types, plus
+  `TUIEventAdapter` for thread-safe UI updates
+- **Processing profiles** - 5 built-in presets (Quick Draft, High Quality,
+  Audiobook, Accessibility) selectable from the Settings panel
+- **Output naming templates** - Configurable `{author} - {title}.m4b` patterns
+  with 6 presets plus custom templates
+- **Job management** - `job_manager.py` for job tracking, persistence, and
+  per-job directory isolation
+- **Testing infrastructure** - 558 tests total
+  - Mock TTS engine for fast, offline testing (no network calls)
+  - `--test-mode` CLI flag for development/CI testing
+  - Test mode APIs: `enable_test_mode()`, `disable_test_mode()`, `is_test_mode()`,
+    `get_mock_engine()`
+  - E2E workflow tests covering EPUB → text → audio → M4B (14 tests)
+  - Core pipeline tests for `ConversionPipeline`, `PipelineConfig`,
+    `PipelineResult` (29 tests)
+  - Error handling tests for file errors, invalid formats, TTS failures (15 tests)
+  - Test fixtures in `tests/fixtures/` for creating test EPUBs
+
+### Fixed
+- Type mismatch in `ConversionPipeline.export_text()`, which expected
+  `ChapterNode` objects but received dicts from `detect_chapters()`
+- Incorrect relative imports in the TUI app module
+
+### Changed
+- CI workflow gained coverage reporting (Codecov integration)
 - Pipeline coverage improved from 22% to 60%
 
-### Developer Notes
-- New test fixtures in `tests/fixtures/` for creating test EPUBs
-- Mock TTS infrastructure in `tests/mocks/tts_mock.py`
-- Updated `TESTING_STRATEGY.md` documentation
+## [2.4.0] - 2025-12
+
+### Added
+- **TUI module extraction** - Split the `tui.py` monolith (4,277 → 1,995 lines,
+  53% reduction) into `tui/panels/`, `tui/models/`, and `tui/screens/`
+- **Range/batch selection** - Anchor-based range selection (Enter) and toggle
+  mode (V)
+- **Directory browser** - `DirectoryTree` modal for folder selection (📂, `b`)
+- **Path autocomplete** - Tab completion in the directory input field
+- **Settings panel redesign** - Tabbed settings (Voice, Audio, Chapters, Advanced)
+- **Job queue improvements** - Multi-select, reordering, and batch operations
+- **Preview chapter editing** - Merge/delete chapters with undo, inline title
+  editing (`E`)
+
+### Notes
+- Neither 2.4.0 nor 2.5.0 was published to PyPI or tagged at the time. These
+  entries were reconstructed from the git history and ROADMAP when the release
+  pipeline was introduced.
 
 ## [2.3.0] - 2025-11-27
 
@@ -145,3 +221,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic EPUB to M4B conversion
 - Microsoft Edge TTS integration
 - Chapter markers in output
+
+---
+
+[Unreleased]: https://github.com/loganrooks/audiobookify/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/loganrooks/audiobookify/compare/v2.4.0...v2.5.0
+[2.4.0]: https://github.com/loganrooks/audiobookify/compare/v2.3.0...v2.4.0
+[2.3.0]: https://github.com/loganrooks/audiobookify/compare/v2.2.0...v2.3.0
+[2.2.0]: https://github.com/loganrooks/audiobookify/compare/v2.1.0...v2.2.0
+[2.1.0]: https://github.com/loganrooks/audiobookify/compare/v2.0.0...v2.1.0
+[2.0.0]: https://github.com/loganrooks/audiobookify/releases/tag/v2.0.0

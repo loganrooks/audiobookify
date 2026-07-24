@@ -2,19 +2,22 @@
 #
 # Usage:
 #   # Build the image
-#   docker-compose build
+#   docker compose build
 #
 #   # Run with default help
-#   docker-compose run audiobookify
+#   docker compose run --rm audiobookify
 #
 #   # Convert a book
-#   docker-compose run audiobookify /books/mybook.epub
-#   docker-compose run audiobookify /books/mybook.txt
+#   docker compose run --rm audiobookify /books/mybook.epub
+#   docker compose run --rm audiobookify /books/mybook.txt
 #
 #   # Batch processing
-#   docker-compose run audiobookify /books --batch
+#   docker compose run --rm audiobookify /books --batch
+#
+#   # Interactive shell
+#   docker compose run --rm --entrypoint bash audiobookify
 
-version: '3.8'
+# Note: the top-level `version` key is obsolete in Compose v2 and is omitted.
 
 services:
   audiobookify:
@@ -24,5 +27,3 @@ services:
       # Mount your books directory here
       - ./books:/books
     working_dir: /books
-    # Override entrypoint for interactive shell:
-    # docker-compose run --entrypoint bash audiobookify

@@ -43,8 +43,9 @@ def enable_test_mode() -> None:
     """
     global _test_mode_enabled, _mock_tts_engine
     _test_mode_enabled = True
-    # Lazy import to avoid circular dependencies
-    from tests.mocks.tts_mock import MockTTSEngine
+    # Lazy import to keep the mock out of the normal import path.
+    # Lives inside the package (not tests/) so this works from an installed wheel.
+    from .testing.mock_tts import MockTTSEngine
 
     _mock_tts_engine = MockTTSEngine(speed_factor=1000)
     logger.info("Test mode enabled - using MockTTSEngine")
@@ -550,6 +551,12 @@ def read_book(
                         sentences = sent_tokenize(processed_paragraph)
                         speakers = [speaker] * len(sentences)
 
+                    if not sentences:
+                        # Whitespace-only paragraph tokenizes to nothing. Skip it
+                        # rather than indexing into an empty filename list.
+                        logger.debug("Paragraph %d of chapter %d is empty, skipping", pindex + 1, i)
+                        continue
+
                     filenames = [str(out_path / f"sntnc{z + 1}.mp3") for z in range(len(sentences))]
                     asyncio.run(
                         parallel_edgespeak(
@@ -577,13 +584,31 @@ def read_book(
                         os.remove(file)
                 files.append(ptemp)
 
-            append_silence(files[-1], 2000)
-            combined = AudioSegment.empty()
-            for file in files:
-                combined += AudioSegment.from_file(file)
-            combined.export(partname, format="flac")
-            for file in files:
-                os.remove(file)
+            if not files:
+                # Chapter yielded no audio (no paragraphs, or all empty). Emit a
+                # placeholder segment so segment count stays aligned with
+                # chapter_titles -- generate_metadata() pairs them by index.
+                logger.warning(
+                    "Chapter %d ('%s') has no readable content, writing a silent segment",
+                    i,
+                    chapter["title"],
+                )
+                title_audio_path = str(out_path / "sntnc0.mp3")
+                if os.path.exists(title_audio_path):
+                    combined = AudioSegment.from_file(title_audio_path)
+                    os.remove(title_audio_path)
+                else:
+                    combined = AudioSegment.empty()
+                combined += AudioSegment.silent(2000)
+                combined.export(partname, format="flac")
+            else:
+                append_silence(files[-1], 2000)
+                combined = AudioSegment.empty()
+                for file in files:
+                    combined += AudioSegment.from_file(file)
+                combined.export(partname, format="flac")
+                for file in files:
+                    os.remove(file)
             segments.append(partname)
 
         # Report chapter completion

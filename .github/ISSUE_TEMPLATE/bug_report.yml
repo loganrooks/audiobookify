@@ -1,0 +1,77 @@
+name: Bug report
+description: Something isn't working as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. The environment section
+        matters more than usual here: most issues come down to ffmpeg,
+        `edge-tts` version drift, or Microsoft's TTS service itself.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you get instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact command you ran, plus the relevant output.
+      placeholder: |
+        1. audiobookify mybook.epub --detect toc
+        2. audiobookify mybook.txt
+        3. ...
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: audiobookify version
+      description: Output of `audiobookify --version`
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Linux, macOS, Windows, Docker]
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      description: Output of `python --version`
+    validations:
+      required: true
+
+  - type: textarea
+    id: deps
+    attributes:
+      label: Dependency versions
+      description: "Output of `ffmpeg -version | head -1` and `pip show edge-tts | head -2`"
+      render: shell
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Any traceback or error output. Re-run with `--debug` if you can.
+      render: shell
+
+  - type: textarea
+    id: book
+    attributes:
+      label: Source file
+      description: >
+        If the issue is specific to one book, describe it (format, publisher,
+        rough structure). Please don't attach copyrighted files.

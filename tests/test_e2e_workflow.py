@@ -127,6 +127,7 @@ class TestExportOnlyWorkflow:
                 assert success, f"Export failed with detection method: {method}"
 
 
+@pytest.mark.requires_ffmpeg
 class TestMockTTSGeneration:
     """Test audio generation with mock TTS (no network, instant results)."""
 
@@ -275,6 +276,7 @@ class TestMockTTSGeneration:
             disable_test_mode()
 
 
+@pytest.mark.requires_ffmpeg
 class TestProgressTracking:
     """Test progress callback functionality."""
 

@@ -77,7 +77,9 @@ def generate_short_id() -> str:
     """Generate 6-character unique identifier."""
     # Use time + random to ensure uniqueness even on Windows (low time resolution)
     hash_input = f"{time.time()}{random.randint(0, 999999)}"
-    return hashlib.md5(hash_input.encode()).hexdigest()[:6]
+    # Not a security primitive: this only produces a short collision-resistant
+    # suffix for directory names.
+    return hashlib.md5(hash_input.encode(), usedforsecurity=False).hexdigest()[:6]
 
 
 def generate_job_slug(

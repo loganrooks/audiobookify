@@ -1,9 +1,11 @@
 """Mock implementations for testing audiobookify.
 
-This module provides mock versions of external dependencies like TTS engines
-to enable fast, offline, reproducible testing.
+``MockTTSEngine`` now lives inside the distributed package
+(:mod:`epub2tts_edge.testing`) so that ``--test-mode`` keeps working from an
+installed wheel, where the ``tests`` package is not shipped. This module
+re-exports it so existing imports keep working.
 """
 
-from .tts_mock import MockTTSEngine
+from epub2tts_edge.testing import MockTTSEngine, TTSCall
 
-__all__ = ["MockTTSEngine"]
+__all__ = ["MockTTSEngine", "TTSCall"]

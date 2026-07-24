@@ -191,18 +191,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Ordered after the publishing jobs so the Release appears once distribution
-  # has been attempted -- but deliberately NOT dependent on them succeeding.
-  # With `needs: [publish-pypi, publish-docker]` and no `always()`, any PyPI
-  # problem also destroyed the GitHub Release and left the tag with no artifacts
-  # attached, even though the build was fine and the image had already pushed.
-  # PyPI is also gated on a manual environment review, so a release that was
-  # simply awaiting approval would have blocked here indefinitely.
-  # The gate that actually matters is `build`: no dist, no Release.
+  # Deliberately does NOT depend on publish-pypi.
+  #
+  # `always()` is not sufficient on its own: `needs` waits for a dependency to
+  # reach a TERMINAL state, and always() only decides whether this job then
+  # runs. So listing publish-pypi tolerates it FAILING but still blocks on it
+  # PENDING -- and publish-pypi sits behind a required environment review, which
+  # can stay pending indefinitely. Observed on the v2.6.0 release: the image had
+  # already published to GHCR while this job had not even been created, because
+  # the PyPI approval was outstanding.
+  #
+  # publish-docker is safe to depend on because nothing gates it. The gate that
+  # actually matters is `build`: no dist, no Release.
   github-release:
     name: create GitHub Release
     runs-on: ubuntu-latest
-    needs: [build, publish-pypi, publish-docker]
+    needs: [build, publish-docker]
     if: |
       always()
       && github.event_name == 'push'

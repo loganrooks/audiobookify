@@ -111,7 +111,11 @@ fi
 if ! command -v docker >/dev/null 2>&1; then
   :
 elif ! docker info >/dev/null 2>&1; then
-  warn "docker daemon" "not running -- try: dockerd >/tmp/dockerd.log 2>&1 &"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    warn "docker daemon" "not running -- start Docker Desktop: open -a Docker"
+  else
+    warn "docker daemon" "not running -- try: dockerd >/tmp/dockerd.log 2>&1 &"
+  fi
   DOCKER_DAEMON_DOWN=1
 else
   pass "docker daemon" "$(docker version --format '{{.Server.Version}}' 2>/dev/null)"

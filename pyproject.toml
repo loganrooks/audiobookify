@@ -42,7 +42,12 @@ classifiers = [
 dependencies = [
     "beautifulsoup4>=4.12.0",
     "ebooklib>=0.18",
-    "edge-tts>=6.1.0,<7.1.0",  # Pin below 7.1.0 due to SSL fingerprinting issues
+    # >=7.2.4 is a HARD floor, not a preference: Microsoft's synthesis endpoint
+    # rejects the WebSocket upgrade with 403 for every earlier release,
+    # including the 7.0.x range this was previously pinned to. Verified
+    # 2026-07-24 against the live service: 7.0.2/7.1.0/7.2.1 -> 403,
+    # 7.2.4/7.2.8 -> real audio. Do not lower this bound.
+    "edge-tts>=7.2.4,<8",
     "lxml>=4.9.0",
     "mobi>=0.3.0",
     "mutagen>=1.46.0",

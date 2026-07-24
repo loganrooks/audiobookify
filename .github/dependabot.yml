@@ -15,11 +15,19 @@ updates:
           - "mypy"
           - "bandit*"
           - "pre-commit"
-    ignore:
-      # edge-tts is deliberately pinned <7.1.0: newer releases break against
-      # Microsoft's service with SSL fingerprinting / 401 errors. Only bump
-      # this after the TTS canary passes against the new version.
-      - dependency-name: "edge-tts"
+    # NOTE: edge-tts is deliberately NOT ignored here.
+    #
+    # It used to be, with the note "only bump after the TTS canary passes
+    # against the new version". That combination was self-sealing: the canary
+    # only ever exercised the *pinned* version, so the condition for lifting
+    # the pin could never be evaluated, and suppressing the PRs meant nobody
+    # saw the release that fixed the problem. The pin was written 2025-12-07;
+    # edge-tts 7.2.4 fixed the breakage on 2025-12-11 and went unnoticed for
+    # seven months, during which the stale pin was itself the outage.
+    #
+    # The canary now tests the pinned version AND the latest release
+    # separately (see tts-canary.yml), which is what makes an upgrade PR
+    # safe to evaluate. Leave edge-tts visible to Dependabot.
 
   # GitHub Actions
   - package-ecosystem: "github-actions"

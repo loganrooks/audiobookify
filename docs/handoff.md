@@ -113,7 +113,47 @@ home directory in the image and the job scratch dir lives under `$HOME`. Both
 README Docker sections now document this, and the pipeline degrades to a warning
 instead of failing when the destination is not writable.
 
-### Edge TTS: reachable, but synthesis is refused ❌
+### Edge TTS: RESOLVED ✅ — the pin was the outage
+
+**Superseded by the findings below.** Read this section for how the diagnosis
+went wrong before trusting any of its intermediate conclusions.
+
+The 403 reproduced on a maintainer's Mac (residential IP, Python 3.13), ruling
+out both the sandbox and IP reputation. Testing versions directly then settled
+it:
+
+| edge-tts | Result |
+|---|---|
+| 7.0.2 (was pinned) | 403 |
+| 7.1.0 | 403 |
+| 7.2.1 | 403 |
+| **7.2.4** | ✅ real audio |
+| **7.2.8** | ✅ real audio |
+
+`edge-tts>=6.1.0,<7.1.0` excluded every release that works. The pin was written
+2025-12-07; 7.2.4 fixed the breakage on 2025-12-11. **It was correct for four
+days**, then became the sole cause of the failure it was written to prevent —
+and looked vindicated every time it failed, because the failure matched the
+comment. Floor is now `>=7.2.4,<8`.
+
+**A real end-to-end conversion now works.** A clean `pip install .` resolves
+7.2.8 and produces a 23.7s M4B: three chapter markers aligned to titles, correct
+title/artist, and −25.6 dB mean volume (digital silence reads ≈ −91 dB, so this
+is genuine speech, not the mock).
+
+Why it took so long to find, and what changed:
+
+- Dependabot **ignored** `edge-tts`, with the note "only bump after the TTS
+  canary passes against the new version" — but the canary only ever tested the
+  *pinned* version, so that condition was unevaluatable. The ignore rule
+  suppressed the very release that fixed the problem. Both are now fixed: the
+  canary tests pinned **and** latest, and edge-tts is visible to Dependabot.
+- The constraint propagated from a code comment → `dependabot.yml` → review docs
+  → session instructions, losing its "as of December 2025" qualifier at each hop
+  and gaining authority. `external-constraints.toml` now exists so claims about
+  the outside world carry an expiry that fails the build.
+
+### Original (incorrect) diagnosis, kept as a record ❌
 
 The earlier diagnosis (gateway policy denial, `connect_rejected`) **does not hold
 here**. In this environment:
@@ -133,12 +173,11 @@ So the host is reachable. Two separate things still stop real audio:
    edge-tts 7.0.2 sends. Working around it means spoofing a browser version
    string, which was deliberately not attempted.
 
-**This is worth a maintainer decision.** The pin is `edge-tts>=6.1.0,<7.1.0`, and
-7.0.2 currently cannot synthesize. If that reproduces on a normal network, the
-project's only TTS backend is broken for all users and the pin needs revisiting —
-which conflicts with the reason it was pinned. `scripts/doctor.sh` now
-distinguishes these three cases (reachable / TLS-failed / refused) instead of
-reporting one undifferentiated "unreachable".
+**Resolved — the pin needed revisiting, and it did reproduce on a normal
+network.** See the section above. `scripts/doctor.sh` now distinguishes the
+three cases (reachable / TLS-failed / refused) instead of reporting one
+undifferentiated "unreachable"; the "refused" case is what pointed at the client
+rather than the network.
 
 ### A defect that blocked both checks 🔴 found and fixed
 
@@ -208,17 +247,20 @@ is the documented remedy (now in both README Docker sections). The non-root
 default is worth keeping — the fallback warning makes the failure legible rather
 than silent.
 
-### 2. Real end-to-end conversion with live TTS 🔴 STILL OUTSTANDING
+### 2. Real end-to-end conversion with live TTS ✅ DONE (2026-07-24)
 
-Still true that nothing has produced a real audiobook — everything ran on
-`MockTTSEngine`, which emits silence. The *packaging* half of this is now proven
-(a real M4B with correct chapter markers and metadata comes out of a real EPUB),
-so what remains is specifically **real audio content**.
+Done — a clean install now produces a real audiobook with real speech. See the
+"Edge TTS: RESOLVED" section above for the measurements.
 
-Before assuming the environment is at fault, check whether synthesis is refused
-rather than blocked — run `./scripts/doctor.sh` and read which of the three TTS
-outcomes it reports. If it says "refused", the 403 described above is reproducing
-and it is an edge-tts/Microsoft compatibility problem, not your network.
+What is still **not** verified is playback in real players (Apple Books,
+Audiobookshelf, Smart AudioBook Player): that chapter markers land correctly in
+a player UI and that cover art displays. That needs a human with a player and is
+the remaining item, along with §3 below.
+
+If synthesis ever fails again, run `./scripts/doctor.sh` and read which of the
+three TTS outcomes it reports — and check the canary's *pinned vs latest* legs
+before concluding Microsoft is at fault. That assumption is what cost seven
+months last time.
 
 ```bash
 unset SKIP_TTS_TESTS

@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Live TTS was impossible: the `edge-tts` pin excluded every working release.**
+  `edge-tts>=6.1.0,<7.1.0` was written 2025-12-07 against a real breakage, but
+  upstream fixed it in 7.2.4 on **2025-12-11 — four days later**. The pin then
+  spent seven months as the sole cause of the outage it was meant to prevent,
+  while reading as vindicated each time it failed. Measured 2026-07-24 against
+  the live service: 7.0.2, 7.1.0 and 7.2.1 all get HTTP 403 on the synthesis
+  WebSocket; 7.2.4 and 7.2.8 return audio. The floor is now `>=7.2.4,<8`.
+- **Error messages told users to downgrade into the broken range.** Both the
+  TTS failure handler and `TTSGenerationError` advised
+  `pip install 'edge-tts>=6.1.0,<7.1.0'`, which would break a working install.
+  They now advise upgrading to `>=7.2.4`. `_is_auth_or_ssl_error()` also
+  recognises 403, which is the status Microsoft actually returns.
 - **Full conversion could never produce an audiobook.**
   `ConversionPipeline.package_audiobook()` called `make_m4b()` with
   `chapternames=`, `cover=` and `output=`, none of which that function accepts,
@@ -44,6 +56,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   extras that did not exist. Both are now defined in `pyproject.toml`.
 
 ### Added
+- `external-constraints.toml` and `tests/test_external_constraints.py`: a registry
+  of decisions that depend on facts outside this repository, each recording the
+  claim, how to disprove it, the evidence, and an expiry date. The build fails
+  once a constraint passes its `recheck_after` without re-verification. The
+  edge-tts pin is the worked example of why — a constraint whose justification
+  has expired keeps enforcing itself with its original authority.
 - Regression tests covering the pipeline→`make_m4b` call contract, chapter-title
   propagation, output delivery location, and an ffmpeg-backed end-to-end test
   that ffprobes the resulting M4B for ordered chapter markers.
@@ -63,6 +81,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wheel and Docker smoke tests in CI that actually execute the built artifacts.
 
 ### Changed
+- **The TTS canary now tests two versions, not one** — the pinned release *and*
+  the latest release, reported separately. Testing only the pinned version made
+  it structurally unable to answer "is our pin the problem?", which is how the
+  stale pin survived. The four pinned/latest outcomes each carry a distinct
+  meaning, documented in the issue the canary files.
+- **`edge-tts` is no longer hidden from Dependabot.** It was ignored with the
+  note "only bump after the TTS canary passes against the new version" — but the
+  canary only tested the pinned version, so that condition could never be met.
+  The ignore rule suppressed the very release that fixed the breakage.
 - README documents that the Docker image runs as uid 1000 and needs
   `--user "$(id -u):$(id -g)" -e HOME=/tmp` to write into a bind-mounted
   directory, which keeps its host ownership regardless of the build-time `chown`.

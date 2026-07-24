@@ -1,0 +1,49 @@
+# Decisions that depend on facts outside this repository.
+#
+# Every entry here exists because of something we observed in the world -- a
+# service's behaviour, an upstream bug, a platform limitation. Those facts
+# expire, and a constraint whose justification has expired is not neutral: it
+# keeps acting, with its original authority, long after the reason is gone.
+#
+# The edge-tts pin is the worked example. It was written 2025-12-07 against a
+# real breakage. edge-tts 7.2.4 fixed that breakage on 2025-12-11 -- four days
+# later. The pin then spent seven months as the sole cause of the outage it had
+# been written to prevent, and read as vindicated every time it failed.
+#
+# So: record the claim, record how to disprove it, and give it an expiry.
+# `tests/test_external_constraints.py` fails the build once `recheck_after`
+# passes. That is deliberate. A constraint you cannot be bothered to re-verify
+# is a constraint you should not be relying on.
+#
+# To renew: re-run `verify`, and if the claim still holds, move `verified_on`
+# and `recheck_after` forward in the same commit as the evidence.
+
+[[constraint]]
+id = "edge-tts-minimum-version"
+claim = """
+Microsoft's speech synthesis endpoint rejects the WebSocket upgrade with HTTP
+403 for every edge-tts release before 7.2.4. Listing voices still succeeds on
+those versions, so the voice list is NOT a valid check for this."""
+applies_to = "pyproject.toml [project.dependencies] edge-tts, requirements.txt"
+verify = "./scripts/doctor.sh   # 'Edge TTS synthesis' line, plus the two-leg TTS canary"
+evidence = """
+Measured 2026-07-24 against the live service: 7.0.2 -> 403, 7.1.0 -> 403,
+7.2.1 -> 403, 7.2.4 -> audio, 7.2.8 -> audio. A clean `pip install .` resolved
+7.2.8 and produced a 23.7s M4B at -25.6 dB mean volume (silence reads ~-91 dB)."""
+verified_on = 2026-07-24
+recheck_after = 2027-01-24
+owner = "maintainer"
+
+[[constraint]]
+id = "edge-tts-upper-bound"
+claim = """
+The <8 cap is a precaution against an unreviewed major bump, NOT a known
+breakage. Nothing has been observed to break above 7.2.8. If the canary's
+'latest' leg is green when 8.x ships, raise the cap rather than assuming the
+old pin's reasoning still applies."""
+applies_to = "pyproject.toml [project.dependencies] edge-tts, requirements.txt"
+verify = "TTS canary 'latest' leg (.github/workflows/tts-canary.yml)"
+evidence = "No 8.x release exists as of 2026-07-24; latest is 7.2.8."
+verified_on = 2026-07-24
+recheck_after = 2027-01-24
+owner = "maintainer"

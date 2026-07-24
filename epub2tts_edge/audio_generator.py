@@ -72,7 +72,7 @@ def get_mock_engine():
 # Default configuration
 DEFAULT_RETRY_COUNT = 3
 DEFAULT_RETRY_DELAY = 2  # seconds (base delay for exponential backoff)
-DEFAULT_CONCURRENT_TASKS = 5  # Parallel TTS tasks (safe with edge-tts <7.1.0)
+DEFAULT_CONCURRENT_TASKS = 5  # Parallel TTS tasks
 AUTH_ERROR_COOLDOWN = 30  # seconds to wait before final retry on auth/SSL errors
 
 
@@ -192,15 +192,16 @@ class TTSGenerationError(Exception):
 
 
 def _is_auth_or_ssl_error(error: Exception) -> bool:
-    """Check if an error is an authentication/SSL error (401, 429, etc.).
+    """Check if an error is an authentication/SSL error (401, 403, 429, etc.).
 
-    Note: 401 errors from edge-tts are typically caused by SSL fingerprinting
-    issues in edge-tts versions >= 7.1.0, not actual rate limiting.
+    Note: 401/403 from Microsoft are usually client-acceptance failures, not
+    rate limiting. Microsoft validates the caller on the synthesis endpoint and
+    rejects edge-tts releases older than 7.2.4 outright.
     """
     error_str = str(error).lower()
     return any(
         code in error_str
-        for code in ["401", "429", "rate limit", "too many requests", "ssl", "handshake"]
+        for code in ["401", "403", "429", "rate limit", "too many requests", "ssl", "handshake"]
     )
 
 
@@ -218,8 +219,8 @@ def run_edgespeak(
     Uses exponential backoff for retries, with special handling for auth/SSL
     errors (401, 429) which get an additional cooldown retry.
 
-    Note: 401 errors are typically caused by SSL fingerprinting issues in
-    edge-tts >= 7.1.0. Ensure edge-tts version is < 7.1.0.
+    Note: 401/403 from Microsoft usually mean the edge-tts release is too old
+    for its synthesis endpoint. Requires edge-tts >= 7.2.4.
 
     In test mode (--test-mode flag), uses MockTTSEngine for fast, offline testing.
 
@@ -315,7 +316,8 @@ def run_edgespeak(
             "This is typically caused by edge-tts version incompatibility.\n\n"
             "Suggestions:\n"
             "  1. Check edge-tts version: pip show edge-tts\n"
-            "  2. If version >= 7.1.0, downgrade: pip install 'edge-tts>=6.1.0,<7.1.0'\n"
+            "  2. If version < 7.2.4, UPGRADE: pip install -U 'edge-tts>=7.2.4'\n"
+            "     (Microsoft 403s the synthesis endpoint for every earlier release)\n"
             '  3. Verify connectivity: python -c "import edge_tts; print(edge_tts.__version__)"\n'
             "  4. Run TTS test: pytest tests/test_tts_connectivity.py -v"
         )
@@ -336,7 +338,7 @@ async def parallel_edgespeak(
     """Generate speech for multiple sentences in parallel.
 
     Uses a shared thread pool and semaphore to limit concurrent TTS requests.
-    Requires edge-tts version < 7.1.0 to avoid SSL fingerprinting issues.
+    Requires edge-tts >= 7.2.4; Microsoft 403s earlier releases.
 
     Args:
         sentences: List of texts to speak

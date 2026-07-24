@@ -1,11 +1,20 @@
 name: TTS Canary
 
 # Audiobookify depends on an undocumented Microsoft endpoint that can break
-# without notice (see the edge-tts >=7.1.0 SSL fingerprinting incident).
+# without notice, and on an unofficial client (edge-tts) that Microsoft can
+# stop accepting at any time.
 #
 # These checks make real network calls, so they are deliberately kept OUT of
 # the PR path -- a Microsoft outage must never turn a contributor's PR red.
 # Instead they run on a schedule and open an issue when the integration breaks.
+#
+# IMPORTANT: this workflow tests TWO versions, not one.
+#
+# The previous version tested only the pinned release, which made it unable to
+# answer the question that actually matters -- "is our pin the problem?" -- and
+# that cost seven months: the pin written 2025-12-07 was fixed upstream by
+# edge-tts 7.2.4 on 2025-12-11, and nothing here could see it. A stale pin
+# looks exactly like a broken service if the stale pin is all you ever test.
 
 on:
   schedule:
@@ -17,11 +26,16 @@ permissions:
 
 jobs:
   canary:
-    name: live Edge TTS connectivity
+    name: live Edge TTS (${{ matrix.label }})
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
+    strategy:
+      fail-fast: false  # both legs must report; the DIFFERENCE is the signal
+      matrix:
+        include:
+          - label: pinned
+            extra: ""
+          - label: latest
+            extra: "pip install --upgrade edge-tts"
     steps:
       - uses: actions/checkout@v4
 
@@ -30,37 +44,55 @@ jobs:
           python-version: "3.11"
           cache: 'pip'
 
-      - name: Install
+      - name: Install (${{ matrix.label }})
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+          ${{ matrix.extra }}
+          python -c "import importlib.metadata as m; print('edge-tts', m.version('edge-tts'))"
 
       - name: Run live TTS connectivity tests
-        id: tts
         run: pytest tests/test_tts_connectivity.py -v --tb=short
 
-      - name: Open an issue if the integration is broken
-        if: failure()
+  report:
+    name: interpret the result
+    runs-on: ubuntu-latest
+    needs: [canary]
+    if: always() && needs.canary.result != 'success'
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update the canary issue
         uses: actions/github-script@v7
         with:
           script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const title = 'TTS canary failing: Edge TTS connectivity broken';
+            const body = [
+              'The Edge TTS canary failed.',
+              '',
+              '**Check which leg failed -- that is the whole diagnostic.**',
+              '',
+              '| pinned | latest | meaning |',
+              '|---|---|---|',
+              '| pass | pass | Working. The pin is not buying anything; consider widening it. |',
+              '| pass | fail | The pin is earning its keep. Keep it and record why. |',
+              '| fail | pass | **Our pin is the bug.** Raise the floor to the working release. |',
+              '| fail | fail | Microsoft changed something. Wait for upstream edge-tts, then re-run. |',
+              '',
+              `Run: ${runUrl}`,
+              '',
+              'Do not assume a failure means Microsoft broke it. That assumption is exactly',
+              'what kept a stale pin in place for seven months while the fix sat on PyPI.',
+            ].join('\n');
+
             const { data: existing } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: 'open',
               labels: 'tts-canary',
             });
-            const body = [
-              'The weekly Edge TTS connectivity canary failed.',
-              '',
-              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              '',
-              'This usually means one of:',
-              '- Microsoft changed the speech endpoint or its auth/DRM handshake',
-              '- the pinned `edge-tts` range no longer works against the live service',
-              '- a transient outage (re-run to confirm before digging in)',
-            ].join('\n');
 
             if (existing.length > 0) {
               await github.rest.issues.createComment({

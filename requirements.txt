@@ -9,7 +9,9 @@
 
 beautifulsoup4>=4.12.0
 ebooklib>=0.18
-edge-tts>=6.1.0,<7.1.0  # Pin below 7.1.0 due to SSL fingerprinting issues
+# Hard floor: Microsoft 403s the synthesis WebSocket for every release before
+# 7.2.4. Verified 2026-07-24 against the live service. Do not lower.
+edge-tts>=7.2.4,<8
 lxml>=4.9.0
 mobi>=0.3.0
 mutagen>=1.46.0

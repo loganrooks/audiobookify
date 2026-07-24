@@ -136,22 +136,35 @@ class TestEdgeTTSVersion:
     """Test edge-tts version compatibility."""
 
     def test_edge_tts_version_check(self):
-        """Verify edge-tts version is in compatible range."""
-        import edge_tts
+        """The installed edge-tts must satisfy our own declared requirement.
 
-        version = edge_tts.__version__
-        parts = version.split(".")
-        major = int(parts[0])
-        minor = int(parts[1]) if len(parts) > 1 else 0
+        This deliberately reads the requirement from package metadata instead of
+        restating it. The previous version hardcoded `minor < 1` with a message
+        telling users to downgrade -- and when the real constraint inverted
+        (Microsoft now 403s everything below 7.2.4), this test went on enforcing
+        the broken rule and telling people to break their working install.
 
-        # Version should be >= 6.1.0 and < 7.1.0 (to avoid SSL fingerprinting issues)
-        assert major >= 6, f"edge-tts version {version} is too old (need >= 6.1.0)"
+        A test that restates a constraint is a second copy that can rot
+        independently. Derive it, so there is only one.
+        """
+        import importlib.metadata as metadata
 
-        if major == 7:
-            assert minor < 1, (
-                f"edge-tts version {version} has SSL fingerprinting issues. "
-                "Downgrade to 7.0.x: pip install 'edge-tts>=6.1.0,<7.1.0'"
-            )
+        from packaging.requirements import Requirement
+
+        installed = metadata.version("edge-tts")
+
+        declared = [
+            Requirement(r)
+            for r in (metadata.requires("audiobookify") or [])
+            if Requirement(r).name == "edge-tts"
+        ]
+        assert declared, "audiobookify does not declare an edge-tts dependency"
+
+        requirement = declared[0]
+        assert requirement.specifier.contains(installed, prereleases=True), (
+            f"installed edge-tts {installed} does not satisfy {requirement}. "
+            f"Fix the environment: pip install -U 'edge-tts{requirement.specifier}'"
+        )
 
 
 def run_quick_tts_test():

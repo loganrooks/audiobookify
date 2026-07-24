@@ -211,9 +211,18 @@ git push origin main --tags
 
 ## Areas for Contribution
 
+See the [uplift plan](./docs/uplift-plan.md) for the sequenced engineering
+priorities, and the [project review](./docs/project-review-2026-07.md) for the
+findings behind them.
+
 ### High Priority
+- [ ] **Test coverage on the critical path.** 558 tests, but 45% overall coverage
+      and the biggest modules are the least covered: CLI 14%, `tui/app.py` 9%,
+      `audio_generator.py` 22%. Tests here are the most valuable contribution
+      available right now.
+- [ ] **Clearing the mypy baseline** (53 errors across 15 files) so the type check
+      can become blocking
 - [ ] Bug fixes
-- [x] Test coverage improvements (558 tests, good coverage)
 - [ ] Documentation
 
 ### Medium Priority

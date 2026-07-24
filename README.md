@@ -468,6 +468,8 @@ them separately on a schedule).
 
 **For contributors**
 - [CONTRIBUTING.md](./CONTRIBUTING.md) - Development setup and contribution guidelines
+- [Project Review](./docs/project-review-2026-07.md) - Current state of the codebase and infrastructure
+- [Uplift Plan](./docs/uplift-plan.md) - Sequenced engineering priorities
 - [docs/](./docs/) - Architecture notes, testing strategy, and design records
 
 ## Credits

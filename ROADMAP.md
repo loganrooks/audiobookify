@@ -1,13 +1,20 @@
 # Audiobookify Roadmap
 
-## Current Version: 2.5.0
+## Current Version: 2.5.0 (unreleased — latest published version is 2.3.0)
 
-### Design Documents
+> **Engineering priorities take precedence over the feature list below.**
+> The [2026-07 project review](./docs/project-review-2026-07.md) found that
+> feature velocity had outrun delivery: the Docker image could not start,
+> `--test-mode` crashed for installed users, and two minor releases of work were
+> never published. The [uplift plan](./docs/uplift-plan.md) sequences the work to
+> fix that. Feature work below resumes once M2 lands.
 
-The following design documents detail implementation plans for major features:
+### Key Documents
 
 | Document | Description | Status |
 |----------|-------------|--------|
+| [Project Review](./docs/project-review-2026-07.md) | Code, infrastructure, and strategic review | 📋 2026-07 |
+| [Uplift Plan](./docs/uplift-plan.md) | Sequenced execution plan (M0–M4) | 🚧 M0 complete |
 | [Architecture Refactor](./docs/architecture.md) | Module extraction, unified pipeline, EventBus | ✅ Complete (Phases 0-3) |
 | [Testing Strategy](./docs/testing.md) | TUI tests, fixtures, CI integration | ✅ Complete (558 tests) |
 
@@ -196,12 +203,12 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to contribute.
 
 ## Version History
 
-| Version | Date | Highlights |
-|---------|------|------------|
-| 2.5.0 | 2025-12 | Architecture refactor: EventBus, processing profiles, output naming templates |
-| 2.4.0 | 2025-12 | TUI module extraction (53% code reduction), range selection, directory browser |
-| 2.3.0 | 2025-11 | MOBI/AZW format support, Docker image, Calibre plugin |
-| 2.2.0 | 2025-11 | Audio normalization, silence trimming, custom pronunciation, multi-voice |
-| 2.1.0 | 2025-11 | Voice preview, rate/volume control, chapter selection, pause/resume |
-| 2.0.0 | 2025-11 | Enhanced chapter detection, batch processing, TUI |
-| 1.2.7 | 2024 | Original epub2tts-edge features (forked) |
+| Version | Date | Published? | Highlights |
+|---------|------|------------|------------|
+| 2.5.0 | 2025-12 | ❌ never tagged or published | Architecture refactor: EventBus, processing profiles, output naming templates |
+| 2.4.0 | 2025-12 | ❌ never tagged or published | TUI module extraction (53% code reduction), range selection, directory browser |
+| 2.3.0 | 2025-11 | ✅ PyPI | MOBI/AZW format support, Docker image, Calibre plugin |
+| 2.2.0 | 2025-11 | — | Audio normalization, silence trimming, custom pronunciation, multi-voice |
+| 2.1.0 | 2025-11 | — | Voice preview, rate/volume control, chapter selection, pause/resume |
+| 2.0.0 | 2025-11 | — | Enhanced chapter detection, batch processing, TUI |
+| 1.2.7 | 2024 | — | Original epub2tts-edge features (forked) |

@@ -211,8 +211,11 @@ git push origin main --tags
 
 **One-time setup required before the first automated release:**
 
-- Configure [PyPI Trusted Publishing](https://pypi.org/manage/project/audiobookify/settings/publishing/)
-  with owner `loganrooks`, repo `audiobookify`, workflow `release.yml`, environment `pypi`
+- Configure [PyPI Trusted Publishing](https://pypi.org/manage/account/publishing/) as a
+  *pending* publisher (the project does not exist on PyPI until the first release), with
+  PyPI project `audiobookifier`, owner `loganrooks`, repo `audiobookify`, workflow
+  `release.yml`, environment `pypi`. Note the PyPI project name and the GitHub repo name
+  differ — see the header comment in `.github/workflows/release.yml` for why.
 - Create a `pypi` environment in the repository settings (ideally with required reviewers)
 
 ## Areas for Contribution

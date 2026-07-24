@@ -7,7 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **The PyPI distribution is now `audiobookifier`** (was `audiobookify`). The
+  `audiobookify` name on PyPI belongs to an account that is no longer accessible
+  and is frozen at 2.3.0; it is not this project and will not receive updates.
+  **Nothing users type changes** — `pip install audiobookifier` still provides the
+  `audiobookify`, `abfy`, `audiobookify-tui` and `abfy-tui` commands, and the
+  import package remains `epub2tts_edge`. The GitHub repository, the Docker image
+  (`ghcr.io/loganrooks/audiobookify`) and the CLI are all unchanged.
+
 ### Fixed
+- **`--version` reported `0.0.0.dev0` after the rename.** Both version lookups
+  named the distribution literally, so they resolved against the unrelated
+  `audiobookify` project instead of this one, and fell back when it was absent.
+  The `all` extra self-referenced the same stale name, so
+  `pip install audiobookifier[all]` would have installed the foreign 2.3.0
+  package as a dependency — an install that succeeds while being silently wrong.
+  `tests/test_packaging.py` now pins all three, each verified to fail when
+  reverted. Note that a stale `audiobookify.egg-info/` in a working tree masks
+  this locally: it satisfies the old name, so delete it after pulling.
 - **Live TTS was impossible: the `edge-tts` pin excluded every working release.**
   `edge-tts>=6.1.0,<7.1.0` was written 2025-12-07 against a real breakage, but
   upstream fixed it in 7.2.4 on **2025-12-11 — four days later**. The pin then

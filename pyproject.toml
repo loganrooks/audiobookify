@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "audiobookify"
+name = "audiobookifier"
 version = "2.5.0"
 description = "Convert EPUB and MOBI/AZW files to M4B audiobooks using Microsoft Edge TTS"
 readme = "README.md"
@@ -79,7 +79,7 @@ tui = [
     "textual>=0.40.0",
 ]
 all = [
-    "audiobookify[dev,tui]",
+    "audiobookifier[dev,tui]",
 ]
 
 [project.scripts]

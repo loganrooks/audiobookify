@@ -1,8 +1,8 @@
 # Audiobookify
 
 [![CI](https://github.com/loganrooks/audiobookify/actions/workflows/ci.yml/badge.svg)](https://github.com/loganrooks/audiobookify/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/audiobookify.svg)](https://pypi.org/project/audiobookify/)
-[![Python](https://img.shields.io/pypi/pyversions/audiobookify.svg)](https://pypi.org/project/audiobookify/)
+[![PyPI](https://img.shields.io/pypi/v/audiobookifier.svg)](https://pypi.org/project/audiobookifier/)
+[![Python](https://img.shields.io/pypi/pyversions/audiobookifier.svg)](https://pypi.org/project/audiobookifier/)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](./LICENSE)
 
 > Convert EPUB and MOBI/AZW files to high-quality M4B audiobooks using Microsoft Edge's cloud-based text-to-speech.
@@ -47,8 +47,8 @@ Forked from [epub2tts-edge](https://github.com/aedocw/epub2tts-edge) with enhanc
 
 ```bash
 # Install (use pipx for isolated environment)
-pipx install audiobookify
-# Or: pip install audiobookify
+pipx install audiobookifier
+# Or: pip install audiobookifier
 
 # Convert a single EPUB
 audiobookify mybook.epub              # Export to text
@@ -366,10 +366,10 @@ List available voices: `audiobookify --list-voices` or `edge-tts --list-voices`
 
 ```bash
 # Recommended: use pipx for isolated CLI installation
-pipx install audiobookify
+pipx install audiobookifier
 
 # Or with pip in a virtual environment
-pip install audiobookify
+pip install audiobookifier
 ```
 
 ### Platform-Specific Setup
@@ -382,7 +382,7 @@ pip install audiobookify
 sudo apt install espeak-ng ffmpeg python3-venv pipx
 
 # Option 1: pipx (recommended for CLI tools)
-pipx install audiobookify
+pipx install audiobookifier
 
 # Option 2: Virtual environment
 git clone https://github.com/loganrooks/audiobookify
@@ -401,7 +401,7 @@ pip install -e .
 brew install espeak ffmpeg pipx
 
 # Option 1: pipx (recommended for CLI tools)
-pipx install audiobookify
+pipx install audiobookifier
 
 # Option 2: Virtual environment
 git clone https://github.com/loganrooks/audiobookify
@@ -422,7 +422,7 @@ pip install -e .
 ```powershell
 # Option 1: pipx (recommended)
 pip install pipx
-pipx install audiobookify
+pipx install audiobookifier
 
 # Option 2: Virtual environment
 git clone https://github.com/loganrooks/audiobookify

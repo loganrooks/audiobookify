@@ -4,7 +4,7 @@
 # file is kept only because the Dockerfile installs it as a separate layer for
 # build caching, and it must stay in sync with [project.dependencies].
 #
-# For normal installs use:  pip install audiobookify
+# For normal installs use:  pip install audiobookifier
 #              or locally:  pip install -e .
 
 beautifulsoup4>=4.12.0

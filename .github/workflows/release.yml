@@ -5,8 +5,19 @@ name: Release
 #   2. git tag vX.Y.Z && git push origin vX.Y.Z
 #
 # PyPI publishing uses Trusted Publishing (OIDC) -- no API token is stored.
-# One-time setup: https://pypi.org/manage/project/audiobookify/settings/publishing/
-#   Owner: loganrooks / Repository: audiobookify
+#
+# The PyPI project is `audiobookifier`; the GitHub repo is still `audiobookify`.
+# They differ on purpose -- the `audiobookify` name on PyPI belongs to an account
+# we no longer control, and holds an unreachable 2.3.0. Console scripts are
+# unaffected: `pip install audiobookifier` still gives you `audiobookify`.
+#
+# Until the first release lands, the publisher is PENDING and is configured at
+#   https://pypi.org/manage/account/publishing/
+# Afterwards it moves to
+#   https://pypi.org/manage/project/audiobookifier/settings/publishing/
+#
+#   PyPI project: audiobookifier
+#   Owner: loganrooks / Repository: audiobookify   <- GitHub repo, not the dist name
 #   Workflow: release.yml / Environment: pypi
 
 on:
@@ -104,7 +115,7 @@ jobs:
     if: github.event_name == 'push'
     environment:
       name: pypi
-      url: https://pypi.org/p/audiobookify
+      url: https://pypi.org/p/audiobookifier
     permissions:
       id-token: write  # required for Trusted Publishing
     steps:

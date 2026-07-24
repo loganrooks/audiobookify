@@ -1,8 +1,10 @@
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 
+# The distribution is "audiobookifier"; the console script is "audiobookify".
+# "audiobookify" is a different project on PyPI and must never be looked up here.
 try:
-    __version__ = _pkg_version("audiobookify")
+    __version__ = _pkg_version("audiobookifier")
 except PackageNotFoundError:  # pragma: no cover - running from a source tree
     __version__ = "0.0.0.dev0"
 

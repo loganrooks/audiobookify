@@ -312,13 +312,16 @@ baseline there is no way to tell whether the M3 rework helped.
 
 Blocked on a one-time setup step, not on code:
 
-1. Configure [PyPI Trusted Publishing](https://pypi.org/manage/project/audiobookify/settings/publishing/)
-   — owner `loganrooks`, repo `audiobookify`, workflow `release.yml`, environment `pypi`
+1. Configure [PyPI Trusted Publishing](https://pypi.org/manage/account/publishing/) as a
+   *pending* publisher — PyPI project `audiobookifier`, owner `loganrooks`, repo
+   `audiobookify`, workflow `release.yml`, environment `pypi`. **Done as of 2026-07-24.**
+   The PyPI project name deliberately differs from the GitHub repo name; the
+   `audiobookify` name on PyPI belongs to an account that is no longer accessible.
 2. Create the `pypi` environment in repository settings
 3. Add a `## [2.6.0] - YYYY-MM-DD` section to `CHANGELOG.md` and set the version in
    `pyproject.toml` to match — **`release.yml` refuses to publish if these disagree**
 4. `git tag v2.6.0 && git push origin main --tags`
-5. Verify independently: `pipx install audiobookify` and
+5. Verify independently: `pipx install audiobookifier` and
    `docker pull ghcr.io/loganrooks/audiobookify:v2.6.0` from a clean machine. Do not
    trust the pipeline's own smoke tests for the first run.
 

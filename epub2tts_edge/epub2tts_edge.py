@@ -56,8 +56,10 @@ def _get_version() -> str:
     """
     from importlib.metadata import PackageNotFoundError, version
 
+    # The distribution is "audiobookifier"; the console script is "audiobookify".
+    # "audiobookify" is a different project on PyPI and must never be looked up here.
     try:
-        return version("audiobookify")
+        return version("audiobookifier")
     except PackageNotFoundError:  # pragma: no cover - running from a source tree
         return "0.0.0.dev0"
 

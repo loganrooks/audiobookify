@@ -82,7 +82,7 @@ See [`handoff.md`](./handoff.md) for the full list. The two that matter:
 
 ## M1 — Ship a release ~2 weeks
 
-**Goal: a user can `pip install audiobookify` and get the 2.5.0 work.** This is the
+**Goal: a user can `pip install audiobookifier` and get the 2.5.0 work.** This is the
 highest-value milestone in the plan and the cheapest. Everything since 2.3.0 is
 already written; it just needs to reach people.
 
@@ -108,7 +108,7 @@ already written; it just needs to reach people.
 - [ ] Pin `release.yml`'s actions by commit SHA — it is the workflow with
       publish permissions and deserves the strongest supply-chain posture
 
-**Exit criteria:** `pipx install audiobookify` yields the current feature set;
+**Exit criteria:** `pipx install audiobookifier` yields the current feature set;
 `docker run ghcr.io/loganrooks/audiobookify --version` works; README describes what
 users actually get.
 

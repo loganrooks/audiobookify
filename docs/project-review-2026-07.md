@@ -720,3 +720,7 @@ Largest modules            tui/app.py 2055 · chapter_detector.py 1384 · epub2t
 See [`uplift-plan.md`](./uplift-plan.md) for the sequenced execution plan covering
 the product, the development infrastructure, the contribution pipeline, and
 deployment.
+
+See [`dependency-reduction-plan.md`](./dependency-reduction-plan.md) for the
+per-dependency analysis of what can be brought in-house — ~56% of the third-party
+code is removable, but vendoring is the wrong mechanism for almost all of it.

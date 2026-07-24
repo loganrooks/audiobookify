@@ -1,6 +1,7 @@
 # Audiobookify Uplift Plan
 
-**Companion to:** [`project-review-2026-07.md`](./project-review-2026-07.md)
+**Companion to:** [`project-review-2026-07.md`](./project-review-2026-07.md) ·
+[`dependency-reduction-plan.md`](./dependency-reduction-plan.md)
 **Horizon:** ~6 months, five milestones
 **Status:** M0 complete (this branch); M1–M4 proposed
 
@@ -119,6 +120,14 @@ Every item after this milestone depends on being able to change
       and dispatch are highly testable and currently almost entirely untested.
 - [ ] Add coverage floors to CI (`--cov-fail-under`), ratcheting upward — set the
       initial floor at the current number so it can only improve
+- [ ] Drop the vestigial `setuptools` runtime dependency (nothing imports it)
+- [ ] Replace `nltk` (154k LOC for one function) with an internal sentence splitter,
+      behind a golden corpus — also removes the runtime `punkt` download from the
+      Dockerfile, CI, and first-run UX. See
+      [dependency-reduction-plan.md](./dependency-reduction-plan.md)
+- [ ] Replace `EbookLib` with an internal EPUB reader — removes AGPL-3.0 code from a
+      GPL-3.0 project; ~60% of the parsing already exists in `TOCParser` and
+      `get_epub_cover()`
 - [ ] Clear the **53 mypy errors**, then flip the mypy step to blocking
 - [ ] Create `epub2tts_edge/py.typed` — *only after* the baseline is green, since
       `pyproject.toml` already declares it and shipping it early would export
@@ -161,6 +170,13 @@ endpoint.** This is the most important architectural work in the plan — see
       unavailable, rather than a raw exception
 - [ ] Replace `_is_auth_or_ssl_error()`'s substring matching on stringified
       exceptions with typed exceptions from the engine layer
+
+### 🔧 Dependency reduction *(detail in [dependency-reduction-plan.md](./dependency-reduction-plan.md))*
+- [ ] Replace `pydub` + `mutagen` with direct ffmpeg calls — do this **with** the
+      performance items below, since they touch the same code. Removes ~23k LOC and
+      the `audioop-lts` backport that exists only because pydub imports the
+      `audioop` module removed in Python 3.13.
+- [ ] Move `mobi` to an optional `[kindle]` extra (its import is already guarded)
 
 ### 🏗️ Performance *(unblocked by the engine abstraction)*
 - [ ] **Hoist the event loop and thread pool out of the per-paragraph loop.**

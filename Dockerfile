@@ -20,7 +20,7 @@
 #   # Interactive shell
 #   docker run --rm -it -v "$(pwd)/books:/books" --entrypoint bash audiobookify
 
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # Version is injected at build time from pyproject.toml (see release workflow)
 # rather than hardcoded, so it cannot drift out of date.

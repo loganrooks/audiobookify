@@ -91,7 +91,7 @@ jobs:
 
       - name: Upload coverage HTML report
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: htmlcov/
@@ -172,7 +172,7 @@ jobs:
           /tmp/smoke/bin/python -c "from epub2tts_edge.audio_generator import enable_test_mode; enable_test_mode(); print('test mode OK from installed wheel')"
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/

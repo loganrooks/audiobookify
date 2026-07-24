@@ -439,9 +439,8 @@ docker run --rm -v ~/Books:/files audiobookify "/files/mybook.txt"
 ```bash
 git clone https://github.com/loganrooks/audiobookify
 cd audiobookify
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"  # Editable install with dev/test tooling
+./scripts/setup-dev.sh   # system deps, venv, dev extras, NLTK data, pre-commit
+./scripts/doctor.sh      # report what your environment can verify
 ```
 
 ### Running Tests

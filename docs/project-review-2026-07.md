@@ -47,8 +47,8 @@ with no abstraction layer and no second implementation. That is discussed in
 | Dimension | Rating | Note |
 |-----------|--------|------|
 | Module structure & separation | 🟢 Good | Clean boundaries, dataclass configs, sensible `core/` extraction |
-| Test suite breadth | 🟡 Mixed | 558 tests, but 45% coverage concentrated away from the critical path |
-| Critical-path test coverage | 🔴 Poor | CLI 14%, TUI app 9%, audio generation 22% |
+| Test suite breadth | 🟡 Mixed | 561 tests, but 48% coverage concentrated away from the critical path |
+| Critical-path test coverage | 🔴 Poor | CLI 14%, TUI app 9% (audio generation is fine at 69%) |
 | Type safety | 🔴 Poor | 53 mypy errors; `py.typed` declared but missing |
 | CI correctness | 🟡 Improving | Was building without verifying; called a live 3rd-party API on every PR |
 | Release & deployment | 🔴 Was absent | No tags, releases, or automation; now implemented |
@@ -68,9 +68,11 @@ claim rests on static reading, it says so.
 - Wheel built and installed into clean virtualenvs; CLI and API exercised from
   outside the source tree
 - The Dockerfile's `COPY` set replicated exactly into a scratch directory and
-  installed, to isolate the entrypoint failure (the Docker daemon was unavailable
-  in the review environment, so the image itself was not built — the failure was
-  reproduced at the packaging layer, which is where it originates)
+  installed, to isolate the entrypoint failure. The image itself could **not** be
+  built: the Docker daemon runs, but egress to Docker Hub is blocked, so the base
+  image cannot be pulled. The failure was reproduced at the packaging layer, which
+  is where it originates — but see [`handoff.md`](./handoff.md) for the
+  end-to-end image check that still needs a permissive environment.
 - `ruff`, `mypy`, and `bandit` run across the package
 - Coverage measured per module
 - PyPI release history and GitHub tags/releases/workflow history queried directly
@@ -327,28 +329,34 @@ green.
 
 ### 2.7 Test coverage is inverted relative to risk 🟠
 
-558 tests sounds strong. Coverage tells a different story: **44.93% overall**, and
+561 tests sounds strong. Coverage tells a different story: **47.88% overall**, and
 the distribution is the problem.
 
 | Module | Statements | Coverage |
 |--------|-----------:|---------:|
 | `tui/app.py` | 1003 | **9.20%** |
 | `epub2tts_edge.py` (CLI) | 553 | **13.88%** |
-| `audio_generator.py` | 303 | **21.77%** |
 | `tui/panels/file_panel.py` | 215 | 25.08% |
 | `tui/panels/preview_panel.py` | 463 | 28.82% |
 | `chapter_detector.py` | 671 | 49.95% |
 | `core/pipeline.py` | 205 | 55.02% |
+| `audio_generator.py` | 303 | 68.61% |
 | `config.py` | 104 | 95.31% |
 | `core/profiles.py` | 28 | 100.00% |
 
-*(Measured without ffmpeg present, which suppresses `audio_generator.py` somewhat;
-with ffmpeg it is higher, but the CLI and TUI figures are unaffected.)*
+*Measured with ffmpeg installed. An earlier pass without ffmpeg reported
+`audio_generator.py` at 21.77%, because the tests that exercise it skip when
+ffmpeg is absent — the real figure is 68.61%. This is worth knowing as a
+methodology trap: **coverage measured in an under-provisioned environment
+understates the well-tested modules and makes the distribution look worse than
+it is.** Use `./scripts/doctor.sh` to confirm the environment before trusting a
+coverage number.*
 
-The three largest and most user-facing modules are the three least tested. Tests
-have accumulated where they are easy to write — pure functions with dataclass
-configs — and thinned out exactly where behaviour is complex and regressions are
-expensive.
+The two largest and most user-facing modules — the CLI and the TUI app — are the
+two least tested, and together they account for 1,359 of the 3,016 uncovered
+statements. Tests have accumulated where they are easy to write and thinned out
+where behaviour is complex and regressions are expensive. `audio_generator.py` is
+the counter-example and is in reasonable shape.
 
 `CONTRIBUTING.md` describes this as "558 tests, good coverage" and marks test
 coverage as a *completed* high-priority item. That should be corrected; it
@@ -363,7 +371,33 @@ the combination that makes changes risky. `chapter_detector.py` bundles NCX
 parsing, NAV parsing, heading extraction, merge strategy, and five hierarchy
 renderers in one file; those are separable along clean seams.
 
-### 2.9 Smaller items
+### 2.10 XML entity expansion on untrusted input 🟡
+
+`SECURITY.md` correctly states that ebook files are untrusted input, and EPUBs are
+parsed with `lxml.etree.fromstring()` using the default parser at
+`chapter_detector.py:364`, `epub2tts_edge.py:126`, and `epub2tts_edge.py:131`.
+bandit flags these as `B320`.
+
+Tested against lxml's actual defaults, the risk is **narrower than the warning
+suggests**:
+
+- **XXE / external entity file disclosure is blocked.** `<!ENTITY x SYSTEM
+  "file:///etc/hostname">` fails with `XMLSyntaxError: Entity 'x' not defined`.
+  This is the serious variant, and it is not present.
+- **Internal entity expansion is enabled.** A small nested-entity document expands
+  as expected, so amplification is possible in principle, bounded by lxml's own
+  internal limits.
+
+The fix is a shared hardened parser
+(`etree.XMLParser(resolve_entities=False, no_network=True)`), but it is **not a
+drive-by change**: real EPUBs routinely use XHTML entities like `&nbsp;` and
+`&mdash;`, so disabling entity resolution outright risks breaking valid books.
+It needs a corpus test alongside it.
+
+Note also that this finding is **version-dependent**: bandit 1.7.10 reports it and
+1.9.4 does not. That skew is itself worth knowing about — see §3.7.
+
+### 2.11 Smaller items
 
 - **Fixed-name intermediates** (`sntnc0.mp3`, `pgraphs{N}.flac`) are only safe
   because of job-directory isolation. That invariant is documented in a docstring
@@ -490,6 +524,32 @@ Addressed in this branch:
 Still open: **GitHub Actions are referenced by mutable tags** (`@v4`, `@v5`) rather
 than commit SHAs. For a project that publishes to PyPI, pinning the release
 workflow's actions by SHA is worth doing.
+
+### 3.7 Tool version skew between pre-commit and CI 🟠
+
+The pre-commit hooks had never actually been run — `pre-commit install` was
+documented but not part of any setup path, so the config's problems stayed latent.
+Installing them surfaced three, all of which blocked committing entirely:
+
+1. **ruff version skew.** `.pre-commit-config.yaml` pinned `v0.8.2`; `pyproject.toml`
+   specified `ruff>=0.8.0`, which resolves to `0.16.0`. The two versions format
+   assert-with-message statements *differently*, so pre-commit would reformat a file
+   and CI's `ruff format --check` would then reject it — an endless loop. Fixed by
+   version-locking both to `0.16.x`.
+2. **bandit ran without a severity gate**, so it exited 1 on the 39 low-severity
+   subprocess and try/except notices and blocked every commit. CI used `-ll`; the
+   hook did not. Now aligned.
+3. **bandit received appended filenames** from pre-commit that collided with its
+   `-r epub2tts_edge/` target, producing an argument-parser error. Fixed with
+   `pass_filenames: false`.
+
+A fourth, subtler instance: bandit 1.7.10 and 1.9.4 disagree about `B320` (§2.10),
+so the pinned rev silently determined whether a security finding appeared. Both
+tools are now pinned in lockstep with `pyproject.toml`, with comments saying so.
+
+**The general lesson matches guiding principle #2 in the uplift plan:** a formatter
+or linter configured in two places with two versions is not one gate, it is two
+gates that disagree.
 
 ### 3.6 Dependency declarations had three sources of truth 🟡
 
@@ -701,10 +761,11 @@ Worth stating plainly, because the above is heavily weighted toward problems:
 
 ```
 Package source             15,424 lines across 43 modules
-Test suite                  9,051 lines across 30 files, 558 tests
-Test result (clean env)    542 passed, 16 skipped, 0 failed  (no network, no ffmpeg)
-Test wall time             ~15 s
-Coverage                   44.93% overall (branch coverage enabled)
+Test suite                  9,051 lines across 30 files, 561 tests
+Test result (provisioned)  556 passed, 5 skipped, 0 failed   (ffmpeg present, no network)
+Test result (bare env)     545 passed, 16 skipped, 0 failed  (no ffmpeg, no network)
+Test wall time             ~49 s with ffmpeg, ~15 s without
+Coverage                   47.88% overall (branch coverage enabled, ffmpeg present)
 ruff check                 clean
 ruff format                clean (75 Python files)
 mypy                       53 errors across 15 files

@@ -13,7 +13,7 @@ Major improvements to the Audiobookify TUI including an Export & Edit workflow, 
 - New methods:
   - `action_export_text()` - Exports EPUB to text with editing instructions
   - `export_text_async()` - Background worker for export
-  - `action_convert_text()` - Converts edited text file to audiobook  
+  - `action_convert_text()` - Converts edited text file to audiobook
   - `convert_text_async()` - Background worker for text-to-audio conversion
   - `_set_text_file_input()` - Auto-fills text path after export
   - `_text_convert_complete()` - Cleanup after conversion

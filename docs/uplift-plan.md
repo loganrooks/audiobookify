@@ -64,6 +64,14 @@ Everything in this milestone is implemented and verified in this branch.
 - [x] Document the release process
 - [x] Move internal docs to `docs/`, archive completed working documents
 
+### Verification still outstanding
+
+See [`handoff.md`](./handoff.md) for the full list. The two that matter:
+- [ ] Build and **run** the Docker image (blocked in the review environment by
+      Docker Hub egress denial — the fix is verified at the packaging layer only)
+- [ ] One real end-to-end conversion with live Edge TTS (blocked by gateway policy
+      denial on `speech.platform.bing.com`); everything so far ran on mock TTS
+
 ### Remaining manual step
 
 - [ ] **Configure PyPI Trusted Publishing** and create the `pypi` environment
@@ -113,11 +121,15 @@ Every item after this milestone depends on being able to change
 `audio_generator.py` and `epub2tts_edge.py` without fear.
 
 ### 🔧 Development infrastructure
-- [ ] **Raise `audio_generator.py` coverage from 22% → 70%+.** This is the module
-      that produces the actual product. Start with `make_m4b()` and `read_book()`
-      resume behaviour.
-- [ ] **Raise CLI (`epub2tts_edge.py`) coverage from 14% → 60%+.** Argument parsing
-      and dispatch are highly testable and currently almost entirely untested.
+- [ ] **Raise CLI (`epub2tts_edge.py`) coverage from 14% → 60%+.** 472 of its 553
+      statements are uncovered — the single biggest gap in the project. Argument
+      parsing and dispatch are highly testable and almost entirely untested.
+- [ ] **Raise `tui/app.py` coverage from 9%.** 887 uncovered statements in a
+      1,000-statement class. Even 40% would materially de-risk changes here.
+- [ ] Cover the remaining gaps in `audio_generator.py` (68.61%) — mainly the
+      `run_edgespeak()` retry/cooldown paths and `make_m4b()` error handling.
+      *Note: an earlier review pass reported this module at 22%; that was measured
+      without ffmpeg, which skips the tests that exercise it.*
 - [ ] Add coverage floors to CI (`--cov-fail-under`), ratcheting upward — set the
       initial floor at the current number so it can only improve
 - [ ] Drop the vestigial `setuptools` runtime dependency (nothing imports it)
@@ -145,6 +157,11 @@ Fix the real defects that mypy is already pointing at:
 - [ ] Give `make_m4b()` a real temp directory instead of writing `filelist.txt` and
       `FFMETADATAFILE` into the current working directory
 - [ ] Stop `make_m4b()` deleting source segments before the output is confirmed good
+- [ ] Harden XML parsing against entity expansion with a shared
+      `etree.XMLParser(resolve_entities=False, no_network=True)`. XXE is already
+      blocked by lxml defaults (verified), so this is defence in depth rather than
+      an open hole — but it needs a corpus test first, since real EPUBs use XHTML
+      entities like `&nbsp;`. See review §2.10.
 
 **Exit criteria:** mypy blocking and green; coverage floor enforced; the resume
 path cannot serve stale audio.

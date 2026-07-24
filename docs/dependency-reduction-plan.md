@@ -142,14 +142,23 @@ separately means paying the same testing cost twice. Combined, this is one focus
 work that removes two dependencies, deletes `audioop-lts`, and roughly halves conversion
 time.
 
-**Prerequisite:** M2's coverage work. `audio_generator.py` is at 22% coverage; rewriting
-its audio backend without tests is how you ship an audiobook that's silent from chapter 7
-onward.
+**Prerequisite:** M2's coverage work. `audio_generator.py` sits at **68.61%**, better than
+an earlier review pass suggested (that 22% figure was measured without ffmpeg, which skips
+the tests exercising this module). But the remaining gaps sit in exactly the code this
+migration touches — `make_m4b()`'s error handling and the `run_edgespeak()` retry paths.
+Close those first, or you risk shipping an audiobook that goes silent from chapter 7 on.
 
-**One thing to verify first:** confirm ffmpeg's `attached_pic` cover embedding produces
-artwork that the major players (Apple Books, Audiobookshelf, Smart AudioBook Player)
-actually display. Cover art handling in M4B is one of those areas where the spec and
-practice diverge. Test before committing to the substitution.
+**Partly verified already.** ffmpeg's `attached_pic` path was tested directly:
+
+```
+ffmpeg -i out.m4b -i cover.png -map 0:a -map 1:v -c:a copy -c:v mjpeg \
+       -disposition:v attached_pic withcover.m4b
+→ covr atom present: True | bytes: 386 | format: JPEG
+```
+
+The atom mutagen would write is the atom ffmpeg produces, read back with mutagen
+itself. What remains is confirming real players display it — M4B cover art is an
+area where spec and practice diverge. See [`handoff.md`](./handoff.md).
 
 ### 4. `EbookLib` → internal EPUB reader 🟢 *(1–2 weeks)*
 

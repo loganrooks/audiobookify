@@ -4,8 +4,11 @@
 
 repos:
   # Ruff - Fast Python linter and formatter
+  # NOTE: this rev MUST stay in sync with the ruff pin in pyproject.toml [dev].
+  # ruff's formatter output changes between minor versions, so a mismatch makes
+  # pre-commit and CI reformat each other's work indefinitely.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.2
+    rev: v0.16.0
     hooks:
       # Run the linter
       - id: ruff
@@ -31,11 +34,21 @@ repos:
       - id: detect-private-key
 
   # Check for common security issues
+  # NOTE: keep this rev in sync with the bandit pin in pyproject.toml [dev].
+  # Version skew changes which checks run: 1.7.10 reports B320 on lxml calls
+  # that 1.9.4 does not, so a mismatch makes local and CI results disagree.
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.10
+    rev: 1.9.4
     hooks:
       - id: bandit
-        args: ["-c", "pyproject.toml", "-r", "epub2tts_edge/"]
+        # -ll gates on medium+ severity, matching .github/workflows/ci.yml.
+        # Without it, bandit exits 1 on low-severity subprocess notices and
+        # blocks every commit.
+        args: ["-c", "pyproject.toml", "-r", "epub2tts_edge/", "-ll"]
+        # pre-commit appends staged filenames by default, which collide with
+        # the -r target above and make bandit's argument parser fail. Scan the
+        # configured directory instead, exactly as CI does.
+        pass_filenames: false
         additional_dependencies: ["bandit[toml]"]
 
 # CI configuration

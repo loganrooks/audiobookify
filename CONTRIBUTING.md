@@ -21,13 +21,19 @@ python -m venv venv
 source venv/bin/activate  # Linux/Mac
 # or: venv\Scripts\activate  # Windows
 
-# Install the package plus dev/test tooling
+# One command does everything below: system deps, venv, dev extras,
+# NLTK data, and pre-commit hooks. Idempotent.
+./scripts/setup-dev.sh
+
+# Then check what your environment can actually verify
+./scripts/doctor.sh
+```
+
+Or by hand:
+
+```bash
 pip install -e ".[dev]"
-
-# Install the pre-commit hooks (ruff, bandit, secret detection)
 pre-commit install
-
-# Run tests
 python -m pytest tests/
 ```
 
@@ -216,10 +222,10 @@ priorities, and the [project review](./docs/project-review-2026-07.md) for the
 findings behind them.
 
 ### High Priority
-- [ ] **Test coverage on the critical path.** 558 tests, but 45% overall coverage
-      and the biggest modules are the least covered: CLI 14%, `tui/app.py` 9%,
-      `audio_generator.py` 22%. Tests here are the most valuable contribution
-      available right now.
+- [ ] **Test coverage on the critical path.** 561 tests, but 48% overall coverage,
+      and the two biggest modules are the least covered: the CLI at 14% (472
+      uncovered statements) and `tui/app.py` at 9% (887 uncovered). Tests here are
+      the most valuable contribution available right now.
 - [ ] **Clearing the mypy baseline** (53 errors across 15 files) so the type check
       can become blocking
 - [ ] Bug fixes
@@ -239,6 +245,8 @@ findings behind them.
 
 - Open an issue for questions
 - Check [docs/architecture.md](./docs/architecture.md) for technical context
+- See [docs/handoff.md](./docs/handoff.md) for current verification status and
+  environment constraints
 - See [ROADMAP.md](./ROADMAP.md) for project direction
 
 ## License

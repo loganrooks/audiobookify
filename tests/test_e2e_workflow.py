@@ -563,3 +563,104 @@ class TestJobManagerIntegration:
 
         finally:
             disable_test_mode()
+
+
+@pytest.mark.requires_ffmpeg
+class TestEmptyChapterHandling:
+    """Regression tests for chapters that yield no readable content.
+
+    read_book() previously indexed files[-1] / filenames[-1] without checking
+    for empty lists, so a chapter with no paragraphs -- or a paragraph that
+    tokenizes to nothing -- raised IndexError and killed the conversion.
+    """
+
+    def test_chapter_with_no_paragraphs_does_not_crash(self, temp_dir):
+        """A chapter with an empty paragraph list should still yield a segment."""
+        from epub2tts_edge.audio_generator import (
+            disable_test_mode,
+            enable_test_mode,
+            read_book,
+        )
+
+        try:
+            enable_test_mode()
+            output_dir = temp_dir / "audio"
+            output_dir.mkdir()
+
+            segments = read_book(
+                book_contents=[{"title": "Empty Chapter", "paragraphs": []}],
+                speaker="en-US-AriaNeural",
+                paragraphpause=500,
+                sentencepause=250,
+                output_dir=str(output_dir),
+            )
+
+            assert len(segments) == 1, "empty chapter must still produce a segment"
+            assert os.path.exists(segments[0])
+        finally:
+            disable_test_mode()
+
+    def test_whitespace_only_paragraph_is_skipped(self, temp_dir):
+        """A whitespace-only paragraph tokenizes to nothing and must be skipped."""
+        from epub2tts_edge.audio_generator import (
+            disable_test_mode,
+            enable_test_mode,
+            read_book,
+        )
+
+        try:
+            enable_test_mode()
+            output_dir = temp_dir / "audio"
+            output_dir.mkdir()
+
+            segments = read_book(
+                book_contents=[
+                    {"title": "Mixed", "paragraphs": ["   ", "Real content here.", "\n\t "]}
+                ],
+                speaker="en-US-AriaNeural",
+                paragraphpause=500,
+                sentencepause=250,
+                output_dir=str(output_dir),
+            )
+
+            assert len(segments) == 1
+            assert os.path.exists(segments[0])
+        finally:
+            disable_test_mode()
+
+    def test_segment_count_matches_chapter_count_with_empty_chapters(self, temp_dir):
+        """Segment count must track chapter count.
+
+        generate_metadata() pairs files[i] with chapter_titles[i] positionally,
+        so dropping an empty chapter's segment would shift every subsequent
+        chapter marker onto the wrong title.
+        """
+        from epub2tts_edge.audio_generator import (
+            disable_test_mode,
+            enable_test_mode,
+            read_book,
+        )
+
+        try:
+            enable_test_mode()
+            output_dir = temp_dir / "audio"
+            output_dir.mkdir()
+
+            book_contents = [
+                {"title": "One", "paragraphs": ["First chapter text."]},
+                {"title": "Two", "paragraphs": []},
+                {"title": "Three", "paragraphs": ["Third chapter text."]},
+            ]
+            segments = read_book(
+                book_contents=book_contents,
+                speaker="en-US-AriaNeural",
+                paragraphpause=500,
+                sentencepause=250,
+                output_dir=str(output_dir),
+            )
+
+            assert len(segments) == len(book_contents), (
+                "one segment per chapter is required to keep chapter markers aligned"
+            )
+        finally:
+            disable_test_mode()

@@ -209,11 +209,13 @@ esac
 
 head_ "What you can verify here"
 
+# These counts double as a stale-clone tripwire: a mismatch usually means the
+# checkout is behind, not that the suite broke. Update them when tests change.
 if [[ $CAN_TEST -eq 1 ]]; then
   if [[ $CAN_FFMPEG -eq 1 ]]; then
-    pass "full test suite" "expect 560 passed, 5 skipped (TTS)"
+    pass "full test suite" "expect 567 passed, 5 skipped (TTS)"
   else
-    warn "test suite (partial)" "expect ~544 passed, ~14 skipped (ffmpeg + TTS)"
+    warn "test suite (partial)" "expect 552 passed, 20 skipped (ffmpeg + TTS)"
   fi
   pass "lint / format / types / security" "ruff, mypy, bandit"
   pass "wheel build + smoke test" "python -m build; install into a clean venv"

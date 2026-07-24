@@ -65,7 +65,7 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Cache NLTK data
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/nltk_data
           key: nltk-punkt-${{ runner.os }}-v1

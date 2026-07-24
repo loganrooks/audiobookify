@@ -20,15 +20,15 @@ name: Release
 #   Owner: loganrooks / Repository: audiobookify   <- GitHub repo, not the dist name
 #   Workflow: release.yml / Environment: pypi
 
+# A workflow_dispatch run is ALWAYS a dry run: every publishing job is gated on
+# `github.event_name == 'push'`, so only a tag can publish. There used to be a
+# `dry_run` input here, which was never referenced by any job -- setting it to
+# false did not publish. It implied a control that did not exist, so it is gone.
+# Dispatch this workflow freely to rehearse a release.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: "Build and verify without publishing"
-        type: boolean
-        default: true
 
 permissions:
   contents: read
@@ -108,6 +108,36 @@ jobs:
           name: dist
           path: dist/
 
+  # The publishing jobs are the only consumers of the `dist` artifact, and they
+  # never run on a pull request -- so upload-artifact -> download-artifact was an
+  # untested pairing whose first real execution would have been inside a release,
+  # at the step that feeds dist/ to PyPI, after the tag already existed.
+  # This job exercises exactly that round-trip on every dispatch instead.
+  verify-artifact:
+    name: verify artifact round-trip
+    runs-on: ubuntu-latest
+    needs: [verify, build]
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: The downloaded artifact must be installable
+        run: |
+          ls -l dist/
+          test -n "$(find dist -name '*.whl' -print -quit)" \
+            || { echo "::error::no wheel in the downloaded artifact"; exit 1; }
+          test -n "$(find dist -name '*.tar.gz' -print -quit)" \
+            || { echo "::error::no sdist in the downloaded artifact"; exit 1; }
+          python -m venv /tmp/roundtrip
+          /tmp/roundtrip/bin/pip install --quiet dist/*.whl
+          INSTALLED=$(/tmp/roundtrip/bin/audiobookify --version | awk '{print $2}')
+          test "$INSTALLED" = "${{ needs.verify.outputs.version }}" \
+            || { echo "::error::downloaded wheel reports $INSTALLED"; exit 1; }
+          echo "round-trip verified: upload-artifact -> download-artifact -> $INSTALLED"
+
   publish-pypi:
     name: publish to PyPI
     runs-on: ubuntu-latest
@@ -161,11 +191,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # Ordered after the publishing jobs so the Release appears once distribution
+  # has been attempted -- but deliberately NOT dependent on them succeeding.
+  # With `needs: [publish-pypi, publish-docker]` and no `always()`, any PyPI
+  # problem also destroyed the GitHub Release and left the tag with no artifacts
+  # attached, even though the build was fine and the image had already pushed.
+  # PyPI is also gated on a manual environment review, so a release that was
+  # simply awaiting approval would have blocked here indefinitely.
+  # The gate that actually matters is `build`: no dist, no Release.
   github-release:
     name: create GitHub Release
     runs-on: ubuntu-latest
-    needs: [publish-pypi, publish-docker]
-    if: github.event_name == 'push'
+    needs: [build, publish-pypi, publish-docker]
+    if: |
+      always()
+      && github.event_name == 'push'
+      && needs.build.result == 'success'
     permissions:
       contents: write
     steps:

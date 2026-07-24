@@ -22,6 +22,17 @@ fail() { printf '  \033[1;31m✗\033[0m %-30s %s\n' "$1" "${2:-}"; }
 warn() { printf '  \033[1;33m!\033[0m %-30s %s\n' "$1" "${2:-}"; }
 head_() { printf '\n\033[1;34m%s\033[0m\n' "$1"; }
 
+# macOS has no `timeout` -- it ships as `gtimeout` with coreutils, and often not
+# at all. Without this shim the Docker probe below fails with "command not
+# found" and gets misreported as blocked registry egress.
+if command -v timeout >/dev/null 2>&1; then
+  timeout_() { timeout "$@"; }
+elif command -v gtimeout >/dev/null 2>&1; then
+  timeout_() { gtimeout "$@"; }
+else
+  timeout_() { shift; "$@"; }  # no timeout available; run unbounded
+fi
+
 CAN_TEST=1
 CAN_FFMPEG=0
 CAN_DOCKER_BUILD=0
@@ -106,7 +117,7 @@ else
   pass "docker daemon" "$(docker version --format '{{.Server.Version}}' 2>/dev/null)"
   # A running daemon is not enough: pulling the base image needs egress to
   # Docker Hub, which restricted networks commonly deny.
-  if timeout 90 docker pull -q python:3.11-slim >/dev/null 2>&1; then
+  if timeout_ 90 docker pull -q python:3.11-slim >/dev/null 2>&1; then
     pass "docker base image pull" "python:3.11-slim available"
     CAN_DOCKER_BUILD=1
   else

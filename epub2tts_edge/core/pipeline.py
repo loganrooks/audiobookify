@@ -580,8 +580,8 @@ class ConversionPipeline:
             List of dicts with 'title' and 'paragraphs' keys
         """
         content = text_file.read_text(encoding="utf-8")
-        chapters = []
-        current_chapter = None
+        chapters: list[dict[str, Any]] = []
+        current_chapter: dict[str, Any] | None = None
 
         for line in content.split("\n"):
             line = line.rstrip()

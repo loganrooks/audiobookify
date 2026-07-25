@@ -5,7 +5,7 @@ import sys
 import warnings
 import zipfile
 from pathlib import Path
-from typing import IO
+from typing import IO, Any
 
 import ebooklib
 import nltk
@@ -229,7 +229,7 @@ def export_legacy(book: epub.EpubBook, sourcefile: str) -> str:
     Returns:
         Path to the exported text file
     """
-    book_contents = []
+    book_contents: list[dict[str, Any]] = []
     cover_image = get_epub_cover(sourcefile)
     image_path = None
 
@@ -377,13 +377,13 @@ def get_book(
     Returns:
         Tuple of (book_contents, book_title, book_author, chapter_titles)
     """
-    book_contents = []
+    book_contents: list[dict[str, Any]] = []
     book_title = sourcefile
     book_author = "Unknown"
-    chapter_titles = []
+    chapter_titles: list[str] = []
 
     with open(sourcefile, encoding="utf-8") as file:
-        current_chapter = {"title": "blank", "level": 1, "paragraphs": []}
+        current_chapter: dict[str, Any] = {"title": "blank", "level": 1, "paragraphs": []}
         initialized_first_chapter = False
         lines_skipped = 0
 

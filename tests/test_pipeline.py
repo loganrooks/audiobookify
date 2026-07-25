@@ -814,3 +814,30 @@ class TestVoiceMappingLoading:
         pipeline = ConversionPipeline(job_manager, PipelineConfig())
 
         assert pipeline._load_multi_voice_processor() is None
+
+
+class TestEarlyFailureResult:
+    """run() must fail gracefully; job is None when failure precedes job creation."""
+
+    def test_run_with_missing_source_returns_failure(self, temp_dir):
+        job_manager = JobManager(str(temp_dir / "jobs"))
+        pipeline = ConversionPipeline(job_manager, PipelineConfig())
+
+        result = pipeline.run(temp_dir / "does-not-exist.epub")
+
+        assert result.success is False
+        assert result.error
+        # create_job hashes the source, so a missing file fails before any job exists.
+        assert result.job is None
+
+    def test_run_returns_job_none_when_job_creation_fails(self, temp_dir):
+        job_manager = JobManager(str(temp_dir / "jobs"))
+        pipeline = ConversionPipeline(job_manager, PipelineConfig())
+        pipeline.create_job = MagicMock(side_effect=RuntimeError("job store unavailable"))
+
+        result = pipeline.run(temp_dir / "book.epub")
+
+        assert result.success is False
+        assert result.error == "job store unavailable"
+        # The failure happened before a job existed: the result must say so.
+        assert result.job is None

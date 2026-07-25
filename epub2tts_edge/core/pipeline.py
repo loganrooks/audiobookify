@@ -82,7 +82,8 @@ class PipelineConfig:
 class PipelineResult:
     """Result of a pipeline operation."""
 
-    job: Job
+    # None when the pipeline fails before a job is created
+    job: Job | None
     success: bool
     output_path: Path | None = None
     error: str | None = None

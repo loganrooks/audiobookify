@@ -741,3 +741,27 @@ class TestPackageAudiobookEndToEnd:
         starts = [float(c["start_time"]) for c in chapters]
         assert starts == sorted(starts)
         assert float(chapters[-1]["end_time"]) > 0
+
+
+class TestPronunciationLoading:
+    """Pipeline must load a pronunciation dictionary from the configured path."""
+
+    def test_load_pronunciation_processor_reads_the_file(self, temp_dir):
+        pron_file = temp_dir / "pron.json"
+        pron_file.write_text('{"Hermione": "her-MY-oh-nee"}', encoding="utf-8")
+
+        job_manager = JobManager(str(temp_dir / "jobs"))
+        config = PipelineConfig(pronunciation_dict=str(pron_file))
+        pipeline = ConversionPipeline(job_manager, config)
+
+        processor = pipeline._load_pronunciation_processor()
+
+        assert processor is not None
+        assert processor.config.dictionary == {"Hermione": "her-MY-oh-nee"}
+        assert processor.process_text("Hermione waved.") == "her-MY-oh-nee waved."
+
+    def test_load_pronunciation_processor_none_when_unconfigured(self, temp_dir):
+        job_manager = JobManager(str(temp_dir / "jobs"))
+        pipeline = ConversionPipeline(job_manager, PipelineConfig())
+
+        assert pipeline._load_pronunciation_processor() is None

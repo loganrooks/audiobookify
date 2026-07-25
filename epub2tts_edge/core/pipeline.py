@@ -29,7 +29,7 @@ from ..logger import get_logger
 from .events import EventBus, EventType
 
 if TYPE_CHECKING:
-    pass
+    from ..pronunciation import PronunciationProcessor
 
 logger = get_logger(__name__)
 
@@ -270,6 +270,21 @@ class ConversionPipeline:
 
         return text_file
 
+    def _load_pronunciation_processor(self) -> PronunciationProcessor | None:
+        """Build a pronunciation processor from the configured dictionary file.
+
+        The config stores a file PATH; PronunciationProcessor wants a config
+        object. Passing the path straight through (the old code) crashed on
+        first use.
+        """
+        if not self.config.pronunciation_dict:
+            return None
+        from ..pronunciation import PronunciationProcessor
+
+        processor = PronunciationProcessor()
+        processor.load_dictionary(self.config.pronunciation_dict)
+        return processor
+
     def generate_audio(
         self,
         job: Job,
@@ -296,11 +311,7 @@ class ConversionPipeline:
         self.job_manager.update_progress(job.job_id, total_chapters=len(book_contents))
 
         # Load pronunciation processor if configured
-        pronunciation_processor = None
-        if self.config.pronunciation_dict:
-            from ..pronunciation import PronunciationProcessor
-
-            pronunciation_processor = PronunciationProcessor(self.config.pronunciation_dict)
+        pronunciation_processor = self._load_pronunciation_processor()
 
         # Load multi-voice processor if configured
         multi_voice_processor = None

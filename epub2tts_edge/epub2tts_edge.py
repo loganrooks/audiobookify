@@ -5,7 +5,7 @@ import sys
 import warnings
 import zipfile
 from pathlib import Path
-from typing import BinaryIO
+from typing import IO
 
 import ebooklib
 import nltk
@@ -96,7 +96,7 @@ def chap2text_epub(chap: bytes) -> tuple[str | None, list[str]]:
         chapter_title_text = None
 
     # Always skip reading links that are just a number (footnotes)
-    for a in soup.findAll("a", href=True):
+    for a in soup.find_all("a", href=True):
         if not any(char.isalpha() for char in a.text):
             a.extract()
 
@@ -114,7 +114,7 @@ def chap2text_epub(chap: bytes) -> tuple[str | None, list[str]]:
     return chapter_title_text, paragraphs
 
 
-def get_epub_cover(epub_path: str) -> BinaryIO | None:
+def get_epub_cover(epub_path: str) -> IO[bytes] | None:
     """Extract cover image from EPUB file.
 
     Args:
@@ -150,6 +150,7 @@ def get_epub_cover(epub_path: str) -> BinaryIO | None:
             return z.open(cover_path)
     except FileNotFoundError:
         logger.warning("Could not get cover image of %s", epub_path)
+        return None
 
 
 def export(
@@ -284,6 +285,8 @@ def export_legacy(book: epub.EpubBook, sourcefile: str) -> str:
                         r"[" "]", "'", clean
                     )  # Curly single quotes to standard single quotes
                     file.write(f"{clean}\n\n")
+
+    return outfile
 
 
 def export_mobi(sourcefile: str) -> str:

@@ -667,7 +667,7 @@ class AudiobookifyApp(App):
 
         if (
             not preview_panel.preview_state
-            or str(preview_panel.preview_state.epub_path) != job.source_file
+            or str(preview_panel.preview_state.source_file) != job.source_file
         ):
             # Need to reload preview for this job
             self.notify("Please preview the file first before starting", severity="warning")

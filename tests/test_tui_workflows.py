@@ -978,3 +978,65 @@ class TestErrorHandling:
                 f"{type(error).__name__} should inherit from AudiobookifyError"
             )
             assert isinstance(error, Exception), f"{type(error).__name__} should be an Exception"
+
+
+class TestPreviewJobGuard:
+    """_start_preview_job must compare against the preview state's real attribute."""
+
+    @pytest.mark.asyncio
+    async def test_mismatched_preview_state_warns_instead_of_crashing(self, temp_dir):
+        """A job pointing at a different file must warn, not raise AttributeError."""
+        from pathlib import Path
+
+        from epub2tts_edge.job_manager import Job, JobStatus
+
+        app = AudiobookifyApp(initial_path=str(temp_dir))
+
+        async with app.run_test() as _:
+            preview = app.query_one(PreviewPanel)
+            load_preview_chapters(preview, [make_preview_chapter("Chapter 1", "Some content")])
+            # Preview state points at file A...
+            preview.preview_state.source_file = Path(temp_dir) / "a.epub"
+
+            notifications: list[str] = []
+            app.notify = lambda message, **kwargs: notifications.append(str(message))
+
+            # ...while the job points at file B: the guard must take the
+            # "please preview first" branch, not raise AttributeError.
+            job = Job(
+                job_id="preview_job_guard",
+                source_file=str(Path(temp_dir) / "b.epub"),
+                job_dir=str(Path(temp_dir) / "jobs" / "preview_job_guard"),
+                status=JobStatus.PREVIEW,
+            )
+            app._start_preview_job(job)
+
+            assert any("preview" in n.lower() for n in notifications), notifications
+
+    @pytest.mark.asyncio
+    async def test_matching_preview_state_proceeds(self, temp_dir):
+        """A job matching the preview state must not take the warning branch."""
+        from pathlib import Path
+
+        from epub2tts_edge.job_manager import Job, JobStatus
+
+        app = AudiobookifyApp(initial_path=str(temp_dir))
+
+        async with app.run_test() as _:
+            preview = app.query_one(PreviewPanel)
+            load_preview_chapters(preview, [make_preview_chapter("Chapter 1", "Some content")])
+            source = Path(temp_dir) / "a.epub"
+            preview.preview_state.source_file = source
+
+            notifications: list[str] = []
+            app.notify = lambda message, **kwargs: notifications.append(str(message))
+
+            job = Job(
+                job_id="preview_job_match",
+                source_file=str(source),
+                job_dir=str(Path(temp_dir) / "jobs" / "preview_job_match"),
+                status=JobStatus.PREVIEW,
+            )
+            app._start_preview_job(job)
+
+            assert notifications == [], notifications

@@ -665,9 +665,14 @@ class AudiobookifyApp(App):
         # Load the preview panel's state and use it
         preview_panel = self.query_one(PreviewPanel)
 
+        # Compare resolved paths: JobManager.create_job() stores job.source_file
+        # resolved, while PreviewPanel.load_chapters() stores source_file verbatim,
+        # so the same file can be spelled two ways (e.g. reached via a symlinked
+        # directory). A raw string compare would falsely warn.
         if (
             not preview_panel.preview_state
-            or str(preview_panel.preview_state.source_file) != job.source_file
+            or Path(preview_panel.preview_state.source_file).resolve()
+            != Path(job.source_file).resolve()
         ):
             # Need to reload preview for this job
             self.notify("Please preview the file first before starting", severity="warning")

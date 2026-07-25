@@ -1040,3 +1040,53 @@ class TestPreviewJobGuard:
             app._start_preview_job(job)
 
             assert notifications == [], notifications
+
+    @pytest.mark.asyncio
+    async def test_unresolved_preview_path_matches_resolved_job(self, temp_dir):
+        """Production stores the two sides with different resolution.
+
+        The SAME ``epub_path`` feeds both sides of the guard, but
+        ``JobManager.create_job`` resolves it (job_manager.py:281) while
+        ``PreviewPanel.load_chapters`` stores it verbatim
+        (preview_panel.py:244). A path reached through a symlinked directory
+        therefore differs as a *string* while naming the same file, and a raw
+        string comparison falsely warns "Please preview the file first".
+        """
+        from pathlib import Path
+
+        from epub2tts_edge.job_manager import JobManager
+
+        # A real file addressed through a symlinked directory - exactly what
+        # file_panel's glob yields after browsing into a symlink, since
+        # _on_directory_selected (file_panel.py:405) does not resolve.
+        real_dir = Path(temp_dir) / "real"
+        real_dir.mkdir()
+        source = real_dir / "a.epub"
+        source.write_bytes(b"epub bytes")
+
+        link_dir = Path(temp_dir) / "link"
+        link_dir.symlink_to(real_dir, target_is_directory=True)
+        unresolved = link_dir / "a.epub"
+
+        manager = JobManager(jobs_dir=str(Path(temp_dir) / "jobs"))
+        job = manager.create_job(
+            source_file=str(unresolved), title="T", author="A", speaker="en-US-AndrewNeural"
+        )
+
+        # Sanity: the test is only meaningful if the two spellings differ.
+        assert str(unresolved) != job.source_file
+
+        app = AudiobookifyApp(initial_path=str(temp_dir))
+
+        async with app.run_test() as _:
+            preview = app.query_one(PreviewPanel)
+            load_preview_chapters(preview, [make_preview_chapter("Chapter 1", "Some content")])
+            # Stored verbatim, as load_chapters does.
+            preview.preview_state.source_file = unresolved
+
+            notifications: list[str] = []
+            app.notify = lambda message, **kwargs: notifications.append(str(message))
+
+            app._start_preview_job(job)
+
+            assert notifications == [], notifications

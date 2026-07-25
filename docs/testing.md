@@ -4,9 +4,13 @@
 
 This document defines testing approaches to catch bugs early and prevent regressions, reducing manual E2E testing burden.
 
-## Current State (Updated December 2024)
+## Current State (counts measured 2026-07-25)
 
-### Existing Tests (558 tests)
+### Existing Tests (592 collected)
+
+Counts below are measured with `pytest --collect-only -q` per file, not
+hand-maintained. Under `SKIP_TTS_TESTS=1` the run is **587 passed, 5 skipped**
+(the skips are the live-TTS module).
 
 | Module | Tests | Coverage |
 |--------|-------|----------|
@@ -14,23 +18,27 @@ This document defines testing approaches to catch bugs early and prevent regress
 | batch_processor | 19 | Good |
 | chapter_detector | 17 | Good |
 | chapter_selector | 24 | Good |
+| config | 39 | Good |
 | content_filter | 40 | Good |
-| e2e_workflow | 14 | Good |
-| event_bus | 34 | Good |
+| e2e_workflow | 17 | Good |
+| event_bus | 28 | Good |
+| external_constraints | 7 | Basic |
 | integration | 19 | Basic |
-| job_manager | 32 | Good |
+| job_manager | 34 | Good |
 | mobi_parser | 30 | Good |
 | multi_voice | 28 | Good |
-| output_naming | 34 | Good |
+| output_naming | 35 | Good |
+| packaging | 3 | Basic (dist name / version pins) |
 | pause_resume | 14 | Good |
-| pipeline | 29 | Good (60%) |
+| pipeline | 40 | Good (60%) |
 | preview_export | 9 | Basic |
-| profiles | 27 | Good |
+| profiles | 19 | Good |
 | pronunciation | 23 | Good |
 | silence_detection | 18 | Good |
 | test_mode | 13 | Good |
+| tts_connectivity | 5 | Live TTS — skipped via `SKIP_TTS_TESTS=1` |
 | tts_params | 10 | Good |
-| tui_workflows | 55 | Good |
+| tui_workflows | 66 | Good |
 | voice_preview | 18 | Good |
 
 ### TUI Testing Infrastructure ✅
@@ -44,12 +52,12 @@ Now available:
 - Processing initiation workflow tests
 - Error handling tests (file errors, invalid formats, TTS failures)
 - Full E2E workflow tests with mock TTS (EPUB → text → audio → M4B)
-- Core pipeline tests (29 tests covering ConversionPipeline, PipelineConfig, PipelineResult)
+- Core pipeline tests (40 tests covering ConversionPipeline, PipelineConfig, PipelineResult)
 
 ### Status: ✅ Complete
 
 All major testing infrastructure is in place:
-- **558 tests** across 22 test modules
+- **592 tests** across 26 test modules
 - **Mock TTS** for fast, offline testing
 - **CI/CD** with multi-platform testing and coverage reporting
 - **E2E workflows** covering full EPUB → M4B pipeline
@@ -67,11 +75,11 @@ Future enhancements (optional):
                    /  Manual   \      ← Reduced with automation
                   /    E2E      \
                  ├───────────────┤
-                /   Integration   \   ← TUI workflows + pipeline (84 tests)
+                /   Integration   \   ← TUI workflows + pipeline (106 tests)
                /      Tests        \
               ├─────────────────────┤
              /      Unit Tests       \  ← Strong coverage
-            /   (558 existing tests)  \
+            /   (592 existing tests)  \
            └───────────────────────────┘
 ```
 

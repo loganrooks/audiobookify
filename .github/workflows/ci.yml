@@ -122,11 +122,11 @@ jobs:
       - name: Run Ruff formatter check
         run: ruff format --check epub2tts_edge tests setup.py
 
-      # Not yet blocking: there is a known backlog of type errors. Tracked in
-      # ROADMAP.md; flip to blocking once the baseline is clean.
+      # Blocking since the M2 tranche-1 cleanup took the baseline to zero
+      # (2026-07). If this fails, fix the types -- do not re-add
+      # continue-on-error.
       - name: Run mypy
         run: mypy epub2tts_edge
-        continue-on-error: true
 
       # -ll gates on medium+ severity. The remaining low-severity findings are
       # subprocess-usage notices for the ffmpeg calls, which pass argument lists

@@ -46,22 +46,35 @@ tests/
 │   └── epub_factory.py          # create_test_epub() helper
 ├── mocks/
 │   └── tts_mock.py              # MockTTSEngine for offline testing
-├── test_chapter_detector.py     # 17 tests
-├── test_batch_processor.py      # 19 tests
-├── test_e2e_workflow.py         # 14 E2E tests (v2.5.0)
-├── test_pipeline.py             # 29 pipeline tests (v2.5.0)
-├── test_test_mode.py            # 13 test mode tests (v2.5.0)
-├── test_tui_workflows.py        # 55 TUI tests (v2.5.0)
-├── test_voice_preview.py        # 18 tests
-├── test_tts_params.py           # 10 tests
-├── test_chapter_selector.py     # 24 tests
-├── test_pause_resume.py         # 14 tests
 ├── test_audio_normalization.py  # 17 tests
-├── test_silence_detection.py    # 18 tests
-├── test_pronunciation.py        # 23 tests
+├── test_batch_processor.py      # 19 tests
+├── test_chapter_detector.py     # 17 tests
+├── test_chapter_selector.py     # 24 tests
+├── test_config.py               # 39 tests
+├── test_content_filter.py       # 40 tests
+├── test_e2e_workflow.py         # 17 E2E tests (v2.5.0)
+├── test_event_bus.py            # 28 tests
+├── test_external_constraints.py # 7 tests
+├── test_integration.py          # 19 tests
+├── test_job_manager.py          # 34 tests
+├── test_mobi_parser.py          # 30 tests
 ├── test_multi_voice.py          # 28 tests
-└── test_mobi_parser.py          # 30 tests
-# Total: 558 tests
+├── test_output_naming.py        # 35 tests
+├── test_packaging.py            # 3 tests (v2.6.0 — dist name/version pins)
+├── test_pause_resume.py         # 14 tests
+├── test_pipeline.py             # 40 pipeline tests (v2.5.0)
+├── test_preview_export.py       # 9 tests
+├── test_profiles.py             # 19 tests
+├── test_pronunciation.py        # 23 tests
+├── test_silence_detection.py    # 18 tests
+├── test_test_mode.py            # 13 test mode tests (v2.5.0)
+├── test_tts_connectivity.py     # 5 tests (live TTS; skipped via SKIP_TTS_TESTS=1)
+├── test_tts_params.py           # 10 tests
+├── test_tui_workflows.py        # 66 TUI tests (v2.5.0)
+└── test_voice_preview.py        # 18 tests
+# Total: 592 tests collected (587 pass, 5 live-TTS skipped under SKIP_TTS_TESTS=1).
+# Counts measured 2026-07-25 with `pytest --collect-only -q`; re-measure, do not
+# hand-edit, when tests change.
 ```
 
 ## Key Components
@@ -291,7 +304,7 @@ Uses FFmpeg metadata format with chapter markers including start/end times in mi
 - [ROADMAP.md](./ROADMAP.md) - Future plans and features
 - [CONTRIBUTING.md](./CONTRIBUTING.md) - Contribution guidelines
 - [README.md](./README.md) - User documentation
-- [Testing Strategy](./docs/testing.md) - Testing infrastructure (558 tests)
+- [Testing Strategy](./docs/testing.md) - Testing infrastructure (592 tests)
 - [Architecture](./docs/architecture.md) - v2.5.0 architecture
 
 ## Common Tasks

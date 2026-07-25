@@ -3,7 +3,10 @@
 **Companion to:** [`project-review-2026-07.md`](./project-review-2026-07.md) ·
 [`dependency-reduction-plan.md`](./dependency-reduction-plan.md)
 **Horizon:** ~6 months, five milestones
-**Status:** M0 and M1 complete (v2.6.0 shipped 2026-07-24); M2–M4 proposed
+**Status:** M0 and M1 complete (v2.6.0 shipped 2026-07-24). M2 in progress —
+tranche 1 landed 2026-07-25: the mypy baseline is clean (53 → 0) and the CI
+mypy step is now blocking, `py.typed` ships, and the three product defects
+mypy was pointing at are fixed. M2's coverage work and M3–M4 remain proposed.
 
 This plan covers four tracks that need to move together:
 
@@ -132,7 +135,8 @@ Every item after this milestone depends on being able to change
       without ffmpeg, which skips the tests that exercise it.*
 - [ ] Add coverage floors to CI (`--cov-fail-under`), ratcheting upward — set the
       initial floor at the current number so it can only improve
-- [ ] Drop the vestigial `setuptools` runtime dependency (nothing imports it)
+- [x] Drop the vestigial `setuptools` runtime dependency (nothing imports it)
+      *(done 2026-07-25, `a75db40`)*
 - [ ] Replace `nltk` (154k LOC for one function) with an internal sentence splitter,
       behind a golden corpus — also removes the runtime `punkt` download from the
       Dockerfile, CI, and first-run UX. See
@@ -140,16 +144,32 @@ Every item after this milestone depends on being able to change
 - [ ] Replace `EbookLib` with an internal EPUB reader — removes AGPL-3.0 code from a
       GPL-3.0 project; ~60% of the parsing already exists in `TOCParser` and
       `get_epub_cover()`
-- [ ] Clear the **53 mypy errors**, then flip the mypy step to blocking
-- [ ] Create `epub2tts_edge/py.typed` — *only after* the baseline is green, since
+- [x] Clear the **53 mypy errors**, then flip the mypy step to blocking
+      *(done 2026-07-25, M2 tranche 1: baseline 53 → 0 across ten tasks, then
+      `continue-on-error` removed from the CI mypy step. The zero holds under the
+      **current** `[tool.mypy]` settings — no strictness flag was tightened, so
+      "0 errors" is not "fully strict". Recorded debt: `TypedDict` for the chapter
+      dicts and the `run_edgespeak` kwargs dict, and two bare `-> dict` /
+      `-> list[dict]` returns in `chapter_detector.py` and `get_book`.)*
+- [x] Create `epub2tts_edge/py.typed` — *only after* the baseline is green, since
       `pyproject.toml` already declares it and shipping it early would export
       broken types to consumers
+      *(done 2026-07-25; verified present in the built wheel)*
 
 ### 🏗️ Product
-Fix the real defects that mypy is already pointing at:
-- [ ] `core/pipeline.py:469` — `Job | None` passed where `Job` is required
-- [ ] `epub2tts_edge.py:262` — iterating a value that may be `None`
-- [ ] `tui/app.py:670` — `ChapterPreviewState` has no attribute `epub_path`
+Fix the real defects that mypy is already pointing at. *(Line references below
+are corrected to the real sites as of the pre-tranche baseline `713bdab` — the
+plan's originals, `:469` and `:262`, had drifted and pointed at unrelated lines.
+Each corrected number was re-checked against that commit before ticking.)*
+
+- [x] `core/pipeline.py:546` — `Job | None` passed where `Job` is required
+      *(done 2026-07-25, `a3c2686`; `PipelineResult.job` is now `Job | None`)*
+- [x] `epub2tts_edge.py:278` — iterating a value that may be `None`
+      *(done 2026-07-25, `791f47b` — resolved by typing the chapter dict, not by
+      a behaviour change: the value was never `None` at runtime on this path.)*
+- [x] `tui/app.py:670` — `ChapterPreviewState` has no attribute `epub_path`
+      *(done 2026-07-25, `8fab8e4`+`fc5b886`; the guard was user-reachable and
+      also compared a resolved path against an unresolved one)*
 - [ ] **Wire up `clean_intermediate_files()`** — it is dead code that was written
       to prevent stale-audio reuse, and the bug it guards against is still live
 - [ ] Key intermediate audio files by content hash rather than bare index, so
@@ -163,8 +183,9 @@ Fix the real defects that mypy is already pointing at:
       an open hole — but it needs a corpus test first, since real EPUBs use XHTML
       entities like `&nbsp;`. See review §2.10.
 
-**Exit criteria:** mypy blocking and green; coverage floor enforced; the resume
-path cannot serve stale audio.
+**Exit criteria:** mypy blocking and green *(met 2026-07-25)*; coverage floor
+enforced *(outstanding)*; the resume path cannot serve stale audio
+*(outstanding)*.
 
 ---
 

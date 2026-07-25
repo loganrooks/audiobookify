@@ -17,7 +17,7 @@
 | [Uplift Plan](./docs/uplift-plan.md) | Sequenced execution plan (M0–M4) | 🚧 M0 complete |
 | [Dependency Reduction](./docs/dependency-reduction-plan.md) | Per-dependency vendor/reimplement/keep analysis | 📋 Proposed |
 | [Architecture Refactor](./docs/architecture.md) | Module extraction, unified pipeline, EventBus | ✅ Complete (Phases 0-3) |
-| [Testing Strategy](./docs/testing.md) | TUI tests, fixtures, CI integration | ✅ Complete (558 tests) |
+| [Testing Strategy](./docs/testing.md) | TUI tests, fixtures, CI integration | ✅ Complete (592 tests) |
 
 ---
 

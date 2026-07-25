@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`--pronunciation` crashed every conversion that used it.**
+  `ConversionPipeline.generate_audio()` passed the dictionary *file path* where
+  `PronunciationProcessor` expects a config object, so the processor was built
+  from a string and failed on first use. Loading now goes through
+  `_load_pronunciation_processor()`, which calls `load_dictionary()` on the path.
+- **`--voice-mapping` crashed every conversion that used it.** The pipeline
+  called `VoiceMapping.from_json()`, a method that has never existed on that
+  class — the JSON loader lives on `MultiVoiceProcessor`. A second latent bug in
+  the same block is fixed at the same time: `--narrator-voice` was written to
+  `default_voice` instead of `narrator_voice`, so the narrator override silently
+  did nothing.
+- **Starting a job from the TUI preview raised `AttributeError`.** The guard in
+  `_start_preview_job()` read `preview_state.epub_path`, an attribute
+  `ChapterPreviewState` does not have — this was user-reachable, not latent. The
+  guard now reads `source_file`, and compares **resolved** paths on both sides:
+  `JobManager.create_job()` stores `source_file` resolved while
+  `PreviewPanel.load_chapters()` stores it verbatim, so a job reached through a
+  symlinked directory previously produced a spurious "Please preview the file
+  first before starting" warning even after a successful preview.
+- **Selecting the blank row of the TUI profile dropdown crashed the app.**
+  `Select` is constructed with the default `allow_blank=True`, which prepends a
+  selectable `("", Select.NULL)` option, so the blank state is one dropdown-click
+  away for any user. `get_profile(Select.NULL)` then raised
+  `AttributeError: 'NoSelection' object has no attribute 'lower'` inside the
+  Textual message pump. The profile handler now type-checks the selection before
+  applying it.
+
+### Changed
+- **The mypy step in CI is now blocking.** The type baseline went from 53 errors
+  to zero, and `continue-on-error` has been removed. Note this is zero *under the
+  current `[tool.mypy]` settings* — no strictness flag was tightened as part of
+  the cleanup.
+- **`epub2tts_edge/py.typed` now ships**, so the package's annotations are
+  visible to type-checkers in downstream projects (PEP 561). `pyproject.toml`
+  had declared the marker in package-data for some time, but the file itself did
+  not exist, so no wheel ever carried it.
+- **The vestigial `setuptools` runtime dependency is gone** from
+  `pyproject.toml` and `requirements.txt`. Nothing in the package imports it;
+  it remains a build-system requirement, which is unaffected.
+
+### API note (for anyone importing `epub2tts_edge`)
+- `PipelineResult.job` is now typed `Job | None` (was `Job`). This documents
+  behaviour that was always the case — `ConversionPipeline.run()` returns
+  `job=None` when it fails before the job is created, e.g. on a missing input
+  file — so no runtime behaviour changed. Code that reads `result.job` after a
+  failed run needs a `None` check to type-check cleanly.
+
 ## [2.6.0] - 2026-07-24
 
 ### Changed

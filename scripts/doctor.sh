@@ -211,11 +211,14 @@ head_ "What you can verify here"
 
 # These counts double as a stale-clone tripwire: a mismatch usually means the
 # checkout is behind, not that the suite broke. Update them when tests change.
+# Both legs measured 2026-07-25 (not derived): the ffmpeg-less leg was run with
+# `env PATH=/usr/bin:/bin SKIP_TTS_TESTS=1 pytest tests/ -q`, which is what the
+# conftest ffmpeg guard keys off. 592 tests collected in total.
 if [[ $CAN_TEST -eq 1 ]]; then
   if [[ $CAN_FFMPEG -eq 1 ]]; then
-    pass "full test suite" "expect 567 passed, 5 skipped (TTS)"
+    pass "full test suite" "expect 587 passed, 5 skipped (TTS)"
   else
-    warn "test suite (partial)" "expect 552 passed, 20 skipped (ffmpeg + TTS)"
+    warn "test suite (partial)" "expect 572 passed, 20 skipped (ffmpeg + TTS)"
   fi
   pass "lint / format / types / security" "ruff, mypy, bandit"
   pass "wheel build + smoke test" "python -m build; install into a clean venv"

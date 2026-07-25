@@ -148,17 +148,25 @@ class TestEdgeTTSVersion:
         independently. Derive it, so there is only one.
         """
         import importlib.metadata as metadata
+        import tomllib
+        from pathlib import Path
 
         from packaging.requirements import Requirement
 
         installed = metadata.version("edge-tts")
 
+        # Derive the distribution name too -- hardcoding "audiobookify" here
+        # rotted the same way the hardcoded version bound this docstring
+        # describes did, when the distribution was renamed to "audiobookifier".
+        pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+        dist_name = tomllib.loads(pyproject.read_text())["project"]["name"]
+
         declared = [
             Requirement(r)
-            for r in (metadata.requires("audiobookify") or [])
+            for r in (metadata.requires(dist_name) or [])
             if Requirement(r).name == "edge-tts"
         ]
-        assert declared, "audiobookify does not declare an edge-tts dependency"
+        assert declared, f"{dist_name} does not declare an edge-tts dependency"
 
         requirement = declared[0]
         assert requirement.specifier.contains(installed, prereleases=True), (

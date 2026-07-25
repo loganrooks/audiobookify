@@ -18,7 +18,6 @@ mutagen>=1.46.0
 nltk>=3.8.0
 pillow>=10.0.0
 pydub>=0.25.0
-setuptools>=61.0
 textual>=0.40.0
 tqdm>=4.65.0
 # audioop was removed in Python 3.13, pydub needs this backport

@@ -225,12 +225,22 @@ priorities, and the [project review](./docs/project-review-2026-07.md) for the
 findings behind them.
 
 ### High Priority
-- [ ] **Test coverage on the critical path.** 561 tests, but 48% overall coverage,
-      and the two biggest modules are the least covered: the CLI at 14% (472
-      uncovered statements) and `tui/app.py` at 9% (887 uncovered). Tests here are
+- [ ] **Test coverage on the critical path.** 592 tests, but 50% overall coverage,
+      and the two biggest modules are the least covered: the CLI at 16% (462
+      uncovered statements) and `tui/app.py` at 10% (881 uncovered). Tests here are
       the most valuable contribution available right now.
-- [ ] **Clearing the mypy baseline** (53 errors across 15 files) so the type check
-      can become blocking
+      *(Measured 2026-07-25 with ffmpeg present:
+      `SKIP_TTS_TESTS=1 pytest tests/ --cov=epub2tts_edge` → 587 passed, 5 skipped,
+      50.34% total. Re-measure rather than trusting these figures — without ffmpeg
+      the suite skips tests and the distribution shifts.)*
+- [x] **Clearing the mypy baseline** (was 53 errors across 15 files) so the type
+      check can become blocking — **done 2026-07-25** (`90d330e`). `mypy
+      epub2tts_edge` reports "Success: no issues found in 43 source files", and the
+      CI step no longer carries `continue-on-error`, so type errors now fail the
+      build. Note this is zero under the *current* `[tool.mypy]` settings; no
+      strictness flag was tightened. Tightening them — and clearing whatever that
+      surfaces — is still open work, but it should be scoped as its own effort with
+      its own baseline. See [uplift plan M2](./docs/uplift-plan.md).
 - [ ] Bug fixes
 - [ ] Documentation
 

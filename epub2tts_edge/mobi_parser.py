@@ -170,7 +170,7 @@ class MobiParser:
 
         self.file_path = file_path
         self._mobi_book = None
-        self._raw_html = None
+        self._raw_html: str | None = None
 
     def parse(self) -> MobiBook:
         """Parse the MOBI/AZW file.
@@ -248,8 +248,8 @@ class MobiParser:
         # Read and concatenate all HTML files
         content_parts = []
         for html_file in sorted(html_files):
-            with open(html_file, encoding="utf-8", errors="ignore") as f:
-                content_parts.append(f.read())
+            with open(html_file, encoding="utf-8", errors="ignore") as html_fh:
+                content_parts.append(html_fh.read())
 
         return "\n".join(content_parts)
 

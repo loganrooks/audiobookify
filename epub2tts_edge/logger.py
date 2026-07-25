@@ -11,7 +11,7 @@ DEFAULT_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 SIMPLE_FORMAT = "%(levelname)s: %(message)s"
 
 # Module-level logger cache
-_loggers: dict = {}
+_loggers: dict[str, logging.Logger] = {}
 
 
 def setup_logging(

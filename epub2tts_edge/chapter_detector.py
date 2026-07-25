@@ -75,8 +75,8 @@ class ChapterNode:
 
     def get_path(self) -> list[ChapterNode]:
         """Get the path from root to this node."""
-        path = []
-        node = self
+        path: list[ChapterNode] = []
+        node: ChapterNode | None = self
         while node is not None:
             path.insert(0, node)
             node = node.parent
@@ -176,7 +176,7 @@ class TOCParser:
 
     def get_toc_debug(self) -> dict:
         """Get debug info about TOC parsing."""
-        debug_info = {
+        debug_info: dict[str, Any] = {
             "book_toc_count": 0,
             "book_toc_items": [],
             "toc_items": [],
@@ -344,7 +344,10 @@ class TOCParser:
                 href = a.get("href", "")
 
                 # Split href into file and anchor
-                file_href, anchor = self._split_href(href)
+                # bs4 types .get() as str | AttributeValueList | None; href is
+                # single-valued so this is always a str at runtime (the ""
+                # default covers the missing-attribute case).
+                file_href, anchor = self._split_href(str(href))
 
                 play_order[0] += 1
                 chapter = ChapterNode(
@@ -489,7 +492,12 @@ class HeadingDetector:
                 element_id = tag.get("id")
 
                 if title:  # Only include non-empty headings
-                    headings.append((level, title, element_id))
+                    # bs4 types .get() as str | AttributeValueList | None; "id"
+                    # is single-valued, so this preserves both the str and the
+                    # None case unchanged.
+                    headings.append(
+                        (level, title, str(element_id) if element_id is not None else None)
+                    )
 
         # Sort by document order (approximate by finding position)
         # This is already in document order from BeautifulSoup
@@ -1038,7 +1046,7 @@ class ChapterDetector:
                     if child.title:
                         child_stop_titles.add(child.title.lower())
 
-            paragraphs = []
+            paragraphs: list[str] = []
             elements_seen = 0
             stop_reason = None
             start_level = None
@@ -1241,6 +1249,7 @@ class ChapterDetector:
         """
         if not self._chapter_tree:
             self.detect()
+        assert self._chapter_tree is not None  # detect() always builds the tree
 
         # Get all chapters
         all_nodes = self._chapter_tree.flatten(self.max_depth)
@@ -1277,6 +1286,7 @@ class ChapterDetector:
         """Get the full chapter hierarchy tree."""
         if not self._chapter_tree:
             self.detect()
+        assert self._chapter_tree is not None  # detect() always builds the tree
         return self._chapter_tree
 
     def export_to_text(
@@ -1295,6 +1305,7 @@ class ChapterDetector:
         """
         if not self._chapter_tree:
             self.detect()
+        assert self._chapter_tree is not None  # detect() always builds the tree
 
         # Get book metadata
         title = "Unknown"

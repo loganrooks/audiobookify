@@ -3,7 +3,7 @@
 **Companion to:** [`project-review-2026-07.md`](./project-review-2026-07.md) ·
 [`dependency-reduction-plan.md`](./dependency-reduction-plan.md)
 **Horizon:** ~6 months, five milestones
-**Status:** M0 complete (this branch); M1–M4 proposed
+**Status:** M0 and M1 complete (v2.6.0 shipped 2026-07-24); M2–M4 proposed
 
 This plan covers four tracks that need to move together:
 
@@ -288,8 +288,8 @@ critical defects.
 
 | Milestone | Focus | Effort | Status |
 |-----------|-------|--------|--------|
-| M0 | Stop the bleeding | — | ✅ Complete (pending Trusted Publishing setup) |
-| M1 | Ship a release | ~2 weeks | Not started |
+| M0 | Stop the bleeding | — | ✅ Complete |
+| M1 | Ship a release | ~2 weeks | ✅ Complete 2026-07-24 — v2.6.0 on PyPI (as `audiobookifier`), GHCR and GitHub Releases; exit criteria verified from clean installs |
 | M2 | Make the critical path safe | ~6 weeks | Not started |
 | M3 | Break the single point of failure | ~8 weeks | Not started |
 | M4 | Grow the project | ~12 weeks | Not started |

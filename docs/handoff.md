@@ -308,22 +308,30 @@ time audiobookify book.txt          # a real multi-chapter book, live TTS
 Record wall clock, and note the ratio of time in TTS versus ffmpeg. Without a
 baseline there is no way to tell whether the M3 rework helped.
 
-### 5. First release 🔴
+### 5. First release ✅ DONE (2026-07-24) — v2.6.0 shipped
 
-Blocked on a one-time setup step, not on code:
+All five steps completed. Verification went beyond the pipeline's own checks:
 
-1. Configure [PyPI Trusted Publishing](https://pypi.org/manage/account/publishing/) as a
-   *pending* publisher — PyPI project `audiobookifier`, owner `loganrooks`, repo
-   `audiobookify`, workflow `release.yml`, environment `pypi`. **Done as of 2026-07-24.**
-   The PyPI project name deliberately differs from the GitHub repo name; the
-   `audiobookify` name on PyPI belongs to an account that is no longer accessible.
-2. Create the `pypi` environment in repository settings
-3. Add a `## [2.6.0] - YYYY-MM-DD` section to `CHANGELOG.md` and set the version in
-   `pyproject.toml` to match — **`release.yml` refuses to publish if these disagree**
-4. `git tag v2.6.0 && git push origin main --tags`
-5. Verify independently: `pipx install audiobookifier` and
-   `docker pull ghcr.io/loganrooks/audiobookify:v2.6.0` from a clean machine. Do not
-   trust the pipeline's own smoke tests for the first run.
+- **PyPI**: [`audiobookifier` 2.6.0](https://pypi.org/project/audiobookifier/) is live
+  via Trusted Publishing (OIDC). The sha256 of both files served by PyPI matches the
+  hashes recorded from the workflow's `dist` artifact *before* publish — wheel
+  `35c3eb0c…`, sdist `b1794a9f…`.
+- **Install path**: `pip install audiobookifier==2.6.0` into a clean venv →
+  `audiobookify 2.6.0`, then a live EPUB→M4B conversion with real speech
+  (mean volume −22.2 dB, 3 chapters on correct titles).
+- **GHCR**: `ghcr.io/loganrooks/audiobookify:v2.6.0` pulled fresh
+  (digest `13d0427…`) — Python 3.14.6, non-root, ffmpeg 7.1.5, and the same live
+  conversion through a bind mount.
+- **GitHub Release**: `v2.6.0` published with both dist files attached.
+
+Two release-pipeline defects were found *by* this release and fixed on `main`
+(`50cbea9`, `8dadb23`): the dead `dry_run` input, and `github-release` blocking on a
+*pending* PyPI approval — `always()` gates whether a job runs after its `needs` reach a
+terminal state; it does not stop `needs` from waiting on a gated job. The Release now
+depends on `[build, publish-docker]` only.
+
+The `pypi` environment requires a reviewer (`loganrooks`) before each publish — that
+approval is the release trigger's only manual step.
 
 ---
 
@@ -371,10 +379,16 @@ Things that cost me time here, so they don't cost you time:
 
 ## Next actions, in order
 
-1. Merge this branch (the SessionStart hook only takes effect from the default branch)
-2. Run checks **1** and **2** above — they close the last gaps on the four fixes
-3. Configure Trusted Publishing and cut `v2.6.0` — [uplift plan M1](./uplift-plan.md#m1--ship-a-release-2-weeks)
-4. Then M2: CLI and TUI coverage, and the mypy baseline
+Items 1–3 completed 2026-07-24: branch merged, checks 1 and 2 closed, Trusted
+Publishing configured (as `audiobookifier`), and `v2.6.0` shipped to PyPI, GHCR
+and GitHub Releases — see §5 above for the verification record.
+
+1. M2: CLI and TUI coverage, and the mypy baseline —
+   [uplift plan M2](./uplift-plan.md#m2--make-the-critical-path-safe-6-weeks)
+2. The two human-with-a-player checks (§2 playback, §3 cover art)
+3. Optional: PyPI account recovery / PEP 541 to reclaim the `audiobookify` name
+   (https://github.com/pypi/support/issues/new/choose) — the published 2.3.0
+   metadata names this GitHub repo, which is a strong ownership claim
 
 Open questions for the maintainer, none blocking:
 

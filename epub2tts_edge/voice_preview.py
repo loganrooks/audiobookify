@@ -9,6 +9,7 @@ import os
 import re
 import tempfile
 from dataclasses import dataclass, field
+from typing import Any
 
 import edge_tts
 
@@ -606,7 +607,9 @@ class VoicePreview:
             output_path: Path where the MP3 file will be saved
         """
         # Build kwargs for edge_tts.Communicate
-        kwargs = {}
+        # Any-valued: mypy otherwise maps dict[str, str] onto every optional
+        # Communicate parameter.
+        kwargs: dict[str, Any] = {}
         if self.config.rate:
             kwargs["rate"] = self.config.rate
         if self.config.volume:

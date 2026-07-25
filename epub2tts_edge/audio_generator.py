@@ -15,6 +15,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import edge_tts
 from mutagen import mp4
@@ -255,7 +256,10 @@ def run_edgespeak(
 
     for speakattempt in range(retry_count):
         try:
-            kwargs = {}
+            # Any-valued: mypy otherwise maps dict[str, str] onto every optional
+            # Communicate parameter. Declared once for the whole function scope;
+            # the cooldown-retry block below reuses this declaration.
+            kwargs: dict[str, Any] = {}
             if rate:
                 kwargs["rate"] = rate
             if volume:
@@ -447,7 +451,7 @@ def read_book(
     Returns:
         List of generated FLAC segment filenames (absolute paths)
     """
-    segments = []
+    segments: list[str] = []
     title_names_to_skip_reading = ["Title", "blank"]
     total_chapters = len(book_contents)
 
@@ -728,8 +732,8 @@ def make_m4b(
     os.remove(filelist)
     os.remove(metadata_file)
     os.remove(outputm4a)
-    for f in files:
-        os.remove(f)
+    for segment_file in files:
+        os.remove(segment_file)
 
     for temp_dir in cleanup_dirs:
         shutil.rmtree(temp_dir, ignore_errors=True)

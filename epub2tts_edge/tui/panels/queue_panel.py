@@ -2,6 +2,7 @@
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
+from textual.coordinate import Coordinate
 from textual.widgets import DataTable, Label
 
 from ...batch_processor import BookTask, ProcessingStatus
@@ -57,11 +58,11 @@ class QueuePanel(Vertical):
         try:
             row_key = table.get_row_index(task.epub_path)
             status_icon = self._get_status_icon(task.status)
-            table.update_cell_at((row_key, 0), status_icon)
+            table.update_cell_at(Coordinate(row_key, 0), status_icon)
             table.update_cell_at(
-                (row_key, 2), str(task.chapter_count) if task.chapter_count else "-"
+                Coordinate(row_key, 2), str(task.chapter_count) if task.chapter_count else "-"
             )
-            table.update_cell_at((row_key, 3), self._format_duration(task.duration))
+            table.update_cell_at(Coordinate(row_key, 3), self._format_duration(task.duration))
         except Exception:
             pass
 

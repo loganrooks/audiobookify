@@ -131,10 +131,12 @@ class SettingsPanel(Vertical):
         ("rms", "RMS"),
     ]
 
-    # Profile options - dynamically generated from available profiles
+    # Profile options - dynamically generated from available profiles.
+    # NOTE: a walrus in a class-body comprehension is a SyntaxError, so the
+    # single get_profile() call per name is bound by unpacking instead.
     PROFILE_OPTIONS = [("custom", "Custom")] + [
-        (name, get_profile(name).name if get_profile(name) else name)
-        for name in get_profile_names()
+        (name, profile.name if profile else name)
+        for name, profile in ((n, get_profile(n)) for n in get_profile_names())
     ]
 
     # Output naming template presets
@@ -343,7 +345,7 @@ class SettingsPanel(Vertical):
         """Handle select changes, including profile selection."""
         if event.select.id == "profile-select":
             profile_name = event.value
-            if profile_name != "custom":
+            if isinstance(profile_name, str) and profile_name != "custom":
                 self._apply_profile(profile_name)
 
     def _apply_profile(self, profile_name: str) -> None:

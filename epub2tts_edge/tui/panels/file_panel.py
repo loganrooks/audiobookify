@@ -348,7 +348,7 @@ class FilePanel(Vertical):
             else:
                 patterns = ["*.txt"]
 
-            all_files = []
+            all_files: list[Path] = []
             for pattern in patterns:
                 all_files.extend(self.current_path.glob(pattern))
 

@@ -1090,3 +1090,132 @@ class TestPreviewJobGuard:
             app._start_preview_job(job)
 
             assert notifications == [], notifications
+
+
+class TestQueuePanelUpdates:
+    """Pin QueuePanel.update_task's observable effect.
+
+    ``update_task``'s whole body sits inside ``try: ... except Exception: pass``.
+    That means a signature/API drift in Textual's ``DataTable.update_cell_at``
+    would turn every queue update into a silent no-op rather than an error.
+    These tests assert on the resulting cell contents so such a regression is
+    loud instead of invisible.
+    """
+
+    @pytest.mark.asyncio
+    async def test_update_task_rewrites_status_chapters_and_time(self):
+        """A completed task's status, chapter count and duration reach the table."""
+        from textual.app import App, ComposeResult
+        from textual.coordinate import Coordinate
+        from textual.widgets import DataTable
+
+        from epub2tts_edge.batch_processor import BookTask, ProcessingStatus
+        from epub2tts_edge.tui import QueuePanel
+
+        class QueueHost(App):
+            def compose(self) -> ComposeResult:
+                yield QueuePanel()
+
+        task = BookTask(epub_path="/tmp/queue-panel-test-book.epub")
+
+        app = QueueHost()
+        async with app.run_test() as _:
+            panel = app.query_one(QueuePanel)
+            panel.add_task(task)
+
+            table = panel.query_one("#queue-table", DataTable)
+            assert table.get_cell_at(Coordinate(0, 0)) == "⏳"
+            assert table.get_cell_at(Coordinate(0, 2)) == "-"
+            assert table.get_cell_at(Coordinate(0, 3)) == "-"
+
+            task.status = ProcessingStatus.COMPLETED
+            task.chapter_count = 12
+            task.start_time = 100.0
+            task.end_time = 225.0  # -> "2m 5s"
+
+            panel.update_task(task)
+
+            assert table.get_cell_at(Coordinate(0, 0)) == "✅"
+            assert table.get_cell_at(Coordinate(0, 2)) == "12"
+            assert table.get_cell_at(Coordinate(0, 3)) == "2m 5s"
+            # The book column is written once by add_task and left alone.
+            assert table.get_cell_at(Coordinate(0, 1)) == "queue-panel-test-book"
+
+    @pytest.mark.asyncio
+    async def test_update_task_for_unknown_row_is_a_no_op(self):
+        """An unqueued task is swallowed rather than raising - that part is intended."""
+        from textual.app import App, ComposeResult
+
+        from epub2tts_edge.batch_processor import BookTask
+        from epub2tts_edge.tui import QueuePanel
+
+        class QueueHost(App):
+            def compose(self) -> ComposeResult:
+                yield QueuePanel()
+
+        app = QueueHost()
+        async with app.run_test() as _:
+            panel = app.query_one(QueuePanel)
+            panel.update_task(BookTask(epub_path="/tmp/never-added.epub"))
+
+
+class TestHelpScreenAndTitleEdit:
+    """Cover the two previously-untested paths reworked for type correctness.
+
+    ``HelpScreen.action_dismiss`` became an ``async`` override to match Textual's
+    ``Screen``, and the title-edit ``Input`` became a ``TitleEditInput`` subclass
+    that carries its chapter item. Both are behaviourally load-bearing and were
+    uncovered, so pin them.
+    """
+
+    @pytest.mark.asyncio
+    async def test_help_screen_opens_and_escape_closes_it(self, temp_dir):
+        """The escape binding must still pop the help screen."""
+        app = AudiobookifyApp(initial_path=str(temp_dir))
+
+        async with app.run_test() as pilot:
+            depth_before = len(app.screen_stack)
+
+            app.action_show_help()
+            await pilot.pause()
+            assert len(app.screen_stack) == depth_before + 1
+            assert type(app.screen).__name__ == "HelpScreen"
+
+            await pilot.press("escape")
+            await pilot.pause()
+            assert len(app.screen_stack) == depth_before, "help screen did not close"
+
+    @pytest.mark.asyncio
+    async def test_title_edit_round_trip(self, temp_dir):
+        """Editing a title renames the chapter, flags modified, and tears down."""
+        from textual.widgets import ListView
+
+        from epub2tts_edge.tui.panels.preview_panel import TitleEditInput
+
+        app = AudiobookifyApp(initial_path=str(temp_dir))
+
+        async with app.run_test() as pilot:
+            preview = app.query_one(PreviewPanel)
+            load_preview_chapters(preview, [make_preview_chapter("Old Title", "body text")])
+            await pilot.pause()
+            preview.preview_state.modified = False
+
+            tree = preview.query_one("#chapter-tree", ListView)
+            tree.index = 0
+            await pilot.pause()
+
+            item = preview._get_highlighted_item()
+            assert item is not None
+
+            preview.edit_highlighted_title()
+            await pilot.pause()
+
+            widget = preview.query_one("#title-edit-input", TitleEditInput)
+            assert widget.chapter_item is item
+
+            preview._finish_title_edit(widget, "Brand New Title")
+            await pilot.pause()
+
+            assert item.chapter.title == "Brand New Title"
+            assert preview.preview_state.modified is True
+            assert len(preview.query("#title-edit-input")) == 0, "input not torn down"

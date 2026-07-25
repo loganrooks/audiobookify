@@ -6,6 +6,7 @@ translating processing events into UI updates.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Protocol
 
 from ...core.events import Event, EventBus, EventType
@@ -61,7 +62,7 @@ class TUIEventAdapter:
         """
         self.app = app
         self.event_bus = event_bus
-        self._unsubscribers: list[callable] = []
+        self._unsubscribers: list[Callable[[], None]] = []
 
     def connect(self) -> None:
         """Subscribe to all relevant events."""

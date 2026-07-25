@@ -1,5 +1,6 @@
 """Directory browser modal screen."""
 
+from collections.abc import Iterable
 from pathlib import Path
 
 from textual.app import ComposeResult
@@ -12,7 +13,7 @@ from textual.widgets import Button, DirectoryTree, Label
 class FilteredDirectoryTree(DirectoryTree):
     """DirectoryTree that filters out hidden files and shows only directories."""
 
-    def filter_paths(self, paths: list[Path]) -> list[Path]:
+    def filter_paths(self, paths: Iterable[Path]) -> list[Path]:
         """Filter out hidden files and non-directories."""
         return sorted(
             [p for p in paths if not p.name.startswith(".") and p.is_dir()],

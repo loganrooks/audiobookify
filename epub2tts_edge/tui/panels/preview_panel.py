@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 from textual import on
 from textual.app import ComposeResult
@@ -11,6 +12,14 @@ from textual.message import Message
 from textual.widgets import Button, Input, Label, ListItem, ListView, Static
 
 from ..models import ChapterPreviewState, PreviewChapter
+
+
+class TitleEditInput(Input):
+    """Input that remembers which chapter list item it is editing."""
+
+    def __init__(self, chapter_item: "ChapterPreviewItem", **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.chapter_item = chapter_item
 
 
 class ChapterPreviewItem(ListItem):
@@ -809,13 +818,13 @@ class PreviewPanel(Vertical):
             self.app.notify("Highlight a chapter to edit its title", severity="warning")
             return
 
-        # Create an Input widget
-        input_widget = Input(
+        # Create an Input widget that remembers the item it is editing
+        input_widget = TitleEditInput(
+            chapter_item=highlighted,
             value=highlighted.chapter.title,
             id="title-edit-input",
             placeholder="Enter new title...",
         )
-        input_widget.chapter_item = highlighted  # Store reference to item
 
         # Replace the label temporarily with input
         label = highlighted.query_one(Label)
@@ -823,8 +832,13 @@ class PreviewPanel(Vertical):
         highlighted.mount(input_widget)
         input_widget.focus()
 
-    def _finish_title_edit(self, input_widget, new_title: str) -> None:
-        """Complete the title edit operation."""
+    def _finish_title_edit(self, input_widget: TitleEditInput, new_title: str) -> None:
+        """Complete the title edit operation.
+
+        The widget teardown below must run on every path, so a cleared
+        ``preview_state`` is handled in place rather than by an early return
+        (an early return would leave the Input mounted and the Label hidden).
+        """
         chapter_item = input_widget.chapter_item
 
         if new_title.strip():
@@ -833,7 +847,8 @@ class PreviewPanel(Vertical):
 
             # Update the chapter title
             chapter_item.chapter.title = new_title.strip()
-            self.preview_state.modified = True
+            if self.preview_state is not None:
+                self.preview_state.modified = True
 
             self.app.notify(f"Renamed to: {new_title[:30]}...", severity="information")
 
@@ -868,7 +883,7 @@ class PreviewPanel(Vertical):
                 event.stop()
             else:
                 try:
-                    input_widget = self.query_one("#title-edit-input", Input)
+                    input_widget = self.query_one("#title-edit-input", TitleEditInput)
                     chapter_item = input_widget.chapter_item
                     input_widget.remove()
                     label = chapter_item.query_one(Label)

@@ -99,6 +99,6 @@ class HelpScreen(ModalScreen):
 
             yield Static("Press Escape, ? or F1 to close", classes="hint")
 
-    def action_dismiss(self) -> None:
+    async def action_dismiss(self, result: None = None) -> None:
         """Close the help screen."""
         self.dismiss()

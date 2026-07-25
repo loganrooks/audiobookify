@@ -29,6 +29,7 @@ from ..logger import get_logger
 from .events import EventBus, EventType
 
 if TYPE_CHECKING:
+    from ..multi_voice import MultiVoiceProcessor
     from ..pronunciation import PronunciationProcessor
 
 logger = get_logger(__name__)
@@ -285,6 +286,22 @@ class ConversionPipeline:
         processor.load_dictionary(self.config.pronunciation_dict)
         return processor
 
+    def _load_multi_voice_processor(self) -> MultiVoiceProcessor | None:
+        """Build a multi-voice processor from the configured mapping file.
+
+        The old code called VoiceMapping.from_json(), which never existed;
+        the JSON loader lives on MultiVoiceProcessor.
+        """
+        if not self.config.voice_mapping:
+            return None
+        from ..multi_voice import MultiVoiceProcessor
+
+        processor = MultiVoiceProcessor()
+        processor.load_mapping(self.config.voice_mapping)
+        if self.config.narrator_voice:
+            processor.mapping.narrator_voice = self.config.narrator_voice
+        return processor
+
     def generate_audio(
         self,
         job: Job,
@@ -314,14 +331,7 @@ class ConversionPipeline:
         pronunciation_processor = self._load_pronunciation_processor()
 
         # Load multi-voice processor if configured
-        multi_voice_processor = None
-        if self.config.voice_mapping:
-            from ..multi_voice import MultiVoiceProcessor, VoiceMapping
-
-            mapping = VoiceMapping.from_json(self.config.voice_mapping)
-            if self.config.narrator_voice:
-                mapping.default_voice = self.config.narrator_voice
-            multi_voice_processor = MultiVoiceProcessor(mapping)
+        multi_voice_processor = self._load_multi_voice_processor()
 
         # Generate audio
         audio_dir = job.effective_audio_dir

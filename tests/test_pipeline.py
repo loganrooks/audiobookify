@@ -765,3 +765,52 @@ class TestPronunciationLoading:
         pipeline = ConversionPipeline(job_manager, PipelineConfig())
 
         assert pipeline._load_pronunciation_processor() is None
+
+
+class TestVoiceMappingLoading:
+    """Pipeline must load a voice mapping from the configured JSON path."""
+
+    def test_load_multi_voice_processor_reads_the_file(self, temp_dir):
+        mapping_file = temp_dir / "voices.json"
+        mapping_file.write_text(
+            '{"default_voice": "en-US-AndrewNeural",'
+            ' "character_voices": {"Alice": "en-US-AriaNeural"}}',
+            encoding="utf-8",
+        )
+
+        job_manager = JobManager(str(temp_dir / "jobs"))
+        config = PipelineConfig(voice_mapping=str(mapping_file))
+        pipeline = ConversionPipeline(job_manager, config)
+
+        processor = pipeline._load_multi_voice_processor()
+
+        assert processor is not None
+        assert processor.mapping.default_voice == "en-US-AndrewNeural"
+        assert processor.mapping.character_voices == {"Alice": "en-US-AriaNeural"}
+
+    def test_narrator_voice_overrides_mapping(self, temp_dir):
+        mapping_file = temp_dir / "voices.json"
+        mapping_file.write_text(
+            '{"default_voice": "en-US-AndrewNeural", "narrator_voice": "en-US-EricNeural"}',
+            encoding="utf-8",
+        )
+
+        job_manager = JobManager(str(temp_dir / "jobs"))
+        config = PipelineConfig(
+            voice_mapping=str(mapping_file),
+            narrator_voice="en-GB-SoniaNeural",
+        )
+        pipeline = ConversionPipeline(job_manager, config)
+
+        processor = pipeline._load_multi_voice_processor()
+
+        assert processor is not None
+        assert processor.mapping.narrator_voice == "en-GB-SoniaNeural"
+        # The narrator override must not clobber the default voice from the file.
+        assert processor.mapping.default_voice == "en-US-AndrewNeural"
+
+    def test_load_multi_voice_processor_none_when_unconfigured(self, temp_dir):
+        job_manager = JobManager(str(temp_dir / "jobs"))
+        pipeline = ConversionPipeline(job_manager, PipelineConfig())
+
+        assert pipeline._load_multi_voice_processor() is None

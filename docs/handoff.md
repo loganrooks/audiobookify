@@ -383,8 +383,13 @@ Items 1–3 completed 2026-07-24: branch merged, checks 1 and 2 closed, Trusted
 Publishing configured (as `audiobookifier`), and `v2.6.0` shipped to PyPI, GHCR
 and GitHub Releases — see §5 above for the verification record.
 
-1. M2: CLI and TUI coverage, and the mypy baseline —
-   [uplift plan M2](./uplift-plan.md#m2--make-the-critical-path-safe-6-weeks)
+1. M2: CLI and TUI coverage —
+   [uplift plan M2](./uplift-plan.md#m2--make-the-critical-path-safe-to-change-6-weeks).
+   The mypy half of this item is **done as of 2026-07-25** (`90d330e`): the baseline
+   went 53 errors → 0 and the CI step is now blocking, so type errors fail the build.
+   Coverage is what remains — the CLI and `tui/app.py` are still the two least-covered
+   large modules. Note the mypy zero holds under the *current* `[tool.mypy]` settings;
+   no strictness flag was tightened.
 2. The two human-with-a-player checks (§2 playback, §3 cover art)
 3. Optional: PyPI account recovery / PEP 541 to reclaim the `audiobookify` name
    (https://github.com/pypi/support/issues/new/choose) — the published 2.3.0

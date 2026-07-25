@@ -1187,8 +1187,12 @@ class TestHelpScreenAndTitleEdit:
 
     @pytest.mark.asyncio
     async def test_title_edit_round_trip(self, temp_dir):
-        """Editing a title renames the chapter, flags modified, and tears down."""
-        from textual.widgets import ListView
+        """Submitting the edit renames the chapter, flags modified, and tears down.
+
+        Driven through the real entry point (Input.Submitted -> on_input_submitted)
+        rather than by calling the private _finish_title_edit directly.
+        """
+        from textual.widgets import Label, ListView
 
         from epub2tts_edge.tui.panels.preview_panel import TitleEditInput
 
@@ -1213,9 +1217,91 @@ class TestHelpScreenAndTitleEdit:
             widget = preview.query_one("#title-edit-input", TitleEditInput)
             assert widget.chapter_item is item
 
-            preview._finish_title_edit(widget, "Brand New Title")
+            # Real entry point: type into the focused Input and press Enter.
+            widget.value = "Brand New Title"
+            await pilot.press("enter")
             await pilot.pause()
 
             assert item.chapter.title == "Brand New Title"
             assert preview.preview_state.modified is True
             assert len(preview.query("#title-edit-input")) == 0, "input not torn down"
+            assert item.query_one(Label).display is True, "label not restored"
+
+    @pytest.mark.asyncio
+    async def test_title_edit_escape_cancels_and_restores_label(self, temp_dir):
+        """Escape tears the edit box down via the on_key lookup, leaving the title alone.
+
+        This is the other real entry point into the TitleEditInput lookup, and it
+        sits inside `except Exception: pass` - so it must be pinned by assertion
+        rather than by absence of a raised error.
+        """
+        from textual.widgets import Label, ListView
+
+        from epub2tts_edge.tui.panels.preview_panel import TitleEditInput
+
+        app = AudiobookifyApp(initial_path=str(temp_dir))
+
+        async with app.run_test() as pilot:
+            preview = app.query_one(PreviewPanel)
+            load_preview_chapters(preview, [make_preview_chapter("Keep Me", "body text")])
+            await pilot.pause()
+            preview.preview_state.modified = False
+
+            tree = preview.query_one("#chapter-tree", ListView)
+            tree.index = 0
+            await pilot.pause()
+
+            item = preview._get_highlighted_item()
+            assert item is not None
+
+            preview.edit_highlighted_title()
+            await pilot.pause()
+
+            widget = preview.query_one("#title-edit-input", TitleEditInput)
+            widget.value = "Discard This"
+            assert item.query_one(Label).display is False
+
+            await pilot.press("escape")
+            await pilot.pause()
+
+            assert len(preview.query("#title-edit-input")) == 0, "escape did not remove input"
+            assert item.query_one(Label).display is True, "escape did not restore label"
+            assert item.chapter.title == "Keep Me", "escape must not rename"
+            assert preview.preview_state.modified is False
+
+
+class TestProfileSelectBlank:
+    """The profile Select offers a blank row, and picking it used to crash the app.
+
+    `Select` is built with the default `allow_blank=True`, which prepends a
+    selectable ("", Select.NULL) option. Choosing it fires Select.Changed with a
+    NoSelection value, which the old guard passed straight to get_profile() ->
+    `name.lower()` -> AttributeError inside the message pump.
+    """
+
+    @pytest.mark.asyncio
+    async def test_blank_option_is_present_and_selectable(self, temp_dir):
+        """Pin the reachability premise this guard exists for."""
+        from textual.widgets import Select
+
+        app = AudiobookifyApp(initial_path=str(temp_dir))
+
+        async with app.run_test() as _:
+            select = app.query_one("#profile-select", Select)
+            assert ("", Select.NULL) in select._options, "blank row gone; revisit the guard"
+
+    @pytest.mark.asyncio
+    async def test_selecting_blank_profile_does_not_crash(self, temp_dir):
+        """Selecting the blank row must be a no-op, not an AttributeError."""
+        from textual.widgets import Select
+
+        app = AudiobookifyApp(initial_path=str(temp_dir))
+
+        async with app.run_test() as pilot:
+            select = app.query_one("#profile-select", Select)
+
+            select.value = Select.NULL
+            await pilot.pause()
+
+            assert select.value is Select.NULL
+            assert app.is_running, "app died handling the blank profile selection"

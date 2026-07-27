@@ -64,7 +64,7 @@ jobs:
       issues: write
     steps:
       - name: Open or update the canary issue
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
